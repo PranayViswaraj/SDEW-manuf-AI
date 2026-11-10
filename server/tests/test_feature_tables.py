@@ -223,3 +223,16 @@ def test_ai_package_cannot_touch_programs() -> None:
 def test_program_generator_is_an_empty_interface() -> None:
     with pytest.raises(TypeError):
         ProgramGenerator()  # type: ignore[abstract]
+
+
+def test_dev_seed_demo_table_has_confirmation_time(settings: object, db: Session) -> None:
+    from sqlalchemy import select
+
+    from app.config import Settings
+    from app.db.models import FeatureTable
+    from app.seed import run_seed
+
+    assert isinstance(settings, Settings)
+    run_seed(settings.model_copy(update={"seed_dev_data": True}), db)
+    ft = db.scalars(select(FeatureTable).where(FeatureTable.part_number == "DEMO-SIM-001")).one()
+    assert ft.confirmed_at is not None and ft.confirmed_by_name

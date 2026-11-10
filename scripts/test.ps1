@@ -30,6 +30,7 @@ Push-Location (Join-Path $root 'web')
 Step 'web: eslint'    { npm run -s lint }
 Step 'web: tsc'       { npm run -s typecheck }
 Step 'web: vitest'    { npm test --silent }
+Step 'web: build'     { npm run -s build }
 Pop-Location
 
 if ($failed.Count -gt 0) {

@@ -4,6 +4,7 @@ Dev users (with the published dev passwords from the README) are only created wh
 MANUFAI_SEED_DEV_DATA=true and MANUFAI_ENV is not 'production'. Idempotent.
 """
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -238,6 +239,7 @@ def seed_demo_feature_table(db: Session) -> list[str]:
             data=data,
             status=FeatureTableStatus.CONFIRMED.value,
             confirmed_by_name="Dev seed (demo part)",
+            confirmed_at=datetime.now(UTC),
             confirmed_hash=data_hash(data),
         )
     )

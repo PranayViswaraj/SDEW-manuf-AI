@@ -20,7 +20,16 @@ import Users from './pages/Users';
 
 function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] }) {
   const { user, loading, hasRole } = useAuth();
-  if (loading) return <p className="p-4 text-gray-600">Loading…</p>;
+  if (loading)
+    return (
+      <div
+        className="flex min-h-screen items-center justify-center bg-slate-50"
+        role="status"
+        aria-label="Loading"
+      >
+        <span className="h-10 w-10 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
+      </div>
+    );
   if (!user) return <Navigate to="/login" replace />;
   if (roles && !hasRole(...roles)) {
     return (

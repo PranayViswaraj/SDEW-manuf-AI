@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
@@ -6,7 +7,7 @@ import { useAuth } from '../auth/AuthContext';
 import Checklist from '../components/Checklist';
 import ConfirmDialog from '../components/ConfirmDialog';
 import LivePanel from '../components/LivePanel';
-import { ErrorBox, Notice } from '../components/ui';
+import { ErrorBox, PageLoading, Notice } from '../components/ui';
 
 const STEPS: { status: Detail['status'][]; label: string }[] = [
   { status: ['checklist', 'send_failed'], label: 'Checklist & send' },
@@ -77,7 +78,7 @@ export default function RunDetail() {
     }
   }
 
-  if (!run) return error ? <ErrorBox error={error} /> : <p className="text-gray-600">Loading…</p>;
+  if (!run) return error ? <ErrorBox error={error} /> : <PageLoading />;
 
   const editable = ['checklist', 'send_failed', 'sent'].includes(run.status);
   const active = ['checklist', 'send_failed', 'sent', 'running'].includes(run.status);
@@ -100,16 +101,33 @@ export default function RunDetail() {
           {run.status_note && <span className="ml-2 text-amber-800">{run.status_note}</span>}
         </p>
         {run.status !== 'aborted' && (
-          <ol className="mt-2 flex flex-wrap gap-2 text-xs">
-            {STEPS.map((s, i) => (
-              <li
-                key={s.label}
-                className={`rounded px-2 py-1 ${i < stepIndex ? 'bg-green-100 text-green-800' : i === stepIndex ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}
-              >
-                {i + 1}. {s.label}
-              </li>
-            ))}
-          </ol>
+          <div className="mt-4">
+            <div className="relative mb-2 h-1.5 overflow-hidden rounded-full bg-slate-200" aria-hidden="true">
+              <motion.div
+                className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-brand-500 to-emerald-500"
+                initial={false}
+                animate={{ width: `${(Math.max(stepIndex, 0) / (STEPS.length - 1)) * 100}%` }}
+                transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+              />
+            </div>
+            <ol className="flex flex-wrap gap-2 text-xs">
+              {STEPS.map((s, i) => (
+                <li
+                  key={s.label}
+                  aria-current={i === stepIndex ? 'step' : undefined}
+                  className={`rounded-full px-3 py-1 font-medium transition ${
+                    i < stepIndex
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : i === stepIndex
+                        ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
+                        : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  {i + 1}. {s.label}
+                </li>
+              ))}
+            </ol>
+          </div>
         )}
       </div>
       <ErrorBox error={error} />

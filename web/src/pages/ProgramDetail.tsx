@@ -5,7 +5,7 @@ import type { Issue, ProgramDetail as Detail } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { ProgramStatusBadge, ProvenBadge } from '../components/ProgramStatusBadge';
 import ToolpathView from '../components/ToolpathView';
-import { ErrorBox, Notice } from '../components/ui';
+import { ErrorBox, PageLoading, Notice } from '../components/ui';
 
 const SEV_CLS: Record<Issue['severity'], string> = {
   error: 'border-red-300 bg-red-50 text-red-900',
@@ -63,7 +63,7 @@ export default function ProgramDetail() {
     }
   }
 
-  if (!p) return error ? <ErrorBox error={error} /> : <p className="text-gray-600">Loading…</p>;
+  if (!p) return error ? <ErrorBox error={error} /> : <PageLoading />;
   const v = p.validation;
   const issues = [...v.errors, ...v.warnings, ...v.infos];
   const lineIssues = new Map<number, Issue['severity']>();

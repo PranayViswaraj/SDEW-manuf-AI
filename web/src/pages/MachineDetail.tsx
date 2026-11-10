@@ -12,7 +12,7 @@ import {
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import LivePanel from '../components/LivePanel';
-import { ErrorBox, Notice, NotEntered } from '../components/ui';
+import { ErrorBox, PageLoading, Notice, NotEntered } from '../components/ui';
 import { useLiveStatus } from '../hooks/useLiveStatus';
 
 type LimitDraft = Record<keyof MachineLimits, string>;
@@ -50,7 +50,7 @@ export default function MachineDetail() {
   }, [id]);
   useEffect(load, [load]);
 
-  if (!machine) return error ? <ErrorBox error={error} /> : <p className="text-gray-600">Loading…</p>;
+  if (!machine) return error ? <ErrorBox error={error} /> : <PageLoading />;
 
   return (
     <div className="space-y-6">

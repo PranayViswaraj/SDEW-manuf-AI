@@ -1,5 +1,6 @@
 import type { LiveState, LiveStatus } from '../api/types';
 import { useLiveStatus } from '../hooks/useLiveStatus';
+import { PulseDot } from './motion';
 
 const LABEL: Record<LiveState, string> = {
   online: 'Online',
@@ -12,6 +13,13 @@ const CLS: Record<LiveState, string> = {
   machine_unreachable: 'badge-red',
   stale: 'badge-amber',
   offline: 'badge-red',
+};
+
+const DOT: Record<LiveState, 'green' | 'amber' | 'red'> = {
+  online: 'green',
+  machine_unreachable: 'red',
+  stale: 'amber',
+  offline: 'red',
 };
 
 export function LiveBadge({ live }: { live: LiveStatus | null }) {
@@ -27,6 +35,7 @@ export function LiveBadge({ live }: { live: LiveStatus | null }) {
   return (
     <span className="inline-flex items-center gap-1">
       <span className={CLS[live.state]} title={title} data-testid="live-badge">
+        <PulseDot tone={DOT[live.state]} active={live.state === 'online'} />
         {LABEL[live.state]}
       </span>
       {live.driver === 'simulated' && live.state !== 'offline' && (

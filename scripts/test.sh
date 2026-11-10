@@ -25,6 +25,7 @@ cd "$ROOT/web"
 step "web: eslint" npm run -s lint
 step "web: tsc"    npm run -s typecheck
 step "web: vitest" npm test --silent
+step "web: build"  npm run -s build
 
 if [ ${#FAILED[@]} -gt 0 ]; then echo; echo "FAILED: ${FAILED[*]}"; exit 1; fi
 echo; echo "All checks passed."

@@ -56,6 +56,19 @@ cd server && ../.venv/bin/alembic upgrade head
 cd web && npm run dev
 ```
 
+## Using the web app
+
+- **Left sidebar**: every page, grouped by job (Production, Engineering, Admin). Admin pages only
+  appear for admins. Collapse it with the button at the bottom; on a phone it opens from the menu
+  button.
+- **Ctrl + K** (or the search box at the top): type where you want to go - "run", "approve",
+  "materials" - and press Enter.
+- **Home**: live counts, big buttons for what your role does, machines right now, the 11-step
+  drawing-to-part flow (shows which steps are live and which wait for inputs), latest runs.
+- Animations switch off automatically when the computer's "reduce motion" setting is on.
+  Keyboard: Tab moves through everything, "Skip to content" is the first Tab stop, Esc closes
+  dialogs.
+
 ## Logging in (dev)
 
 With `MANUFAI_SEED_DEV_DATA=true` (the default in `docker-compose.yml` and `.env.example`) the server

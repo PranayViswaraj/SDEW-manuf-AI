@@ -1,40 +1,205 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/inter';
 
+/* ------------------------------------------------------------------ design tokens */
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+
+  --color-brand-50: #eef4ff;
+  --color-brand-100: #dbe6fe;
+  --color-brand-200: #bfd3fe;
+  --color-brand-300: #93b4fd;
+  --color-brand-400: #608dfa;
+  --color-brand-500: #3b6af6;
+  --color-brand-600: #2550eb;
+  --color-brand-700: #1d3fd8;
+  --color-brand-800: #1e35af;
+  --color-brand-900: #1e318a;
+  --color-ink: #0b1220;
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.06);
+  --shadow-lift: 0 10px 30px -10px rgb(15 23 42 / 0.25);
+
+  --animate-fade-up: fade-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-shimmer: shimmer 1.4s linear infinite;
+  --animate-pulse-ring: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-float: float 14s ease-in-out infinite;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes shimmer {
+  from {
+    background-position: -400px 0;
+  }
+  to {
+    background-position: 400px 0;
+  }
+}
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  80%,
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+@keyframes float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(30px, -40px) scale(1.08);
+  }
+}
+
+/* ------------------------------------------------------------------ base */
+@layer base {
+  /* Tailwind v4 defaults borders to currentColor; use a soft grey unless a colour is given. */
+  *,
+  ::before,
+  ::after,
+  ::backdrop {
+    border-color: var(--color-slate-200);
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-slate-50 font-sans text-slate-900;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  ::selection {
+    background: var(--color-brand-200);
+  }
+}
+
+/* ------------------------------------------------------------------ components */
 @layer components {
   .input {
-    @apply block w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm focus:border-blue-500 focus:outline-none;
+    @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500;
   }
   .btn {
-    @apply inline-flex items-center justify-center rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm transition duration-150 hover:-translate-y-px hover:border-slate-400 hover:bg-slate-50 hover:shadow active:translate-y-0 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded bg-blue-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm shadow-brand-600/30 transition duration-150 hover:-translate-y-px hover:bg-brand-700 hover:shadow-md hover:shadow-brand-600/30 active:translate-y-0 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45 disabled:shadow-none;
   }
   .btn-danger {
-    @apply inline-flex items-center justify-center rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-500 px-3.5 py-2 text-sm font-semibold text-white shadow-sm shadow-amber-500/30 transition duration-150 hover:-translate-y-px hover:bg-amber-600 active:translate-y-0 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45;
   }
   .table {
-    @apply w-full text-left text-sm;
+    @apply w-full border-separate border-spacing-0 text-left text-sm;
   }
   .table th {
-    @apply border-b bg-gray-50 px-3 py-2 font-medium text-gray-700;
+    @apply sticky top-0 z-[1] border-b border-slate-200 bg-slate-50/95 px-4 py-2.5 text-xs font-semibold tracking-wide text-slate-500 uppercase backdrop-blur;
   }
   .table td {
-    @apply border-b px-3 py-2 align-top;
+    @apply border-b border-slate-100 px-4 py-3 align-top transition-colors;
+  }
+  .table tbody tr {
+    @apply animate-fade-up transition-colors hover:bg-brand-50/50;
+  }
+  .table tbody tr:last-child td {
+    @apply border-b-0;
   }
   .badge-green {
-    @apply rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-600/20;
   }
   .badge-red {
-    @apply rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset bg-rose-50 text-rose-700 ring-rose-600/20;
   }
   .badge-amber {
-    @apply rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset bg-amber-50 text-amber-800 ring-amber-600/25;
   }
   .badge-gray {
-    @apply rounded bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset bg-slate-100 text-slate-600 ring-slate-500/20;
   }
   .badge-blue {
-    @apply rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset bg-brand-50 text-brand-700 ring-brand-600/20;
+  }
+  .card {
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-[var(--shadow-card)];
+  }
+  .skeleton {
+    @apply animate-shimmer rounded-md bg-[linear-gradient(90deg,#eef2f7_0%,#f8fafc_40%,#eef2f7_80%)] bg-[length:800px_100%];
+  }
+  .kbd {
+    @apply inline-flex min-w-5 items-center justify-center rounded border border-slate-300 bg-white px-1 font-mono text-[10px] font-semibold text-slate-500 shadow-[0_1px_0_rgb(0_0_0/0.08)];
+  }
+}
+
+/* ------------------------------------------------------------------ page surfaces
+   Every page uses "rounded border bg-white" for its panels; give them one consistent card look. */
+.app-main :is(section, div, form).rounded.border.bg-white {
+  border-radius: 1rem;
+  border-color: rgb(226 232 240 / 0.9);
+  box-shadow: var(--shadow-card);
+  animation: var(--animate-fade-up);
+}
+.app-main h1 {
+  letter-spacing: -0.015em;
+}
+/* Page titles: one size everywhere (the Home hero sets its own). */
+.app-main h1:not(.hero-title) {
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 700;
+}
+.app-main a.rounded.border.bg-white {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+.app-main a.rounded.border.bg-white:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lift);
+}
+
+/* Stagger the first rows of every table. */
+.table tbody tr:nth-child(2) {
+  animation-delay: 30ms;
+}
+.table tbody tr:nth-child(3) {
+  animation-delay: 60ms;
+}
+.table tbody tr:nth-child(4) {
+  animation-delay: 90ms;
+}
+.table tbody tr:nth-child(5) {
+  animation-delay: 120ms;
+}
+.table tbody tr:nth-child(n + 6) {
+  animation-delay: 150ms;
+}
+
+/* ------------------------------------------------------------------ accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -4,7 +4,7 @@ import { api } from '../api/client';
 import type { Cell, CellValue, FeatureSchema, FeatureTable, FeatureTableData, FieldDef } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import CapablePanel from '../components/CapablePanel';
-import { ErrorBox, Notice } from '../components/ui';
+import { ErrorBox, PageLoading, Notice } from '../components/ui';
 
 const UNIT: Record<FieldDef['kind'], string> = { mm: 'mm', deg: '°', tol: 'mm', text: '' };
 
@@ -114,8 +114,7 @@ export default function PartDetail() {
     [schema],
   );
 
-  if (!ft || !data || !schema)
-    return error ? <ErrorBox error={error} /> : <p className="text-gray-600">Loading…</p>;
+  if (!ft || !data || !schema) return error ? <ErrorBox error={error} /> : <PageLoading />;
   const readOnly = !isEngineer;
 
   function update(next: FeatureTableData) {
@@ -206,7 +205,7 @@ export default function PartDetail() {
         <p className="text-sm text-gray-600">
           {ft.drawing_ref && <>Drawing {ft.drawing_ref} · </>}
           {ft.status === 'confirmed'
-            ? `Confirmed by ${ft.confirmed_by_name} on ${ft.confirmed_at?.slice(0, 16).replace('T', ' ')} UTC`
+            ? `Confirmed by ${ft.confirmed_by_name}${ft.confirmed_at ? ` on ${ft.confirmed_at.slice(0, 16).replace('T', ' ')} UTC` : ''}`
             : `${ft.unconfirmed.length} values still to enter / confirm`}
         </p>
       </div>

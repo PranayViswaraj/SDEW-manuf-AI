@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getHealth, type Health } from '../api/client';
+import { PulseDot } from './motion';
 
 type State = { kind: 'loading' } | { kind: 'ok'; health: Health } | { kind: 'error' };
 
@@ -8,26 +9,32 @@ export default function HealthBadge() {
 
   useEffect(() => {
     let cancelled = false;
-    getHealth()
-      .then((health) => !cancelled && setState({ kind: 'ok', health }))
-      .catch(() => !cancelled && setState({ kind: 'error' }));
+    const check = () =>
+      getHealth()
+        .then((health) => !cancelled && setState({ kind: 'ok', health }))
+        .catch(() => !cancelled && setState({ kind: 'error' }));
+    check();
+    const t = window.setInterval(check, 15000);
     return () => {
       cancelled = true;
+      window.clearInterval(t);
     };
   }, []);
 
   if (state.kind === 'loading') {
-    return <span className="rounded bg-gray-200 px-2 py-1 text-sm text-gray-700">Checking server…</span>;
+    return <span className="badge-gray">Checking server…</span>;
   }
   if (state.kind === 'error' || state.health.status !== 'ok') {
     return (
-      <span role="status" className="rounded bg-red-100 px-2 py-1 text-sm text-red-800">
+      <span role="status" className="badge-red">
+        <PulseDot tone="red" />
         Server unreachable or database down
       </span>
     );
   }
   return (
-    <span role="status" className="rounded bg-green-100 px-2 py-1 text-sm text-green-800">
+    <span role="status" className="badge-green">
+      <PulseDot tone="green" />
       Server OK · v{state.health.version}
     </span>
   );
