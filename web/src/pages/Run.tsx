@@ -114,12 +114,14 @@ export default function Run() {
       )}
 
       <section className="space-y-2">
-        <h2 className="font-semibold">Recent runs</h2>
+        <h2 className="font-semibold">Run log</h2>
         <div className="overflow-x-auto rounded border bg-white">
           <table className="table">
             <thead>
               <tr>
                 <th>Run</th>
+                <th>Who</th>
+                <th>When (UTC)</th>
                 <th>Machine</th>
                 <th>Program</th>
                 <th>Part</th>
@@ -135,18 +137,30 @@ export default function Run() {
                       #{r.id}
                     </Link>
                   </td>
+                  <td>{r.operator ?? '–'}</td>
+                  <td className="whitespace-nowrap font-mono text-xs">
+                    {(r.started_at ?? r.created_at).slice(0, 16).replace('T', ' ')}
+                    {r.start_mode && (
+                      <div className="text-gray-500">
+                        {r.start_mode === 'remote' ? 'started from ManufAI' : 'started at machine'}
+                      </div>
+                    )}
+                  </td>
                   <td>{r.machine_name}</td>
                   <td className="font-mono">
                     {r.program_name} v{r.program_version}
                   </td>
                   <td className="font-mono text-xs">{r.part_number}</td>
                   <td>{r.status}</td>
-                  <td>{r.first_piece_result ?? '–'}</td>
+                  <td>
+                    {r.first_piece_result ?? '–'}
+                    {r.first_piece_by && <div className="text-xs text-gray-500">by {r.first_piece_by}</div>}
+                  </td>
                 </tr>
               ))}
               {runs.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-center text-gray-500">
+                  <td colSpan={8} className="text-center text-gray-500">
                     No runs yet.
                   </td>
                 </tr>

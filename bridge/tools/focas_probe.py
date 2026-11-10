@@ -9,6 +9,9 @@ Save one program from the CNC to a file:
 Write test (needs a typed confirmation; refuses to overwrite an existing program number):
     python focas_probe.py --ip ... --lib ... --roundtrip test.nc --number O9001 [--repeat 20]
 
+Status reads during a full shift (read-only; go-live check "status reads stay steady"):
+    python focas_probe.py --ip ... --lib ... --watch 480 [--interval 1]
+
 Without a machine:
     python focas_probe.py --simulate [--upload O0001] [--roundtrip FILE --number O9001]
 """
@@ -167,6 +170,12 @@ async def probe(
             await _step_roundtrip(driver, args, rep, ask, {p.number for p in progs})
         else:
             rep.line(7, "Write/read-back test", "SKIP", "(use --roundtrip FILE --number O9001)")
+
+        # 8. optional long status watch (read-only)
+        if args.watch:
+            await _step_watch(driver, args, rep)
+        else:
+            rep.line(8, "Status reads over time", "SKIP", "(use --watch 480 for a full shift)")
     finally:
         await driver.disconnect()
         if isinstance(driver, FocasDriver):
@@ -174,6 +183,38 @@ async def probe(
 
     out("\nRESULT: " + ("FAIL" if rep.failed else "PASS"))
     return 1 if rep.failed else 0
+
+
+async def _step_watch(driver: MachineDriver, args: argparse.Namespace, rep: Report) -> None:
+    """Read status every --interval s for --watch minutes. Read-only. PASS = no failed read."""
+    title = f"Status reads for {args.watch:g} min"
+    rep.out(
+        f"\n  Reading status every {args.interval:g} s for {args.watch:g} min (Ctrl+C to stop)..."
+    )
+    start = time.monotonic()
+    end = start + args.watch * 60
+    ok = failed = 0
+    slowest = 0.0
+    next_report = start + 600
+    while time.monotonic() < end:
+        t0 = time.perf_counter()
+        try:
+            await driver.read_status()
+            ok += 1
+            slowest = max(slowest, (time.perf_counter() - t0) * 1000)
+        except DriverError as e:
+            failed += 1
+            rep.out(f"      {time.strftime('%H:%M:%S')} read failed: {e}")
+            try:
+                await driver.connect()
+            except DriverError as e2:
+                rep.out(f"      {time.strftime('%H:%M:%S')} reconnect failed: {e2}")
+        if time.monotonic() >= next_report:
+            rep.out(f"      {time.strftime('%H:%M:%S')} {ok} reads ok, {failed} failed")
+            next_report += 600
+        await asyncio.sleep(args.interval)
+    status = "PASS" if failed == 0 and ok > 0 else "FAIL"
+    rep.line(8, title, status, f"{ok} ok, {failed} failed, slowest read {slowest:.0f} ms")
 
 
 async def _step_upload(driver: MachineDriver, args: argparse.Namespace, rep: Report) -> None:
@@ -276,6 +317,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--roundtrip", metavar="FILE", help="test program to write and read back")
     p.add_argument("--number", metavar="O9001", help="UNUSED program number for --roundtrip")
     p.add_argument("--repeat", type=int, default=20)
+    p.add_argument("--watch", type=float, metavar="MINUTES", help="read status for this long")
+    p.add_argument("--interval", type=float, default=1.0, help="seconds between status reads")
     return p
 
 

@@ -27,3 +27,18 @@ Every `TODO(REAL-DATA):` in the code is listed here. Search the repo for `TODO(R
 | 21 | First-piece measurement template per part (which dimensions to measure) - needs drawings | First piece form | `web/src/pages/RunDetail.tsx` | M11 |
 | 22 | Programmer templates, cutting speeds and feeds for the deterministic program generator | `ProgramGenerator` (interface only) | `server/app/gcode/generator.py` | M12 |
 | 23 | Whether parts are made from bar (bar feeder / long bar) or cut blanks, and if a parting tool is then required | Capability check tool rules | `server/app/services/capability_check.py` `REQUIRED_TOOLS` | M13 |
+
+## Inputs listed in the design document (Nov 3, 2026)
+
+| Input | Needed for | Owner | Status |
+|---|---|---|---|
+| Photo of the controller nameplate and system info screen | Phase 0 | Shop floor | Open (controller known: FANUC 0i-TF) |
+| Confirmation that Embedded Ethernet / FOCAS is enabled | Phase 0 | Maintenance + controller supplier | Open |
+| One always-on bridge PC on the machine network | Phase 0 | IT | Open |
+| WiFi client bridge (industrial), machine-only WiFi/VLAN with WPA2/WPA3, fixed IPs for CNC and bridge box | Phase 0 | Maintenance / IT | Open |
+| WiFi signal survey at the machine with the machine running | Go-live check | Maintenance / IT | Open |
+| 2-3 trusted programs + tool list (tool numbers, offsets, insert types) | Phases 1 and 3 | CNC programmer | Programs received (5); tool list open |
+| Cutting speeds and feeds per material | Phase 3 | CNC programmer | Open |
+| 5 simple turned parts: drawings and current programs | Phase 3 tests | CNC programmer | Open |
+| Names of people allowed to press Start | Phase 4 | Production head | Open (dev accounts only) |
+| Which simple turned part is the first test part | Goal | Production / programmer | Open |

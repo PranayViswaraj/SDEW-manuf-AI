@@ -253,6 +253,18 @@ limits not entered" - never "capable".**
 In dev: LMW Lathe 1 shows *Unknown* (its limits are not entered); the fictional SIM Lathe is capable
 for DEMO-SIM-001 and listed as available while the bridge is running.
 
+## Check before go live (from the design document)
+
+| Check | How |
+|-------|-----|
+| WiFi signal measured at the machine position with the machine running | Maintenance/IT, with a WiFi survey tool (hardware, not software) |
+| The bridge PC can reach the CNC's address | `focas_probe.py --ip <cnc ip> --lib <Fwlib>` steps 1-2 |
+| A test program sends and returns intact 20 times in a row | `focas_probe.py ... --roundtrip FILE --number O9001` (default 20 times) |
+| Status reads stay steady during a full shift | `focas_probe.py ... --watch 480` (read-only, PASS = no failed read) |
+
+The **Run log** (Run page) shows who ran which program, on which machine, when, how it was started
+and the first piece result.
+
 ## Run all tests and linters (one command)
 
 ```powershell

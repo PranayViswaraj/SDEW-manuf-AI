@@ -185,10 +185,23 @@ def list_runs(
     stmt = select(Run).order_by(Run.id.desc()).limit(min(max(limit, 1), 200))
     if machine_id is not None:
         stmt = stmt.where(Run.machine_id == machine_id)
+    rows = list(db.scalars(stmt))
+    user_ids = {r.operator_id for r in rows} | {r.first_piece_by for r in rows}
+    names = {
+        u.id: (u.full_name or u.username)
+        for u in db.scalars(select(User).where(User.id.in_([i for i in user_ids if i])))
+    }
     return [
         {
             "id": r.id,
             "status": r.status,
+            "operator": names.get(r.operator_id or 0),
+            "sent_at": r.sent_at,
+            "started_at": r.started_at,
+            "finished_at": r.finished_at,
+            "start_mode": r.start_mode,
+            "first_piece_by": names.get(r.first_piece_by or 0),
+            "first_piece_at": r.first_piece_at,
             "machine_name": r.machine.name,
             "program_name": f"O{r.program.program_number:04d}",
             "program_version": r.program.version,
@@ -196,7 +209,7 @@ def list_runs(
             "created_at": r.created_at,
             "first_piece_result": r.first_piece_result,
         }
-        for r in db.scalars(stmt)
+        for r in rows
     ]
 
 

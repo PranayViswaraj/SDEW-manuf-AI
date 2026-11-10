@@ -269,6 +269,13 @@ export interface RunDetail {
 export interface RunSummary {
   id: number;
   status: RunStatus;
+  operator: string | null;
+  sent_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  start_mode: 'remote' | 'at_machine' | null;
+  first_piece_by: string | null;
+  first_piece_at: string | null;
   machine_name: string;
   program_name: string;
   program_version: number;

@@ -127,3 +127,14 @@ def test_missing_library_is_reported(probe: ModuleType, capsys: pytest.CaptureFi
 
 def test_requires_ip_or_simulate(probe: ModuleType) -> None:
     assert probe.main([]) == 2
+
+
+def test_watch_status_reads(probe: ModuleType, capsys: pytest.CaptureFixture[str]) -> None:
+    code, out = run(probe, capsys, "--simulate", "--watch", "0.02", "--interval", "0.1")
+    assert code == 0
+    assert "[8] Status reads for 0.02 min" in out and "0 failed" in out
+
+
+def test_watch_skipped_by_default(probe: ModuleType, capsys: pytest.CaptureFixture[str]) -> None:
+    _, out = run(probe, capsys, "--simulate")
+    assert "[8] Status reads over time" in out and "SKIP" in out

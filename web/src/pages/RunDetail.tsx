@@ -300,7 +300,8 @@ function MaterialSection({
           <option value="">— choose from the register —</option>
           {options.map((m) => (
             <option key={m.id} value={m.id}>
-              {m.grade} Ø{m.bar_diameter}{' '}
+              {m.grade} Ø{m.bar_diameter}
+              {m.available_length !== null ? ` × ${m.available_length} mm` : ''}{' '}
               {m.stock_quantity !== null ? `(${m.stock_quantity} ${m.quantity_unit})` : ''}
             </option>
           ))}

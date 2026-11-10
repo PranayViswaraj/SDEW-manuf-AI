@@ -147,4 +147,34 @@ describe('run screen', () => {
       measurements: [{ feature: 'OD 40', nominal: '', measured: '39.98' }],
     });
   });
+
+  it('run log shows who ran which program, where, when and the first piece result', async () => {
+    renderApp('/run', makeUser(['operator']), {
+      'GET /machines': [],
+      'GET /runs': [
+        {
+          id: 7,
+          status: 'closed',
+          operator: 'Dev Operator',
+          sent_at: '2026-11-10T10:00:00Z',
+          started_at: '2026-11-10T10:01:00Z',
+          finished_at: '2026-11-10T10:05:00Z',
+          start_mode: 'at_machine',
+          first_piece_by: 'Dev Operator',
+          first_piece_at: '2026-11-10T10:10:00Z',
+          machine_name: 'LMW Lathe 1',
+          program_name: 'O0009',
+          program_version: 1,
+          part_number: '3216C11701',
+          created_at: '2026-11-10T09:58:00Z',
+          first_piece_result: 'pass',
+        },
+      ],
+    });
+    expect(await screen.findByText('Run log')).toBeInTheDocument();
+    expect(screen.getAllByText('Dev Operator').length).toBeGreaterThan(0);
+    expect(screen.getByText('2026-11-10 10:01')).toBeInTheDocument();
+    expect(screen.getByText('started at machine')).toBeInTheDocument();
+    expect(screen.getByText('pass')).toBeInTheDocument();
+  });
 });

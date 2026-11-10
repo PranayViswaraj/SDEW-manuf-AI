@@ -140,6 +140,11 @@ def test_full_simulated_run_with_remote_start(server: LiveServer, bridge: Bridge
         assert r.status_code == 200 and r.json()["status"] == "closed"
         assert r.json()["program"]["proven"] is True
 
+        log = c.get("/api/runs").json()[0]  # run log: who, which program, machine, when, result
+        assert log["operator"] == "Dev Operator" and log["program_name"] == "O9000"
+        assert log["started_at"] and log["start_mode"] == "remote"
+        assert log["first_piece_result"] == "pass" and log["first_piece_by"] == "Dev Operator"
+
     with server.app.state.session_factory() as db:
         actions = [a.action for a in db.scalars(select(AuditLog).order_by(AuditLog.id))]
     for expected in (
