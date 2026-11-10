@@ -1,0 +1,50 @@
+# Local development stack: PostgreSQL + FastAPI server + Vite web.
+# Usage:  cp .env.example .env   (optional - defaults below work)
+#         docker compose up --build
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-manufai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-manufai}
+      POSTGRES_DB: ${POSTGRES_DB:-manufai}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-manufai} -d ${POSTGRES_DB:-manufai}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  server:
+    build: ./server
+    environment:
+      MANUFAI_ENV: ${MANUFAI_ENV:-dev}
+      MANUFAI_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-manufai}:${POSTGRES_PASSWORD:-manufai}@db:5432/${POSTGRES_DB:-manufai}
+      MANUFAI_JWT_SECRET: ${MANUFAI_JWT_SECRET:-dev-only-insecure-secret}
+      MANUFAI_CORS_ORIGINS: ${MANUFAI_CORS_ORIGINS:-http://localhost:5173}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${SERVER_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: ./web
+    environment:
+      VITE_API_PROXY_TARGET: http://server:8000
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+
+volumes:
+  pgdata:

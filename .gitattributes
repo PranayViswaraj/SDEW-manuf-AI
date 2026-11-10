@@ -1,0 +1,9 @@
+# Source files: LF in the repo and working tree.
+* text=auto eol=lf
+
+# Trusted FANUC programs must stay byte-for-byte identical (they contain \r characters
+# and FANUC-style line endings). Never let git convert their line endings.
+samples/programs/O* -text diff
+
+# Shell scripts must keep LF so they run on Linux / in containers.
+*.sh text eol=lf

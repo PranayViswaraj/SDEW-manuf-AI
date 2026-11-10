@@ -1,0 +1,23 @@
+# ManufAI bridge config. Copy to config.yaml (git-ignored) and edit.
+# The bridge connects OUTWARD to the server only. It never listens on a port.
+
+server_url: wss://manufai.example.com/api/bridge/ws   # TODO(REAL-DATA): real server URL
+bridge_token: replace-with-token-issued-by-server     # min 16 chars, issued per bridge
+poll_interval_s: 1.0
+heartbeat_interval_s: 2.0
+
+# TODO(REAL-DATA): FANUC FOCAS library, licensed from FANUC / machine supplier.
+# Windows: C:\\manufai\\fwlib\\Fwlib64.dll   Linux: /opt/manufai/fwlib/libfwlib32.so
+focas_library_path: null
+focas_timeout_s: 10
+
+log_file: logs/bridge.log
+
+machines:
+  - id: lmw-lathe-1
+    ip: 192.168.1.50          # TODO(REAL-DATA): machine IP on the factory LAN
+    port: 8193
+    driver: simulated         # switch to "focas" once the library is installed
+    remote_control_enabled: false   # keep false unless the PMC start signal exists
+    pmc_start_address: null         # TODO(REAL-DATA): needs machine ladder change
+    pmc_feed_hold_address: null

@@ -1,0 +1,91 @@
+# ManufAI
+
+Takes a turned-part drawing and runs one machined piece on a CNC lathe (FANUC 0i-TF) from a computer,
+with engineer confirmation, programmer approval and operator safety checks at every step.
+
+> **Safety first.** Software never replaces the physical emergency stop. The AI never writes CNC
+> programs. See [docs/safety-rules.md](docs/safety-rules.md).
+
+## Parts
+
+| Folder    | What                                                                      | Runs on            |
+|-----------|---------------------------------------------------------------------------|--------------------|
+| `server/` | FastAPI + SQLAlchemy + Alembic. Users, machines, programs, audit log.     | Cloud / server     |
+| `web/`    | React + Vite + TypeScript + Tailwind UI.                                  | Browser            |
+| `bridge/` | Outbound-only link from the factory PC to the machines (FOCAS2 or simulated). | Factory PC (Win/Linux) |
+| `samples/programs/` | Trusted FANUC O-files supplied by the company.                  | –                  |
+| `docs/`   | Architecture, safety rules, FOCAS notes, open items.                      | –                  |
+
+## Prerequisites
+
+- Python 3.11+
+- Node.js 20+ (22 recommended)
+- Docker Desktop (Windows) or Docker Engine + Compose plugin (Linux), for the full stack
+
+## Option A: Full stack in Docker (server + Postgres + web)
+
+```bash
+cp .env.example .env          # Windows PowerShell: Copy-Item .env.example .env
+docker compose up --build
+```
+
+- Web UI: http://localhost:5173
+- API health: http://localhost:8000/api/health
+- API docs: http://localhost:8000/docs
+
+The server runs `alembic upgrade head` automatically on start.
+
+## Option B: Local dev without Docker (SQLite)
+
+**Windows (PowerShell)**
+```powershell
+.\scripts\setup.ps1                       # creates .venv, installs Python + npm deps, copies .env
+cd server; ..\.venv\Scripts\alembic upgrade head
+..\.venv\Scripts\uvicorn app.main:app --reload       # http://localhost:8000
+# second terminal:
+cd web; npm run dev                                  # http://localhost:5173
+```
+If PowerShell blocks scripts: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
+**Linux / macOS**
+```bash
+./scripts/setup.sh
+cd server && ../.venv/bin/alembic upgrade head
+../.venv/bin/uvicorn app.main:app --reload
+# second terminal:
+cd web && npm run dev
+```
+
+## Run all tests and linters (one command)
+
+```powershell
+.\scripts\test.ps1        # Windows
+```
+```bash
+./scripts/test.sh         # Linux / macOS / Git Bash
+```
+
+This runs ruff, black, mypy and pytest for `server/` and `bridge/`, then eslint, tsc and vitest for `web/`.
+
+## Bridge (factory PC)
+
+```bash
+cp bridge/config.example.yaml bridge/config.yaml   # edit server URL, token, machines
+.venv/bin/manufai-bridge --config bridge/config.yaml --check
+```
+The service loop arrives in Milestone 8. The FANUC FOCAS library (`Fwlib*.dll` / `libfwlib32.so`)
+is licensed from FANUC; it is **not** in this repo and must never be committed.
+
+## Troubleshooting
+
+**`pip` fails with `CERTIFICATE_VERIFY_FAILED`** (antivirus or a network proxy inspecting HTTPS):
+the pip bundled with older Python 3.11 releases doesn't trust the Windows certificate store; pip 24.2+
+does. Upgrade the venv's pip using any newer pip you already have, then rerun setup:
+```powershell
+python -m pip --python "$PWD\.venv\Scripts\python.exe" install --upgrade pip
+```
+Don't use `--trusted-host`; it turns off certificate checking.
+
+## Status
+
+See [docs/open-items.md](docs/open-items.md) for everything waiting on real-world data.
