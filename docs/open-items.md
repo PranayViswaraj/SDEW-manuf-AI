@@ -8,7 +8,7 @@ Every `TODO(REAL-DATA):` in the code is listed here. Search the repo for `TODO(R
 | 2 | Machine IP address on the factory LAN | Bridge config | `bridge/config.example.yaml` | M1 |
 | 3 | PMC addresses for Cycle Start / Feed hold (needs ladder change; may never be possible) | Remote start (M5, M8) | `bridge/bridge/config.py` `pmc_start_address`, `pmc_feed_hold_address` | M1 |
 | 4 | Production server URL for the bridge | Bridge config | `bridge/config.example.yaml` `server_url` | M1 |
-| 5 | Part drawings | AI drawing reader, feature tables | – | – |
+| 5 | Part drawings | AI drawing reader (stub today), feature tables, first-piece templates | `server/app/ai/drawing_reader.py` | M12 |
 | 6 | Machine nameplate limits (max turning diameter/length, max bar diameter, spindle rpm min/max, chuck size, turret stations) | Capability check (M13), spindle-speed validation (M9) | `server/app/db/models.py` `LIMIT_KEYS`, `server/app/seed.py` `seed_machines`, editable on Machine page | M3 |
 | 7 | Turret tool layout, offsets, cutting speeds and feeds | Tool list (validator tool check, capability check), program generator | Tools table, editable on Machine page (empty for LMW Lathe 1) | M3 |
 | 8 | LMW Lathe 1 model number | Machine register | `server/app/seed.py` `seed_machines` | M3 |
@@ -25,3 +25,4 @@ Every `TODO(REAL-DATA):` in the code is listed here. Search the repo for `TODO(R
 | 19 | First block of G71 in O0004 uses `U1.0 W.5` (W instead of R): confirm meaning with the programmer | Backplot G71 retract | `server/app/gcode/backplot.py` `_rough_cycle` | M10 |
 | 20 | Confirm the safety checklist wording with the shop floor (6 items from the build plan) | Run screen | `server/app/services/run_service.py` `CHECKLIST` | M11 |
 | 21 | First-piece measurement template per part (which dimensions to measure) - needs drawings | First piece form | `web/src/pages/RunDetail.tsx` | M11 |
+| 22 | Programmer templates, cutting speeds and feeds for the deterministic program generator | `ProgramGenerator` (interface only) | `server/app/gcode/generator.py` | M12 |

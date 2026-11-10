@@ -220,6 +220,26 @@ tick the checklist, **Send program**, **Start**, wait for *completed*, record th
 LMW Lathe 1's trusted programs show "No feature table for part ..." until an engineer confirms one
 (Milestone 12, **Parts** page); after sending, the simulated operator presses Cycle Start 5 s later.
 
+## Parts / feature tables (Milestone 12)
+
+**Parts** page (engineer edits, everyone reads): a turned part as a table of values - part number,
+material grade, bar diameter, overall length, and an ordered list of features (OD, ID/bore, face,
+chamfer, radius, groove, thread, drill), each with its tolerance fields.
+
+Every value has an **AI value** column (suggestions from the drawing reader - empty for now, the
+reader is a stub) and a **Confirmed value** with a tick box. Changing a value clears its tick.
+**Confirm table** is possible only when every value is entered and ticked and the table is saved; it
+records who confirmed and when. Any later change clears the confirmation, and programs for that part
+cannot be sent again until it is re-confirmed.
+
+To send a trusted LMW program (e.g. O0001, part 3773480M01): log in as `engineer`, **Parts -> New
+feature table** with that part number, enter + tick every value from the drawing, **Save**,
+**Confirm table**. The run screen's "No feature table" lock then clears.
+
+`DrawingReader` (`server/app/ai/drawing_reader.py`) and `ProgramGenerator`
+(`server/app/gcode/generator.py`) are interfaces only. The AI package is tested to never import
+program, G-code or run-control code.
+
 ## Run all tests and linters (one command)
 
 ```powershell

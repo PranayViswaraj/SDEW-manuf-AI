@@ -10,6 +10,8 @@ import Logs from './pages/Logs';
 import MachineDetail from './pages/MachineDetail';
 import Machines from './pages/Machines';
 import Materials from './pages/Materials';
+import PartDetail from './pages/PartDetail';
+import Parts from './pages/Parts';
 import ProgramDetail from './pages/ProgramDetail';
 import Programs from './pages/Programs';
 import Run from './pages/Run';
@@ -48,6 +50,8 @@ export default function App() {
         <Route path="/programs" element={<Programs />} />
         <Route path="/programs/:id" element={<ProgramDetail />} />
         <Route path="/run" element={<Run />} />
+        <Route path="/parts" element={<Parts />} />
+        <Route path="/parts/:id" element={<PartDetail />} />
         <Route path="/runs/:id" element={<RunDetail />} />
         <Route
           path="/users"

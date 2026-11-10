@@ -60,6 +60,13 @@ ROUTE_ROLES: dict[tuple[str, str], str | set[str]] = {
     ("POST", "/api/runs/{run_id}/feed-hold"): {O},
     ("POST", "/api/runs/{run_id}/stop"): {O},
     ("POST", "/api/runs/{run_id}/first-piece"): {O},
+    ("GET", "/api/feature-tables/schema"): ANY_USER,
+    ("GET", "/api/feature-tables"): ANY_USER,
+    ("POST", "/api/feature-tables"): {E},
+    ("POST", "/api/feature-tables/from-drawing"): {E},
+    ("GET", "/api/feature-tables/{table_id}"): ANY_USER,
+    ("PUT", "/api/feature-tables/{table_id}"): {E},
+    ("POST", "/api/feature-tables/{table_id}/confirm"): {E},
 }
 
 ALL_ROLES = (A, E, P, O)

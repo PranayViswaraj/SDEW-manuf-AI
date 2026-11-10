@@ -281,3 +281,49 @@ export interface ActionResponse {
   action: { action: string; result: 'ok' | 'rejected' | 'failed'; error: string | null };
   run: RunDetail;
 }
+
+export type CellValue = number | string | null;
+export interface Cell {
+  ai: CellValue;
+  value: CellValue;
+  confirmed: boolean;
+}
+export type FieldKind = 'mm' | 'deg' | 'text' | 'tol';
+export interface FieldDef {
+  key: string;
+  label: string;
+  kind: FieldKind;
+}
+export interface FeatureSchema {
+  header: FieldDef[];
+  feature_types: { type: string; label: string; fields: FieldDef[] }[];
+}
+export interface FeatureTableData {
+  header: Record<string, Cell>;
+  features: { type: string; fields: Record<string, Cell> }[];
+}
+export interface FeatureTable {
+  id: number;
+  part_number: string;
+  drawing_ref: string;
+  source: string;
+  status: 'draft' | 'confirmed';
+  data: FeatureTableData;
+  unconfirmed: string[];
+  confirmed_by_name: string | null;
+  confirmed_at: string | null;
+  updated_at: string;
+  programs: { id: number; name: string; version: number; status: ProgramStatus; machine_id: number }[];
+}
+export interface FeatureTableSummary {
+  id: number;
+  part_number: string;
+  drawing_ref: string;
+  status: 'draft' | 'confirmed';
+  features: number;
+  unconfirmed: number;
+  confirmed_by_name: string | null;
+  confirmed_at: string | null;
+  material_grade: string | null;
+  bar_diameter: number | null;
+}

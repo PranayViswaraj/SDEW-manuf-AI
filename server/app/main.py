@@ -13,6 +13,7 @@ from app.api import (
     auth,
     bridge_ws,
     bridges,
+    feature_tables,
     health,
     machines,
     materials,
@@ -58,6 +59,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         materials,
         programs,
         runs,
+        feature_tables,
         bridges,
         bridge_ws,
     ):
