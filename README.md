@@ -109,6 +109,19 @@ Numbers like `Ø25`, `25 mm` and `25,5` are understood. A sample file is in
 `samples/materials/raw-material-register.sample.csv` (every row marked SAMPLE DATA); the dev seed
 loads it into an empty table so the page is not empty.
 
+## Simulated FANUC 0i-TF (Milestone 5)
+
+Until the real machine is connected, everything runs against a simulated FANUC 0i-TF
+(`bridge/bridge/drivers/simulated.py`). Watch it run a program:
+
+```bash
+.venv/Scripts/python bridge/tools/sim_demo.py                    # Windows (Git Bash) / use .venv\Scripts\python in PowerShell
+.venv/bin/python bridge/tools/sim_demo.py --program samples/programs/O0001 --block-time 0.05
+```
+
+It prints mode, run state, program, sequence number, spindle speed and part count as they change.
+`samples/demo/O9000` is a synthetic demo program for the simulator only (**not for machine use**).
+
 ## Run all tests and linters (one command)
 
 ```powershell
