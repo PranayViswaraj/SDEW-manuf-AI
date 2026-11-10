@@ -14,3 +14,5 @@ Every `TODO(REAL-DATA):` in the code is listed here. Search the repo for `TODO(R
 | 8 | LMW Lathe 1 model number | Machine register | `server/app/seed.py` `seed_machines` | M3 |
 | 9 | LMW Lathe 1 IP address in the server machine register (in addition to the bridge config) | Machine register, probe tool | `server/app/seed.py` `seed_machines` | M3 |
 | 10 | The company's real raw material register file (column names, units, whether quantity is bars or kg) | Material import mapping defaults | `server/app/services/material_import.py` `ALIASES`; mapping is chosen in the UI per import | M4 |
+| 11 | FOCAS details to verify on the real 0i-TF (struct layouts, path format, part-count parameter 6711, feed override G0012, PMC type codes, Linux start-up, folder listing) | Real machine connection | `# VERIFY ON MACHINE` in `bridge/bridge/focas_ctypes.py` and `bridge/bridge/drivers/focas.py`; list in `docs/focas-notes.md` | M6 |
+| 12 | Whether programs on the CNC are kept in sub-folders (e.g. `/SLEEVE/`) or in `PATH1` | Program list / send folder | `bridge/bridge/drivers/focas.py` `list_programs` | M6 |

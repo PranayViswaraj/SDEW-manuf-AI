@@ -44,7 +44,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "S", "SIM"]
-ignore = ["S101", "N818"]  # N818: exception names come from the build plan
+ignore = ["S101", "N818", "N812"]  # N818: names from the build plan; N812: `ctypes as C`
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S106", "S107", "S108", "E741"]

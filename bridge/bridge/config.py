@@ -18,6 +18,7 @@ class MachineConfig(BaseModel):
     # machine; may never be available). Leave empty until the machine builder supplies it.
     pmc_start_address: str | None = None
     pmc_feed_hold_address: str | None = None
+    pmc_reset_address: str | None = None
 
 
 class BridgeConfig(BaseModel):

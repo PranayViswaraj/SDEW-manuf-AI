@@ -21,3 +21,4 @@ machines:
     remote_control_enabled: false   # keep false unless the PMC start signal exists
     pmc_start_address: null         # TODO(REAL-DATA): needs machine ladder change
     pmc_feed_hold_address: null
+    pmc_reset_address: null
