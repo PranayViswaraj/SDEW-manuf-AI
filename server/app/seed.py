@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.auth.security import hash_password
 from app.config import Settings, get_settings
 from app.db.guards import install_audit_guards
-from app.db.models import Role, User
+from app.db.models import Machine, Role, User, empty_limits
 from app.db.session import make_engine, make_session_factory
 
 # username -> (full name, password, roles, can_start_machine). DEV ONLY - see README.
@@ -44,9 +44,32 @@ def seed_dev_users(db: Session) -> list[str]:
     return created
 
 
+def seed_machines(db: Session) -> list[str]:
+    """The one known real machine. Every unknown value stays empty (never invented)."""
+    if db.scalar(select(Machine).where(Machine.key == "lmw-lathe-1")):
+        return []
+    db.add(
+        Machine(
+            key="lmw-lathe-1",
+            name="LMW Lathe 1",
+            make="LMW",
+            model="",  # TODO(REAL-DATA): model from nameplate
+            controller="FANUC 0i-TF",
+            ip_address=None,  # TODO(REAL-DATA): machine IP on the factory LAN
+            focas_port=8193,
+            remote_control_enabled=False,  # safety rule 9
+            limits=empty_limits(),  # TODO(REAL-DATA): all limits from nameplate
+            notes="Limits, model, IP and tool layout not entered yet.",
+        )
+    )
+    db.commit()
+    return ["created machine LMW Lathe 1"]
+
+
 def run_seed(settings: Settings, db: Session) -> list[str]:
     """Run all seed steps that apply to these settings. Returns a log of what was done."""
     log: list[str] = []
+    log += seed_machines(db)
     if settings.seed_dev_data:
         if settings.env == "production":
             raise SeedRefusedError("Refusing to seed dev users in production.")

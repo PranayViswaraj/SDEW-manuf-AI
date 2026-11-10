@@ -77,6 +77,21 @@ when `MANUFAI_ENV=production`.
 Without Docker, seed manually: `cd server; ..\.venv\Scripts\python -m app.seed` (set
 `MANUFAI_SEED_DEV_DATA=true` in `.env` first).
 
+## Machines (Milestone 3)
+
+**Machines** page (any user) lists the machine register. The seed always creates
+**LMW Lathe 1 – FANUC 0i-TF** with every unknown value left empty (model, IP, all limits).
+
+Open a machine to:
+- edit details and limits (admin). Empty limits show "Not entered – from nameplate" and stay
+  `null` — they are never guessed, and unknown limits never count as "capable";
+- add, edit and remove turret tools (admin or programmer): station, `T0101`-style tool/offset,
+  description, insert, nose radius, type;
+- turn remote control on/off (admin, with confirmation). It is off by default, and the bridge config
+  must also enable it.
+
+All changes are written to the audit log (`machine_update`, `tool_add`, `remote_control_changed`…).
+
 ## Run all tests and linters (one command)
 
 ```powershell

@@ -6,6 +6,8 @@ import Layout from './components/Layout';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Logs from './pages/Logs';
+import MachineDetail from './pages/MachineDetail';
+import Machines from './pages/Machines';
 import Users from './pages/Users';
 
 function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] }) {
@@ -34,6 +36,8 @@ export default function App() {
         }
       >
         <Route path="/" element={<Home />} />
+        <Route path="/machines" element={<Machines />} />
+        <Route path="/machines/:id" element={<MachineDetail />} />
         <Route
           path="/users"
           element={

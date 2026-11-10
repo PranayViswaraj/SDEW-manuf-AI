@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -77,3 +77,84 @@ class AuditLog(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     result: Mapped[str] = mapped_column(String(32))
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class MachineState(StrEnum):
+    """Administrative state set by an admin (live run state comes from the bridge)."""
+
+    IN_SERVICE = "in_service"
+    MAINTENANCE = "maintenance"
+    RETIRED = "retired"
+
+
+class ToolType(StrEnum):
+    OD_ROUGH = "od_rough"
+    OD_FINISH = "od_finish"
+    BORE = "bore"
+    DRILL = "drill"
+    GROOVE = "groove"
+    THREAD = "thread"
+    STOPPER = "stopper"
+    PARTING = "parting"
+    OTHER = "other"
+
+
+# Keys of Machine.limits. All values nullable: TODO(REAL-DATA): from nameplate.
+LIMIT_KEYS = (
+    "max_turning_diameter",
+    "max_turning_length",
+    "max_bar_diameter",
+    "spindle_rpm_min",
+    "spindle_rpm_max",
+    "chuck_size",
+    "turret_stations",
+)
+
+
+def empty_limits() -> dict[str, Any]:
+    return dict.fromkeys(LIMIT_KEYS)
+
+
+class Machine(Base):
+    __tablename__ = "machines"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Stable identifier the bridge config uses for this machine (e.g. "lmw-lathe-1").
+    key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    make: Mapped[str] = mapped_column(String(64), default="")
+    model: Mapped[str] = mapped_column(String(64), default="")
+    controller: Mapped[str] = mapped_column(String(64), default="FANUC 0i-TF")
+    ip_address: Mapped[str | None] = mapped_column(String(64))
+    focas_port: Mapped[int] = mapped_column(Integer, default=8193)
+    status: Mapped[str] = mapped_column(String(32), default=MachineState.IN_SERVICE.value)
+    bridge_id: Mapped[str | None] = mapped_column(String(64))
+    # Safety rule 9: remote start / feed hold / stop OFF unless explicitly enabled.
+    remote_control_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    limits: Mapped[dict[str, Any]] = mapped_column(JSON, default=empty_limits)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+
+    tools: Mapped[list["Tool"]] = relationship(
+        back_populates="machine",
+        cascade="all, delete-orphan",
+        order_by="Tool.station",
+        lazy="selectin",
+    )
+
+
+class Tool(Base):
+    __tablename__ = "tools"
+    __table_args__ = (UniqueConstraint("machine_id", "tool_code", name="uq_tool_machine_code"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    machine_id: Mapped[int] = mapped_column(ForeignKey("machines.id", ondelete="CASCADE"))
+    station: Mapped[int] = mapped_column(Integer)
+    tool_code: Mapped[str] = mapped_column(String(8))  # e.g. "T0101" (tool 01, offset 01)
+    description: Mapped[str] = mapped_column(String(128), default="")
+    insert_type: Mapped[str] = mapped_column(String(64), default="")
+    nose_radius: Mapped[float | None] = mapped_column(Float)
+    tool_type: Mapped[str] = mapped_column(String(32))
+
+    machine: Mapped[Machine] = relationship(back_populates="tools")

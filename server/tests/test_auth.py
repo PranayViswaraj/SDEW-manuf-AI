@@ -88,9 +88,13 @@ def test_cannot_remove_last_admin(client: TestClient, make_user: UserFactory) ->
 
 def test_dev_seed_creates_role_users_once(settings: Settings, db: Session) -> None:
     s = settings.model_copy(update={"seed_dev_data": True})
-    first = run_seed(s, db)
-    assert len(first) == len(DEV_USERS)
-    assert run_seed(s, db) == [] or all("dev user" not in x for x in run_seed(s, db))
+    users = [x for x in run_seed(s, db) if "dev user" in x]
+    assert len(users) == len(DEV_USERS)
+    assert [x for x in run_seed(s, db) if "dev user" in x] == []
+
+
+def test_no_dev_users_without_flag(settings: Settings, db: Session) -> None:
+    assert [x for x in run_seed(settings, db) if "dev user" in x] == []
 
 
 def test_dev_seed_refused_in_production(settings: Settings, db: Session) -> None:

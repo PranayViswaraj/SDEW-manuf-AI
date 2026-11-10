@@ -29,6 +29,19 @@ def sqlite_url(path: Path) -> str:
     return f"sqlite:///{path.as_posix()}"
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _fast_password_hashing() -> Iterator[None]:
+    """Argon2 at production cost makes every test slow; tests use a cheap setting."""
+    from argon2 import PasswordHasher
+
+    from app.auth import security
+
+    original = security._hasher
+    security._hasher = PasswordHasher(time_cost=1, memory_cost=1024, parallelism=1)
+    yield
+    security._hasher = original
+
+
 @pytest.fixture(scope="session")
 def template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     path = tmp_path_factory.mktemp("template") / "template.db"

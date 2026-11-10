@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.api import audit, auth, health, users
+from app.api import audit, auth, health, machines, users
 from app.config import Settings, get_settings
 from app.db.guards import install_audit_guards
 from app.db.session import make_engine, make_session_factory
@@ -25,7 +25,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    for module in (health, auth, users, audit):
+    for module in (health, auth, users, audit, machines):
         app.include_router(module.router, prefix="/api")
     return app
 
