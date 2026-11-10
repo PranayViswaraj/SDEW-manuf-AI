@@ -23,3 +23,5 @@ Every `TODO(REAL-DATA):` in the code is listed here. Search the repo for `TODO(R
 | 17 | Confirm the turret setup per operation: the trusted programs use the same T code for different tools in 1st/2nd operation (e.g. O0001 T0404 = parting and TNMG finish) | Tool list (one list per machine today) | validator `W_TOOL_CONFLICT` | M9 |
 | 18 | G83 R-point meaning on this 0i-TF (incremental vs absolute, parameter dependent) | Backplot accuracy for G83 (drawn from the start point) | `server/app/gcode/backplot.py` `_g83` | M10 |
 | 19 | First block of G71 in O0004 uses `U1.0 W.5` (W instead of R): confirm meaning with the programmer | Backplot G71 retract | `server/app/gcode/backplot.py` `_rough_cycle` | M10 |
+| 20 | Confirm the safety checklist wording with the shop floor (6 items from the build plan) | Run screen | `server/app/services/run_service.py` `CHECKLIST` | M11 |
+| 21 | First-piece measurement template per part (which dimensions to measure) - needs drawings | First piece form | `web/src/pages/RunDetail.tsx` | M11 |

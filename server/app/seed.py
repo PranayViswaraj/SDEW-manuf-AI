@@ -14,6 +14,8 @@ from app.config import Settings, get_settings
 from app.db.guards import install_audit_guards
 from app.db.models import (
     Bridge,
+    FeatureTable,
+    FeatureTableStatus,
     Machine,
     Material,
     Program,
@@ -26,6 +28,7 @@ from app.db.models import (
 )
 from app.db.session import make_engine, make_session_factory
 from app.services.command_signing import hash_token
+from app.services.feature_tables import data_hash, normalise
 from app.services.material_import import map_rows, parse_table, suggest_mapping
 from app.services.program_store import create_version, import_trusted_programs
 
@@ -190,6 +193,58 @@ def seed_demo_program(db: Session, settings: Settings) -> list[str]:
     return ["created demo program O9000 (draft) for SIM Lathe"]
 
 
+def _cell(v: float | str) -> dict[str, object]:
+    return {"ai": None, "value": v, "confirmed": True}
+
+
+def seed_demo_feature_table(db: Session) -> list[str]:
+    """DEV ONLY: confirmed feature table for the synthetic demo part on the fictional SIM lathe."""
+    if db.scalar(select(FeatureTable).where(FeatureTable.part_number == "DEMO-SIM-001")):
+        return []
+    data = normalise(
+        {
+            "header": {
+                "material_grade": _cell("EN8"),
+                "bar_diameter": _cell(45.0),
+                "overall_length": _cell(20.0),
+            },
+            "features": [
+                {
+                    "type": "od",
+                    "fields": {
+                        "diameter": _cell(40.0),
+                        "length": _cell(20.0),
+                        "tol_plus": _cell(0.0),
+                        "tol_minus": _cell(-0.05),
+                    },
+                },
+                {
+                    "type": "chamfer",
+                    "fields": {
+                        "size": _cell(2.0),
+                        "angle": _cell(45.0),
+                        "tol_plus": _cell(0.2),
+                        "tol_minus": _cell(-0.2),
+                    },
+                },
+            ],
+        }
+    )
+    db.add(
+        FeatureTable(
+            part_number="DEMO-SIM-001",
+            drawing_ref="SIMULATOR DEMO - NOT A REAL PART",
+            source="manual",
+            data=data,
+            status=FeatureTableStatus.CONFIRMED.value,
+            confirmed_by_name="Dev seed (demo part)",
+            confirmed_hash=data_hash(data),
+        )
+    )
+    db.commit()
+    return ["created confirmed DEMO feature table for DEMO-SIM-001"]
+
+
 def run_seed(settings: Settings, db: Session) -> list[str]:
     """Run all seed steps that apply to these settings. Returns a log of what was done."""
     log: list[str] = []
@@ -202,6 +257,7 @@ def run_seed(settings: Settings, db: Session) -> list[str]:
         log += seed_sample_materials(db, settings.sample_materials_csv)
         log += seed_dev_bridge(db, settings)
         log += seed_demo_program(db, settings)
+        log += seed_demo_feature_table(db)
     return log
 
 

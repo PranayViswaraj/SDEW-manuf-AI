@@ -144,10 +144,22 @@ class BridgeHub:
             "error": entry.error if entry else None,
         }
 
-    def fresh_status(self, machine_key: str, bridge: str | None) -> dict[str, Any] | None:
-        """Status only if it is fresh and the machine is reachable; else None."""
+    def fresh_status(
+        self, machine_key: str, bridge: str | None, after: datetime | None = None
+    ) -> dict[str, Any] | None:
+        """Status only if it is fresh and the machine is reachable; else None.
+
+        With `after`, only a status RECEIVED after that moment counts (so a status read just
+        before a command was acted on is never mistaken for the result of that command).
+        """
         view = self.live_view(machine_key, bridge)
-        return view["status"] if view["state"] == "online" else None
+        if view["state"] != "online":
+            return None
+        entry = self.live.get(machine_key)
+        if after is not None and (entry is None or entry.received_at <= after):
+            return None
+        status: dict[str, Any] | None = view["status"]
+        return status
 
     # ---------- commands ----------
 

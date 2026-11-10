@@ -12,6 +12,8 @@ import Machines from './pages/Machines';
 import Materials from './pages/Materials';
 import ProgramDetail from './pages/ProgramDetail';
 import Programs from './pages/Programs';
+import Run from './pages/Run';
+import RunDetail from './pages/RunDetail';
 import Users from './pages/Users';
 
 function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] }) {
@@ -45,6 +47,8 @@ export default function App() {
         <Route path="/materials" element={<Materials />} />
         <Route path="/programs" element={<Programs />} />
         <Route path="/programs/:id" element={<ProgramDetail />} />
+        <Route path="/run" element={<Run />} />
+        <Route path="/runs/:id" element={<RunDetail />} />
         <Route
           path="/users"
           element={

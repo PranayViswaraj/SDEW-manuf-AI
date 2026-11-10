@@ -20,6 +20,9 @@ from app.config import Settings
 from app.db.models import Role, User
 from app.main import create_app
 
+# End-to-end fixtures (live server + bridge): server, bridge, e2e_settings.
+pytest_plugins = ["tests.e2e_support"]
+
 SERVER_DIR = Path(__file__).resolve().parents[1]
 REPO_DIR = SERVER_DIR.parent
 JWT_SECRET = "test-secret-that-is-at-least-32-characters"

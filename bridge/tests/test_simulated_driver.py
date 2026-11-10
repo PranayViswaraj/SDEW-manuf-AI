@@ -231,3 +231,17 @@ async def test_delete_program() -> None:
     await d.delete_program(9000)
     assert await d.list_programs() == []
     assert (await d.read_status()).program_number is None
+
+
+async def test_auto_cycle_start_also_continues_after_m00() -> None:
+    d = SimulatedDriver(SimConfig(block_time_s=0.02, auto_cycle_start_after_s=0.05))
+    await d.connect()
+    await d.download_program(DEMO)  # contains M00
+    await d.select_main_program(9000)
+    for _ in range(300):
+        await asyncio.sleep(0.02)
+        if d.part_count == 1:
+            break
+    await d.disconnect()
+    assert d.part_count == 1
+    assert d.panel_events.count("cycle_start") == 2  # start + continue after M00

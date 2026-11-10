@@ -10,6 +10,7 @@ export const NAV: NavItem[] = [
   { to: '/', label: 'Home' },
   { to: '/machines', label: 'Machines' },
   { to: '/materials', label: 'Materials' },
+  { to: '/run', label: 'Run' },
   { to: '/programs', label: 'Programs' },
   { to: '/users', label: 'Users', roles: ['admin'] },
   { to: '/bridges', label: 'Bridges', roles: ['admin'] },

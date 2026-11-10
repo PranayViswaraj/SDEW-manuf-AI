@@ -224,3 +224,60 @@ export interface ProgramDetail extends ProgramSummary {
   versions: { id: number; version: number; status: ProgramStatus; sha256: string; created_at: string }[];
   sendable_problem: string | null;
 }
+
+export type RunStatus = 'checklist' | 'send_failed' | 'sent' | 'running' | 'completed' | 'closed' | 'aborted';
+
+export interface RunDetail {
+  id: number;
+  status: RunStatus;
+  status_note: string;
+  machine: { id: number; name: string; remote_control_enabled: boolean };
+  program: {
+    id: number;
+    name: string;
+    title: string;
+    version: number;
+    status: ProgramStatus;
+    proven: boolean;
+  };
+  program_hash: string;
+  part_number: string;
+  required_material: {
+    material_grade: string | null;
+    bar_diameter: number | null;
+    overall_length: number | null;
+  } | null;
+  material: { id: number; grade: string; bar_diameter: number; notes: string } | null;
+  material_note: string;
+  checklist: { key: string; label: string; ticked: boolean; by: string | null; at: string | null }[];
+  created_at: string;
+  sent_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  start_mode: 'remote' | 'at_machine' | null;
+  first_piece: {
+    result: 'pass' | 'fail' | null;
+    measurements: { feature: string; nominal: string; measured: string }[];
+    notes: string;
+    at: string | null;
+  };
+  live: LiveStatus;
+  send_blockers: string[];
+  start_blockers: string[];
+}
+
+export interface RunSummary {
+  id: number;
+  status: RunStatus;
+  machine_name: string;
+  program_name: string;
+  program_version: number;
+  part_number: string;
+  created_at: string;
+  first_piece_result: 'pass' | 'fail' | null;
+}
+
+export interface ActionResponse {
+  action: { action: string; result: 'ok' | 'rejected' | 'failed'; error: string | null };
+  run: RunDetail;
+}

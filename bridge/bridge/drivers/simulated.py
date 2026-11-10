@@ -316,7 +316,7 @@ class SimulatedDriver(MachineDriver):
 
     def tick(self) -> None:
         """One clock step: maybe auto-start, then execute one block if running."""
-        if self._armed_at is not None and self.run_state == RunState.IDLE:
+        if self._armed_at is not None and self.run_state in (RunState.IDLE, RunState.STOPPED):
             delay = self.cfg.auto_cycle_start_after_s or 0.0
             if time.monotonic() - self._armed_at >= delay:
                 self.press_cycle_start()
@@ -363,6 +363,7 @@ class SimulatedDriver(MachineDriver):
             self.spindle = 0.0
         if "M0" in w or (self.cfg.optional_stop and "M1" in w):
             self.run_state = RunState.STOPPED
+            self._arm_auto_start()  # simulated operator presses Cycle Start again
             return
         if "M30" in w or "M2" in w:
             self._end_of_program()

@@ -17,6 +17,7 @@ from app.api import (
     machines,
     materials,
     programs,
+    runs,
     users,
 )
 from app.config import Settings, get_settings
@@ -56,6 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         machines,
         materials,
         programs,
+        runs,
         bridges,
         bridge_ws,
     ):

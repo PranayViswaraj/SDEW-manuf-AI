@@ -247,3 +247,77 @@ class Program(Base):
     proven_note: Mapped[str] = mapped_column(String(256), default="")
 
     machine: Mapped[Machine] = relationship(lazy="joined")
+
+
+class FeatureTableStatus(StrEnum):
+    DRAFT = "draft"
+    CONFIRMED = "confirmed"
+
+
+class FeatureTable(Base):
+    """A turned part described as values. Every value has an 'ai' suggestion (may be empty) and
+    a 'value' an engineer confirms. See app/services/feature_tables.py for the structure."""
+
+    __tablename__ = "feature_tables"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    part_number: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    drawing_ref: Mapped[str] = mapped_column(String(128), default="")
+    source: Mapped[str] = mapped_column(String(32), default="manual")  # manual | drawing_reader
+    data: Mapped[dict[str, Any]] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(16), default=FeatureTableStatus.DRAFT.value)
+    confirmed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    confirmed_by_name: Mapped[str | None] = mapped_column(String(128))
+    confirmed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    confirmed_hash: Mapped[str | None] = mapped_column(String(64))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+
+
+class RunStatus(StrEnum):
+    CHECKLIST = "checklist"  # created, operator working through the checklist
+    SEND_FAILED = "send_failed"
+    SENT = "sent"  # program on the machine, verified, selected
+    RUNNING = "running"
+    COMPLETED = "completed"  # machine finished; waiting for the first-piece result
+    CLOSED = "closed"  # first-piece result recorded
+    ABORTED = "aborted"
+
+
+ACTIVE_RUN_STATUSES = (
+    RunStatus.CHECKLIST.value,
+    RunStatus.SEND_FAILED.value,
+    RunStatus.SENT.value,
+    RunStatus.RUNNING.value,
+)
+
+
+class Run(Base):
+    __tablename__ = "runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    machine_id: Mapped[int] = mapped_column(ForeignKey("machines.id", ondelete="RESTRICT"))
+    program_id: Mapped[int] = mapped_column(ForeignKey("programs.id", ondelete="RESTRICT"))
+    program_hash: Mapped[str] = mapped_column(String(64))
+    part_number: Mapped[str] = mapped_column(String(64))
+    material_id: Mapped[int | None] = mapped_column(ForeignKey("materials.id", ondelete="SET NULL"))
+    material_note: Mapped[str] = mapped_column(String(256), default="")
+    status: Mapped[str] = mapped_column(String(16), default=RunStatus.CHECKLIST.value)
+    status_note: Mapped[str] = mapped_column(Text, default="")
+    checklist: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    operator_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    start_mode: Mapped[str | None] = mapped_column(String(16))  # remote | at_machine
+    part_count_at_send: Mapped[int | None] = mapped_column(Integer)
+    first_piece_result: Mapped[str | None] = mapped_column(String(8))  # pass | fail
+    first_piece_measurements: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    first_piece_notes: Mapped[str] = mapped_column(Text, default="")
+    first_piece_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    first_piece_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+    machine: Mapped[Machine] = relationship(lazy="joined")
+    program: Mapped[Program] = relationship(lazy="joined")

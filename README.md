@@ -190,6 +190,36 @@ Limitations: the programmed path is drawn (no nose-radius compensation, corner R
 both operations of a two-operation program are drawn in the same coordinates. Visual checks of the
 5 trusted programs: `docs/images/backplot-check-*.png`.
 
+## Run screen (Milestone 11)
+
+**Run** page (operator): choose a machine (live badge shown), choose one of its **approved**
+programs, **Start a run**. The run screen shows:
+
+1. **Live status** (Online / Stale / Offline, alarms, program, block, spindle, override).
+2. **Raw material**: required grade + bar size from the part's confirmed feature table, pick the bar
+   from the materials register or type it in.
+3. **Safety checklist** (6 items, empty for every new run): correct raw material loaded, tools and
+   offsets match the program, chuck clamped, door closed, no alarm on machine, operator at machine.
+4. **Send program** (confirmation dialog). Locked until: checklist complete, program approved for
+   this exact machine + version + hash, part's feature table confirmed by an engineer, machine
+   online + idle + no alarm + no emergency stop. Every reason is listed under the button.
+5. **Start** (confirmation dialog), **Feed hold**, **Stop** — only when the machine has remote control
+   enabled. Start is locked until everything above holds, the verified program is selected on the
+   machine, and you are on the *allowed to press Start* list. With remote control off (LMW Lathe 1)
+   the screen says **"Program sent. Press Cycle Start at the machine."** and follows the run from
+   live status.
+6. **First piece result** after the machine finishes: measurements, pass/fail, notes. A pass marks
+   the program **proven** for that part number.
+
+Every step is in the audit log (`run_create`, `checklist_tick`, `send_program`, `start`,
+`run_started`, `run_completed`, `first_piece_result`, `program_proven`).
+
+**Try it (docker):** log in as `programmer`, open **Programs -> O9000** (SIM Lathe, demo) and
+**Approve**. Log in as `operator`, **Run -> SIM Lathe (dev - simulated) -> O9000 -> Start a run**,
+tick the checklist, **Send program**, **Start**, wait for *completed*, record the first piece.
+LMW Lathe 1's trusted programs show "No feature table for part ..." until an engineer confirms one
+(Milestone 12, **Parts** page); after sending, the simulated operator presses Cycle Start 5 s later.
+
 ## Run all tests and linters (one command)
 
 ```powershell
