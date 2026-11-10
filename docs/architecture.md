@@ -46,3 +46,16 @@
   checks -> audit "requested" -> signed command -> ack -> audit result.
 - Command signature: HMAC-SHA256 over canonical JSON with the bridge's signing key
   (`server/app/services/command_signing.py` <-> `bridge/bridge/signing.py`).
+
+## Production plumbing
+
+- `server/app/observability.py`: request ID per request (`X-Request-ID`), JSON or text logs with
+  the request ID, one access-log line per request, security headers (HSTS when enabled), and a
+  clean JSON 500 with a reference id (no internal details leak).
+- `server/app/auth/login_guard.py`: login lock-out per username + client address.
+- `server/app/config.py: production_problems`: settings refused when `MANUFAI_ENV=production`.
+- `server/app/api/health.py`: `/api/health` (liveness) and `/api/ready` (DB + migration head).
+- `server/app/cli.py`: admin tool (`check`, `create-user`, `set-password`, `deactivate`,
+  `list-users`, `create-bridge`).
+- Graceful shutdown closes bridge WebSockets (code 1001) so bridges reconnect cleanly.
+

@@ -17,6 +17,7 @@ A, E, P, O = "admin", "engineer", "programmer", "operator"
 # (method, path) -> PUBLIC | ANY_USER | set of roles allowed
 ROUTE_ROLES: dict[tuple[str, str], str | set[str]] = {
     ("GET", "/api/health"): PUBLIC,
+    ("GET", "/api/ready"): PUBLIC,
     ("POST", "/api/auth/login"): PUBLIC,
     ("GET", "/api/auth/me"): ANY_USER,
     ("GET", "/api/users"): {A},

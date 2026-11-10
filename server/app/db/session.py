@@ -8,10 +8,20 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 
-def make_engine(database_url: str) -> Engine:
+def make_engine(
+    database_url: str,
+    pool_size: int = 10,
+    max_overflow: int = 10,
+    pool_recycle: int = 1800,
+) -> Engine:
     is_sqlite = database_url.startswith("sqlite")
     connect_args: dict[str, Any] = {"check_same_thread": False} if is_sqlite else {}
-    engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
+    pool: dict[str, Any] = (
+        {}
+        if is_sqlite
+        else {"pool_size": pool_size, "max_overflow": max_overflow, "pool_recycle": pool_recycle}
+    )
+    engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True, **pool)
     if is_sqlite:
 
         @event.listens_for(engine, "connect")

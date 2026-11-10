@@ -1,0 +1,38 @@
+# ManufAI production site.
+# MANUFAI_DOMAIN: your hostname (e.g. manufai.example.com) -> Caddy gets a certificate automatically.
+# Use ":80" for plain HTTP inside a private network (then the bridge uses ws:// instead of wss://).
+{$MANUFAI_DOMAIN::80} {
+	encode zstd gzip
+
+	# API and the bridge WebSocket go to the server container.
+	handle /api/* {
+		reverse_proxy server:8000
+	}
+	# API docs (if MANUFAI_DOCS_ENABLED=true on the server).
+	handle /docs* {
+		reverse_proxy server:8000
+	}
+	handle /openapi.json {
+		reverse_proxy server:8000
+	}
+
+	# The single-page app: unknown paths fall back to index.html.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	log {
+		output stdout
+		format json
+	}
+}

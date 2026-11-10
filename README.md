@@ -22,6 +22,13 @@ with engineer confirmation, programmer approval and operator safety checks at ev
 - Node.js 20+ (22 recommended)
 - Docker Desktop (Windows) or Docker Engine + Compose plugin (Linux), for the full stack
 
+## Production
+
+Use **`docker-compose.prod.yml`** (PostgreSQL, server, web with automatic HTTPS) and follow
+**[docs/deployment.md](docs/deployment.md)**: install, first admin (`python -m app.cli`), bridge,
+health checks (`/api/health`, `/api/ready`), backups, upgrades and the security checklist.
+The server refuses unsafe production settings at start-up.
+
 ## Option A: Full stack in Docker (server + Postgres + web)
 
 ```bash

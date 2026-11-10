@@ -17,6 +17,8 @@ coverage/
 
 # Env / secrets
 .env
+.env.prod
+backups/
 bridge/config.yaml
 
 # FANUC licensed library - never commit
