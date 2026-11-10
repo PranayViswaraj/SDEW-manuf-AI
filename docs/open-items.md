@@ -13,3 +13,4 @@ Every `TODO(REAL-DATA):` in the code is listed here. Search the repo for `TODO(R
 | 7 | Turret tool layout, offsets, cutting speeds and feeds | Tool list (validator tool check, capability check), program generator | Tools table, editable on Machine page (empty for LMW Lathe 1) | M3 |
 | 8 | LMW Lathe 1 model number | Machine register | `server/app/seed.py` `seed_machines` | M3 |
 | 9 | LMW Lathe 1 IP address in the server machine register (in addition to the bridge config) | Machine register, probe tool | `server/app/seed.py` `seed_machines` | M3 |
+| 10 | The company's real raw material register file (column names, units, whether quantity is bars or kg) | Material import mapping defaults | `server/app/services/material_import.py` `ALIASES`; mapping is chosen in the UI per import | M4 |

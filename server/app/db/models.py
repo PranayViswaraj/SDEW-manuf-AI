@@ -158,3 +158,24 @@ class Tool(Base):
     tool_type: Mapped[str] = mapped_column(String(32))
 
     machine: Mapped[Machine] = relationship(back_populates="tools")
+
+
+def grade_key(grade: str) -> str:
+    """Normalised grade used to detect duplicates: 'en 8 ' == 'EN8'."""
+    return "".join(grade.split()).upper()
+
+
+class Material(Base):
+    __tablename__ = "materials"
+    __table_args__ = (UniqueConstraint("grade_key", "bar_diameter", name="uq_material_grade_dia"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    grade: Mapped[str] = mapped_column(String(64))
+    grade_key: Mapped[str] = mapped_column(String(64), index=True)
+    bar_diameter: Mapped[float] = mapped_column(Float, index=True)  # mm
+    available_length: Mapped[float | None] = mapped_column(Float)  # mm per bar
+    stock_quantity: Mapped[float | None] = mapped_column(Float)
+    quantity_unit: Mapped[str] = mapped_column(String(16), default="bars")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)

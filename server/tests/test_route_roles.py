@@ -32,6 +32,12 @@ ROUTE_ROLES: dict[tuple[str, str], str | set[str]] = {
     ("POST", "/api/machines/{machine_id}/tools"): {A, P},
     ("PUT", "/api/machines/{machine_id}/tools/{tool_id}"): {A, P},
     ("DELETE", "/api/machines/{machine_id}/tools/{tool_id}"): {A, P},
+    ("GET", "/api/materials"): ANY_USER,
+    ("POST", "/api/materials"): {A, E},
+    ("PUT", "/api/materials/{material_id}"): {A, E},
+    ("DELETE", "/api/materials/{material_id}"): {A, E},
+    ("POST", "/api/materials/import/preview"): {A, E},
+    ("POST", "/api/materials/import"): {A, E},
 }
 
 ALL_ROLES = (A, E, P, O)

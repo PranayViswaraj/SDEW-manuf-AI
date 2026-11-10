@@ -65,6 +65,9 @@ def settings(db_path: Path) -> Settings:
         database_url=sqlite_url(db_path),
         jwt_secret=JWT_SECRET,
         samples_dir=str(REPO_DIR / "samples" / "programs"),
+        sample_materials_csv=str(
+            REPO_DIR / "samples" / "materials" / "raw-material-register.sample.csv"
+        ),
     )
 
 

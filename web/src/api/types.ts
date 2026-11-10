@@ -106,3 +106,34 @@ export interface Machine {
   tools: Tool[];
   limits_missing: (keyof MachineLimits)[];
 }
+
+export interface Material {
+  id: number;
+  grade: string;
+  bar_diameter: number;
+  available_length: number | null;
+  stock_quantity: number | null;
+  quantity_unit: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type MaterialField = 'grade' | 'bar_diameter' | 'available_length' | 'stock_quantity' | 'notes';
+
+export interface ImportPreview {
+  headers: string[];
+  sample_rows: string[][];
+  row_count: number;
+  suggested_mapping: Record<MaterialField, string | null>;
+  target_fields: MaterialField[];
+}
+
+export interface ImportReport {
+  dry_run: boolean;
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: number;
+  rows: { row_number: number; status: string; message: string }[];
+}

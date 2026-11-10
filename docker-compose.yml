@@ -27,6 +27,10 @@ services:
       MANUFAI_CORS_ORIGINS: ${MANUFAI_CORS_ORIGINS:-http://localhost:5173}
       # Dev users with published passwords (README). Set false for any shared deployment.
       MANUFAI_SEED_DEV_DATA: ${MANUFAI_SEED_DEV_DATA:-true}
+      MANUFAI_SAMPLES_DIR: /samples/programs
+      MANUFAI_SAMPLE_MATERIALS_CSV: /samples/materials/raw-material-register.sample.csv
+    volumes:
+      - ./samples:/samples:ro
     depends_on:
       db:
         condition: service_healthy

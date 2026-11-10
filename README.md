@@ -92,6 +92,23 @@ Open a machine to:
 
 All changes are written to the audit log (`machine_update`, `tool_add`, `remote_control_changed`…).
 
+## Raw materials (Milestone 4)
+
+**Materials** page: search by grade/notes (`en8` finds `EN8`) or diameter range. Admin and
+engineer can add/edit/delete rows and import the company register:
+
+1. **Import CSV / XLSX** → choose the file. The server reads the header row and suggests which
+   column is grade, bar diameter, length, quantity, notes.
+2. Change any mapping in the drop-downs (your column names can be anything).
+3. Choose what happens when a grade + diameter already exists: **skip** (keep existing) or **update**.
+   Grades match ignoring case and spaces (`en 8` = `EN8`). Repeated rows inside the same file are
+   reported and ignored.
+4. **Check (dry run)** shows the result without saving; **Import** saves and writes an audit entry.
+
+Numbers like `Ø25`, `25 mm` and `25,5` are understood. A sample file is in
+`samples/materials/raw-material-register.sample.csv` (every row marked SAMPLE DATA); the dev seed
+loads it into an empty table so the page is not empty.
+
 ## Run all tests and linters (one command)
 
 ```powershell

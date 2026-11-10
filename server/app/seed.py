@@ -4,14 +4,17 @@ Dev users (with the published dev passwords from the README) are only created wh
 MANUFAI_SEED_DEV_DATA=true and MANUFAI_ENV is not 'production'. Idempotent.
 """
 
-from sqlalchemy import select
+from pathlib import Path
+
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.security import hash_password
 from app.config import Settings, get_settings
 from app.db.guards import install_audit_guards
-from app.db.models import Machine, Role, User, empty_limits
+from app.db.models import Machine, Material, Role, User, empty_limits, grade_key
 from app.db.session import make_engine, make_session_factory
+from app.services.material_import import map_rows, parse_table, suggest_mapping
 
 # username -> (full name, password, roles, can_start_machine). DEV ONLY - see README.
 DEV_USERS: dict[str, tuple[str, str, set[Role], bool]] = {
@@ -66,6 +69,21 @@ def seed_machines(db: Session) -> list[str]:
     return ["created machine LMW Lathe 1"]
 
 
+def seed_sample_materials(db: Session, csv_path: str) -> list[str]:
+    """DEV ONLY: load the sample register (rows are marked SAMPLE DATA) into an empty table."""
+    if db.scalar(select(func.count()).select_from(Material)):
+        return []
+    path = Path(csv_path)
+    if not path.is_file():
+        return [f"sample materials CSV not found at {path} (skipped)"]
+    table = parse_table(path.read_bytes(), path.name)
+    rows = [r.data for r in map_rows(table, suggest_mapping(table.headers)) if r.data]
+    for d in rows:
+        db.add(Material(**d.__dict__, grade_key=grade_key(d.grade)))
+    db.commit()
+    return [f"loaded {len(rows)} SAMPLE materials from {path.name}"]
+
+
 def run_seed(settings: Settings, db: Session) -> list[str]:
     """Run all seed steps that apply to these settings. Returns a log of what was done."""
     log: list[str] = []
@@ -74,6 +92,7 @@ def run_seed(settings: Settings, db: Session) -> list[str]:
         if settings.env == "production":
             raise SeedRefusedError("Refusing to seed dev users in production.")
         log += [f"created dev user {u}" for u in seed_dev_users(db)]
+        log += seed_sample_materials(db, settings.sample_materials_csv)
     return log
 
 

@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     seed_dev_data: bool = False
     # Folder with the trusted O-files imported at seed time (Milestone 9).
     samples_dir: str = "../samples/programs"
+    # Sample raw-material CSV loaded by the dev seed (clearly marked SAMPLE DATA).
+    sample_materials_csv: str = "../samples/materials/raw-material-register.sample.csv"
 
     @model_validator(mode="after")
     def _no_dev_secret_in_production(self) -> "Settings":
