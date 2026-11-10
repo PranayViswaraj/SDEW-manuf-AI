@@ -122,6 +122,37 @@ Until the real machine is connected, everything runs against a simulated FANUC 0
 It prints mode, run state, program, sequence number, spindle speed and part count as they change.
 `samples/demo/O9000` is a synthetic demo program for the simulator only (**not for machine use**).
 
+## First day at the machine (Milestone 7)
+
+Goal: prove the factory PC can talk to the FANUC 0i-TF over FOCAS2 **before** connecting ManufAI.
+Bring: the factory PC with this repo + `.venv`, the FANUC FOCAS library (`Fwlib64.dll` and its
+companion DLLs, from FANUC / the machine supplier), an Ethernet cable, and someone allowed to change
+CNC settings.
+
+1. **At the CNC**: check Embedded Ethernet is enabled, note the IP address, subnet and FOCAS port
+   (default 8193). Put the PC on the same subnet. Note the machine is idle and has no alarm.
+2. **Read-only probe** (changes nothing on the machine):
+   ```powershell
+   .venv\Scripts\python bridge	oolsocas_probe.py --ip 192.168.x.x --port 8193 --lib C:\manufaiwlib\Fwlib64.dll
+   ```
+   Expect PASS for: TCP connect, Open FOCAS handle, Read status, Program/sequence number,
+   List programs. Write down the program list.
+3. **Save a program** from the CNC and compare it with `samples/programs/O0001`:
+   ```powershell
+   .venv\Scripts\python bridge	oolsocas_probe.py --ip ... --lib ... --upload O0001 --out O0001_from_cnc.nc
+   ```
+4. **Write test** (only with the programmer's OK, machine idle, no alarm, program-protect key off).
+   Pick a number that is **not** used on the CNC (e.g. O9001). The tool refuses existing numbers,
+   asks you to type `WRITE O9001`, then sends, reads back, compares and deletes it 20 times:
+   ```powershell
+   .venv\Scripts\python bridge	oolsocas_probe.py --ip ... --lib ... --roundtrip samples\demo\O9000 --number O9001
+   ```
+5. Work through the `VERIFY ON MACHINE` list in `docs/focas-notes.md` and record the answers.
+
+Practice without a machine: `--simulate` (simulated 0i-TF preloaded with the 5 trusted programs).
+If step 1 fails: power, cable, IP/subnet, port, PC firewall. If step 2 fails with "FOCAS library not
+found": wrong `--lib` path, or a 32-bit DLL with 64-bit Python.
+
 ## Run all tests and linters (one command)
 
 ```powershell
