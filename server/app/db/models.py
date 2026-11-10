@@ -179,3 +179,16 @@ class Material(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+
+
+class Bridge(Base):
+    """A factory-PC bridge. It authenticates with a token (stored hashed) and verifies command
+    signatures with a shared signing key."""
+
+    __tablename__ = "bridges"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, index=True)  # = Machine.bridge_id
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    signing_key: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

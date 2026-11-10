@@ -11,7 +11,9 @@ import {
   type ToolType,
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
+import LivePanel from '../components/LivePanel';
 import { ErrorBox, Notice, NotEntered } from '../components/ui';
+import { useLiveStatus } from '../hooks/useLiveStatus';
 
 type LimitDraft = Record<keyof MachineLimits, string>;
 
@@ -38,6 +40,7 @@ export default function MachineDetail() {
   const [machine, setMachine] = useState<Machine | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const { live, error: liveError } = useLiveStatus(id ? Number(id) : null);
 
   const load = useCallback(() => {
     api
@@ -62,6 +65,7 @@ export default function MachineDetail() {
       </div>
       <ErrorBox error={error} />
       {saved && <Notice tone="ok">Saved.</Notice>}
+      <LivePanel live={live} error={liveError} />
 
       <MachineForm
         key={machine.updated_at}
@@ -99,6 +103,7 @@ function MachineForm({
     ip_address: machine.ip_address ?? '',
     focas_port: String(machine.focas_port),
     status: machine.status,
+    bridge_id: machine.bridge_id ?? '',
     notes: machine.notes,
     remote_control_enabled: machine.remote_control_enabled,
   });
@@ -116,6 +121,7 @@ function MachineForm({
       const m = await api.patch<Machine>(`/machines/${machine.id}`, {
         ...f,
         ip_address: f.ip_address.trim() || null,
+        bridge_id: f.bridge_id.trim() || null,
         focas_port: Number(f.focas_port),
         limits: draftToLimits(limits),
       });
@@ -126,7 +132,7 @@ function MachineForm({
   }
 
   const text = (
-    key: 'name' | 'make' | 'model' | 'controller' | 'ip_address' | 'focas_port',
+    key: 'name' | 'make' | 'model' | 'controller' | 'ip_address' | 'focas_port' | 'bridge_id',
     label: string,
   ) => (
     <label className="block text-sm">
@@ -153,6 +159,7 @@ function MachineForm({
         {text('controller', 'Controller')}
         {text('ip_address', 'IP address')}
         {text('focas_port', 'FOCAS port')}
+        {text('bridge_id', 'Bridge id')}
         <label className="block text-sm">
           <span className="font-medium">State</span>
           <select

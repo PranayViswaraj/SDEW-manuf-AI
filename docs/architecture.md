@@ -34,3 +34,15 @@
 4. Programmer approves (bound to content hash).
 5. Operator: material + checklist → `send_program` → bridge downloads, uploads back, verifies hash.
 6. Cycle Start at the machine (or remote `start` if ever enabled) → live status → first-piece result.
+
+## Live status and commands (Milestone 8)
+
+- `server/app/services/bridge_hub.py` keeps connected bridges, the latest status per machine and
+  pending command acks **in memory**. First release assumption: **one server process**. Running
+  several workers would need this state in a shared store (e.g. Redis pub/sub).
+- Live states: `online`, `machine_unreachable`, `stale` (> `MANUFAI_STATUS_STALE_SECONDS`, default 5),
+  `offline` (bridge not connected).
+- `server/app/services/run_control.py: execute_machine_action` is the only path to a machine:
+  checks -> audit "requested" -> signed command -> ack -> audit result.
+- Command signature: HMAC-SHA256 over canonical JSON with the bridge's signing key
+  (`server/app/services/command_signing.py` <-> `bridge/bridge/signing.py`).

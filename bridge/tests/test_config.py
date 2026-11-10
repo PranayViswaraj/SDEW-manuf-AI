@@ -26,7 +26,7 @@ def test_remote_control_disabled_by_default() -> None:
 def test_server_url_must_be_outbound_websocket() -> None:
     # Safety rule 5
     with pytest.raises(ValidationError):
-        BridgeConfig(server_url="http://0.0.0.0:9000", bridge_token="x" * 16)
+        BridgeConfig(server_url="http://0.0.0.0:9000", bridge_token="x" * 16, signing_key="y" * 16)
 
 
 def test_action_allow_list_is_exact() -> None:
@@ -35,6 +35,13 @@ def test_action_allow_list_is_exact() -> None:
     assert REMOTE_CONTROL_ACTIONS <= ALLOWED_ACTIONS
     for bad in ["delete_program", "emergency_stop", "write_param", "", "START"]:
         assert not is_allowed(bad)
+
+
+def test_dev_config_loads() -> None:
+    cfg = load_config(EXAMPLE.parent / "config.dev.yaml")
+    by_id = {m.id: m for m in cfg.machines}
+    assert by_id["lmw-lathe-1"].remote_control_enabled is False  # real machine record: off
+    assert all(m.driver == "simulated" for m in cfg.machines)
 
 
 def test_main_check(capsys: pytest.CaptureFixture[str]) -> None:

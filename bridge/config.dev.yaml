@@ -1,0 +1,27 @@
+# DEV ONLY bridge config used by docker-compose. Both machines are SIMULATED.
+# Token and signing key match the server's dev seed (MANUFAI_DEV_BRIDGE_*). Never use in production.
+
+server_url: ws://server:8000/api/bridge/ws
+bridge_token: dev-bridge-token-not-secret
+signing_key: dev-bridge-signing-key-not-secret
+poll_interval_s: 1.0
+heartbeat_interval_s: 2.0
+command_max_age_s: 10
+log_file: logs/bridge.log
+
+machines:
+  # The real machine's record, driven by the SIMULATOR until the FOCAS library is installed.
+  # Remote control stays OFF: the simulated operator presses Cycle Start 5 s after a program
+  # is sent, like an operator at the machine would.
+  - id: lmw-lathe-1
+    driver: simulated
+    remote_control_enabled: false
+    sim_block_time_s: 0.4
+    sim_auto_cycle_start_after_s: 5
+
+  # Fictional dev machine with remote control ON, to demonstrate Start / Feed hold / Stop.
+  - id: sim-lathe-dev
+    driver: simulated
+    remote_control_enabled: true
+    pmc_start_address: SIM
+    sim_block_time_s: 0.4

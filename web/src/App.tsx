@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import type { Role } from './api/types';
 import { useAuth } from './auth/AuthContext';
 import Layout from './components/Layout';
+import Bridges from './pages/Bridges';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Logs from './pages/Logs';
@@ -45,6 +46,14 @@ export default function App() {
           element={
             <RequireAuth roles={['admin']}>
               <Users />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/bridges"
+          element={
+            <RequireAuth roles={['admin']}>
+              <Bridges />
             </RequireAuth>
           }
         />

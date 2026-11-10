@@ -2,9 +2,12 @@
 # The bridge connects OUTWARD to the server only. It never listens on a port.
 
 server_url: wss://manufai.example.com/api/bridge/ws   # TODO(REAL-DATA): real server URL
-bridge_token: replace-with-token-issued-by-server     # min 16 chars, issued per bridge
+# Issued by an admin in ManufAI (Bridges page). Both are secrets: keep this file private.
+bridge_token: replace-with-token-issued-by-server
+signing_key: replace-with-signing-key-issued-by-server
 poll_interval_s: 1.0
 heartbeat_interval_s: 2.0
+command_max_age_s: 10      # commands older than this are rejected (PC clock must be NTP-synced)
 
 # TODO(REAL-DATA): FANUC FOCAS library, licensed from FANUC / machine supplier.
 # Windows: C:\\manufai\\fwlib\\Fwlib64.dll   Linux: /opt/manufai/fwlib/libfwlib32.so
@@ -14,7 +17,7 @@ focas_timeout_s: 10
 log_file: logs/bridge.log
 
 machines:
-  - id: lmw-lathe-1
+  - id: lmw-lathe-1           # must match the machine key in ManufAI
     ip: 192.168.1.50          # TODO(REAL-DATA): machine IP on the factory LAN
     port: 8193
     driver: simulated         # switch to "focas" once the library is installed

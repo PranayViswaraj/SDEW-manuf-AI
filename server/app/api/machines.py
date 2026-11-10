@@ -4,7 +4,7 @@ import ipaddress
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -172,6 +172,40 @@ def get_machine(
     machine_id: int, db: Session = Depends(get_db), _: User = Depends(any_user)
 ) -> MachineOut:
     return MachineOut.from_machine(_get_machine(db, machine_id))
+
+
+class LiveOut(BaseModel):
+    machine_id: int
+    state: str  # online | machine_unreachable | stale | offline
+    bridge_id: str | None
+    bridge_connected: bool
+    machine_connected: bool
+    driver: str | None
+    age_s: float | None
+    received_at: str | None
+    status: dict[str, Any] | None
+    loaded_program: int | None
+    error: str | None
+    remote_control_enabled: bool
+    stale_after_s: float
+
+
+@router.get("/{machine_id}/live", response_model=LiveOut)
+def machine_live(
+    machine_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    _: User = Depends(any_user),
+) -> LiveOut:
+    m = _get_machine(db, machine_id)
+    view = request.app.state.hub.live_view(m.key, m.bridge_id)
+    return LiveOut(
+        machine_id=m.id,
+        bridge_id=m.bridge_id,
+        remote_control_enabled=m.remote_control_enabled,
+        stale_after_s=request.app.state.settings.status_stale_seconds,
+        **view,
+    )
 
 
 @router.post("", response_model=MachineOut, status_code=status.HTTP_201_CREATED)

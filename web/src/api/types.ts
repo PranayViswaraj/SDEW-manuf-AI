@@ -137,3 +137,48 @@ export interface ImportReport {
   errors: number;
   rows: { row_number: number; status: string; message: string }[];
 }
+
+export type LiveState = 'online' | 'machine_unreachable' | 'stale' | 'offline';
+
+export interface MachineStatusData {
+  mode: string;
+  run_state: 'idle' | 'running' | 'feed_hold' | 'stopped';
+  alarm: boolean;
+  alarms: { code: number; message: string }[];
+  emergency: boolean;
+  program_number: number | null;
+  sequence_number: number | null;
+  spindle_speed: number | null;
+  feed_override: number | null;
+  part_count: number | null;
+  timestamp: string;
+}
+
+export interface LiveStatus {
+  machine_id: number;
+  state: LiveState;
+  bridge_id: string | null;
+  bridge_connected: boolean;
+  machine_connected: boolean;
+  driver: string | null;
+  age_s: number | null;
+  received_at: string | null;
+  status: MachineStatusData | null;
+  loaded_program: number | null;
+  error: string | null;
+  remote_control_enabled: boolean;
+  stale_after_s: number;
+}
+
+export interface BridgeInfo {
+  id: number;
+  name: string;
+  created_at: string;
+  connected: boolean;
+  connected_at: string | null;
+  bridge_version: string | null;
+  reported_machines: { id: string; driver: string }[];
+  assigned_machines: string[];
+}
+
+export const oNumber = (n: number | null | undefined): string => (n ? `O${String(n).padStart(4, '0')}` : '–');

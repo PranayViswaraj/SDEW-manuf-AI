@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     command_max_age_seconds: float = 10.0
     # Create dev users with published passwords (README). Never in production.
     seed_dev_data: bool = False
+    # Seconds to wait for the bridge to send + verify a program.
+    bridge_send_timeout_s: float = 60.0
+    # DEV ONLY bridge credentials created by the dev seed (match bridge/config.dev.yaml).
+    dev_bridge_token: str = "dev-bridge-token-not-secret"  # noqa: S105 - published dev value
+    dev_bridge_signing_key: str = "dev-bridge-signing-key-not-secret"
     # Folder with the trusted O-files imported at seed time (Milestone 9).
     samples_dir: str = "../samples/programs"
     # Sample raw-material CSV loaded by the dev seed (clearly marked SAMPLE DATA).

@@ -11,5 +11,6 @@ export const NAV: NavItem[] = [
   { to: '/machines', label: 'Machines' },
   { to: '/materials', label: 'Materials' },
   { to: '/users', label: 'Users', roles: ['admin'] },
+  { to: '/bridges', label: 'Bridges', roles: ['admin'] },
   { to: '/logs', label: 'Audit log', roles: ['admin'] },
 ];

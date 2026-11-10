@@ -1,0 +1,22 @@
+# systemd unit for the ManufAI bridge on a Linux factory PC.
+# Install:  sudo cp manufai-bridge.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now manufai-bridge
+# Logs:     journalctl -u manufai-bridge -f   (and /opt/manufai/bridge/logs/bridge.log)
+[Unit]
+Description=ManufAI bridge (outbound link to the ManufAI server)
+After=network-online.target time-sync.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=manufai
+WorkingDirectory=/opt/manufai/bridge
+ExecStart=/opt/manufai/.venv/bin/manufai-bridge --config /opt/manufai/bridge/config.yaml
+Restart=always
+RestartSec=5
+# The bridge never listens on a port; it needs outbound network only.
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

@@ -12,8 +12,18 @@ from sqlalchemy.orm import Session
 from app.auth.security import hash_password
 from app.config import Settings, get_settings
 from app.db.guards import install_audit_guards
-from app.db.models import Machine, Material, Role, User, empty_limits, grade_key
+from app.db.models import (
+    Bridge,
+    Machine,
+    Material,
+    Role,
+    Tool,
+    User,
+    empty_limits,
+    grade_key,
+)
 from app.db.session import make_engine, make_session_factory
+from app.services.command_signing import hash_token
 from app.services.material_import import map_rows, parse_table, suggest_mapping
 
 # username -> (full name, password, roles, can_start_machine). DEV ONLY - see README.
@@ -84,6 +94,70 @@ def seed_sample_materials(db: Session, csv_path: str) -> list[str]:
     return [f"loaded {len(rows)} SAMPLE materials from {path.name}"]
 
 
+DEV_BRIDGE = "dev-bridge"
+SIM_MACHINE_KEY = "sim-lathe-dev"
+# FICTIONAL machine for development only. These values describe no real machine.
+SIM_LIMITS = {
+    "max_turning_diameter": 200.0,
+    "max_turning_length": 300.0,
+    "max_bar_diameter": 52.0,
+    "spindle_rpm_min": 50,
+    "spindle_rpm_max": 4000,
+    "chuck_size": "8 in (simulated)",
+    "turret_stations": 8,
+}
+SIM_TOOLS = [
+    (1, "T0101", "U-drill (simulated)", "", None, "drill"),
+    (2, "T0202", "OD rough (simulated)", "WNMG", 0.8, "od_rough"),
+    (3, "T0303", "OD finish (simulated)", "TNMG", 0.4, "od_finish"),
+    (4, "T0404", "Parting 3 mm (simulated)", "", None, "parting"),
+    (5, "T0505", "Groove (simulated)", "", None, "groove"),
+    (6, "T0606", "Thread (simulated)", "", None, "thread"),
+    (7, "T0707", "Bore (simulated)", "CCMT", 0.4, "bore"),
+    (8, "T0808", "Stopper (simulated)", "", None, "stopper"),
+]
+
+
+def seed_dev_bridge(db: Session, settings: Settings) -> list[str]:
+    """DEV ONLY: a bridge with published credentials and a fictional simulated lathe."""
+    log: list[str] = []
+    if not db.scalar(select(Bridge).where(Bridge.name == DEV_BRIDGE)):
+        db.add(
+            Bridge(
+                name=DEV_BRIDGE,
+                token_hash=hash_token(settings.dev_bridge_token),
+                signing_key=settings.dev_bridge_signing_key,
+            )
+        )
+        log.append("created dev bridge")
+    lmw = db.scalar(select(Machine).where(Machine.key == "lmw-lathe-1"))
+    if lmw is not None and lmw.bridge_id is None:
+        lmw.bridge_id = DEV_BRIDGE
+        log.append("assigned LMW Lathe 1 to dev bridge (simulated driver in dev)")
+    if not db.scalar(select(Machine).where(Machine.key == SIM_MACHINE_KEY)):
+        sim = Machine(
+            key=SIM_MACHINE_KEY,
+            name="SIM Lathe (dev - simulated)",
+            make="Simulator",
+            model="FANUC 0i-TF simulator",
+            controller="FANUC 0i-TF",
+            ip_address=None,
+            bridge_id=DEV_BRIDGE,
+            # Explicitly enabled for this FICTIONAL simulated machine only, to demo remote control.
+            remote_control_enabled=True,
+            limits=dict(SIM_LIMITS),
+            notes="FICTIONAL SIMULATED MACHINE for development. Limits and tools are demo values.",
+        )
+        sim.tools = [
+            Tool(station=st, tool_code=c, description=d, insert_type=i, nose_radius=r, tool_type=t)
+            for st, c, d, i, r, t in SIM_TOOLS
+        ]
+        db.add(sim)
+        log.append("created SIM Lathe (dev - simulated)")
+    db.commit()
+    return log
+
+
 def run_seed(settings: Settings, db: Session) -> list[str]:
     """Run all seed steps that apply to these settings. Returns a log of what was done."""
     log: list[str] = []
@@ -93,6 +167,7 @@ def run_seed(settings: Settings, db: Session) -> list[str]:
             raise SeedRefusedError("Refusing to seed dev users in production.")
         log += [f"created dev user {u}" for u in seed_dev_users(db)]
         log += seed_sample_materials(db, settings.sample_materials_csv)
+        log += seed_dev_bridge(db, settings)
     return log
 
 

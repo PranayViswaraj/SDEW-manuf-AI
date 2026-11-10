@@ -164,24 +164,35 @@ found": wrong `--lib` path, or a 32-bit DLL with 64-bit Python.
 
 This runs ruff, black, mypy and pytest for `server/` and `bridge/`, then eslint, tsc and vitest for `web/`.
 
-## Bridge (factory PC)
+## Bridge and live machine status (Milestone 8)
+
+The bridge runs on the factory PC, connects **out** to the server over one WebSocket
+(`/api/bridge/ws`), and never opens a listening port. Every 1 s it reads each machine and pushes the
+status; every 2 s it sends a heartbeat. It acts only on **signed** commands (`send_program`, `start`,
+`feed_hold`, `stop`, `read_status`) and rejects anything else, anything older than 10 s, replays,
+unknown machines and program-hash mismatches. If the link drops it takes no machine action and
+reconnects with backoff.
+
+**See it:** with `docker compose up`, the `bridge` container drives two **simulated** machines:
+LMW Lathe 1 (remote control off) and a fictional "SIM Lathe (dev - simulated)" (remote control on).
+Open **Machines -> LMW Lathe 1**: the *Live status* panel shows mode, run state, alarms, program,
+block, spindle, override and part count with an **Online** badge and a **SIMULATED** tag. Then:
 
 ```bash
-cp bridge/config.example.yaml bridge/config.yaml   # edit server URL, token, machines
-.venv/bin/manufai-bridge --config bridge/config.yaml --check
+docker compose stop bridge     # badge turns Offline within a second ("bridge not connected")
+docker compose start bridge    # back to Online after it reconnects
 ```
-The service loop arrives in Milestone 8. The FANUC FOCAS library (`Fwlib*.dll` / `libfwlib32.so`)
-is licensed from FANUC; it is **not** in this repo and must never be committed.
 
-## Troubleshooting
+A status older than 5 s shows **Stale** with a warning.
 
-**`pip` fails with `CERTIFICATE_VERIFY_FAILED`** (antivirus or a network proxy inspecting HTTPS):
-the pip bundled with older Python 3.11 releases doesn't trust the Windows certificate store; pip 24.2+
-does. Upgrade the venv's pip using any newer pip you already have, then rerun setup:
-```powershell
-python -m pip --python "$PWD\.venv\Scripts\python.exe" install --upgrade pip
-```
-Don't use `--trusted-host`; it turns off certificate checking.
+**Admin -> Bridges** lists bridges and creates new ones (token + signing key shown once).
+Assign a machine to a bridge with the machine's *Bridge id* field.
+
+**Factory PC install:** copy `bridge/config.example.yaml` to `config.yaml`, fill in server URL,
+token, signing key, machines and `focas_library_path`, then
+`manufai-bridge --config config.yaml --check`. Run it as a service:
+Windows -> `bridge/deploy/install-windows-service.md` (NSSM); Linux ->
+`bridge/deploy/manufai-bridge.service` (systemd). The PC clock must be NTP-synced.
 
 ## Status
 
