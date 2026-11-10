@@ -16,6 +16,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { NAV, SECTIONS, type NavItem } from '../nav';
 import CommandPalette, { type Command } from './CommandPalette';
+import AccessibilityMenu from './AccessibilityMenu';
 import HealthBadge from './HealthBadge';
 import { PageTransition } from './motion';
 
@@ -46,7 +47,7 @@ function SidebarLinks({
         return (
           <div key={section} className="mb-4">
             {!collapsed && (
-              <div className="px-3 pb-1.5 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
+              <div className="px-3 pb-1.5 text-[11px] font-semibold tracking-wider text-slate-600 uppercase">
                 {section}
               </div>
             )}
@@ -61,8 +62,10 @@ function SidebarLinks({
                       onClick={onNavigate}
                       title={collapsed ? n.label : undefined}
                       className={({ isActive }) =>
-                        `group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                          isActive ? 'text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                        `group relative flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          isActive
+                            ? 'font-semibold text-brand-800'
+                            : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
                         } ${collapsed ? 'justify-center' : ''}`
                       }
                     >
@@ -71,7 +74,7 @@ function SidebarLinks({
                           {isActive && (
                             <motion.span
                               layoutId="nav-active"
-                              className="absolute inset-0 rounded-lg bg-gradient-to-r from-brand-600 to-brand-500 shadow-lg shadow-brand-900/40"
+                              className="absolute inset-0 rounded-lg bg-brand-50 ring-1 ring-brand-200"
                               transition={{ type: 'spring', stiffness: 500, damping: 38 }}
                             />
                           )}
@@ -94,13 +97,13 @@ function SidebarLinks({
 function Brand({ collapsed }: { collapsed: boolean }) {
   return (
     <div className={`flex items-center gap-2.5 px-3 ${collapsed ? 'justify-center' : ''}`}>
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-700 shadow-lg shadow-brand-900/50">
+      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600">
         <Factory className="h-5 w-5 text-white" aria-hidden="true" />
       </span>
       {!collapsed && (
         <span className="leading-tight">
-          <span className="block text-base font-bold tracking-tight text-white">ManufAI</span>
-          <span className="block text-[11px] text-slate-400">Drawing to machined part</span>
+          <span className="block text-base font-bold tracking-tight text-slate-900">ManufAI</span>
+          <span className="block text-[11px] text-slate-600">Drawing to machined part</span>
         </span>
       )}
     </div>
@@ -183,6 +186,11 @@ export default function Layout() {
 
   useEffect(() => setMobileOpen(false), [location.pathname]);
 
+  // Tell screen readers and browser tabs which page is open.
+  useEffect(() => {
+    document.title = current ? `${current.label} – ManufAI` : 'ManufAI';
+  }, [current]);
+
   const initials = (user?.full_name || user?.username || '?')
     .split(/\s+/)
     .map((w) => w[0])
@@ -201,7 +209,7 @@ export default function Layout() {
 
       {/* Desktop sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 hidden flex-col bg-ink py-5 transition-[width] duration-300 lg:flex ${
+        className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-slate-200 bg-white py-5 transition-[width] duration-200 lg:flex ${
           collapsed ? 'w-[76px]' : 'w-64'
         }`}
       >
@@ -211,7 +219,7 @@ export default function Layout() {
         </nav>
         <div className="px-3">
           <button
-            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 transition hover:bg-white/5 hover:text-white ${collapsed ? 'justify-center' : ''}`}
+            className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 ${collapsed ? 'justify-center' : ''}`}
             onClick={toggleCollapsed}
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
@@ -234,12 +242,9 @@ export default function Layout() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <div
-              className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
-              onClick={() => setMobileOpen(false)}
-            />
+            <div className="absolute inset-0 bg-slate-900/40" onClick={() => setMobileOpen(false)} />
             <motion.aside
-              className="absolute inset-y-0 left-0 flex w-72 flex-col bg-ink py-5"
+              className="absolute inset-y-0 left-0 flex w-72 flex-col border-r border-slate-200 bg-white py-5"
               initial={{ x: -300 }}
               animate={{ x: 0 }}
               exit={{ x: -300 }}
@@ -248,7 +253,7 @@ export default function Layout() {
               <div className="flex items-center justify-between pr-3">
                 <Brand collapsed={false} />
                 <button
-                  className="rounded-lg p-2 text-slate-400 hover:text-white"
+                  className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                   onClick={() => setMobileOpen(false)}
                   aria-label="Close menu"
                 >
@@ -264,7 +269,7 @@ export default function Layout() {
       </AnimatePresence>
 
       <div className={`transition-[padding] duration-300 ${collapsed ? 'lg:pl-[76px]' : 'lg:pl-64'}`}>
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-slate-200/80 bg-white/80 px-4 backdrop-blur-xl sm:px-6">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-slate-200 bg-white px-4 sm:px-6">
           <button
             className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
             onClick={() => setMobileOpen(true)}
@@ -274,10 +279,10 @@ export default function Layout() {
           </button>
           <div className="hidden min-w-0 sm:block">
             <div className="truncate text-sm font-semibold text-slate-900">{current?.label ?? 'ManufAI'}</div>
-            <div className="truncate text-xs text-slate-500">{current?.description}</div>
+            <div className="truncate text-xs text-slate-600">{current?.description}</div>
           </div>
           <button
-            className="ml-auto flex h-10 w-full max-w-xs items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500 transition hover:border-slate-300 hover:bg-white sm:w-72"
+            className="ml-auto flex h-10 w-full max-w-xs items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-600 transition hover:border-slate-400 sm:w-72"
             onClick={() => setPaletteOpen(true)}
             aria-label="Open quick search"
           >
@@ -288,24 +293,25 @@ export default function Layout() {
               <span className="kbd">K</span>
             </span>
           </button>
-          <div className="hidden md:block">
+          <div className="hidden xl:block">
             <HealthBadge />
           </div>
+          <AccessibilityMenu />
           {user && (
             <div className="flex items-center gap-2">
-              <div className="hidden text-right leading-tight sm:block">
+              <div className="hidden text-right leading-tight whitespace-nowrap lg:block">
                 <div className="text-sm font-medium text-slate-900">{user.username}</div>
-                <div className="text-xs text-slate-500">({user.roles.join(', ') || 'no roles'})</div>
+                <div className="text-xs text-slate-600">({user.roles.join(', ') || 'no roles'})</div>
               </div>
               <span
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-xs font-bold text-white shadow-md shadow-brand-600/30"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-700"
                 aria-hidden="true"
               >
                 {initials}
               </span>
               <button className="btn px-2.5" onClick={logout} aria-label="Log out" title="Log out">
                 <LogOut className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden xl:inline">Log out</span>
+                <span className="hidden 2xl:inline">Log out</span>
               </button>
             </div>
           )}

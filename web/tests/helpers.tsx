@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 import App from '../src/App';
 import type { Role, User } from '../src/api/types';
+import { A11yProvider } from '../src/a11y/A11yContext';
 import { AuthProvider } from '../src/auth/AuthContext';
 
 export type Handler = (body: unknown, url: URL) => unknown;
@@ -70,7 +71,9 @@ export function renderApp(path: string, user: User | null, routes: Routes = {}) 
   const utils = render(
     <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
-        <App />
+        <A11yProvider>
+          <App />
+        </A11yProvider>
       </AuthProvider>
     </MemoryRouter>,
   );

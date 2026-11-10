@@ -8,9 +8,9 @@ export function PageTransition({ children, id }: { children: ReactNode; id: stri
   return (
     <motion.div
       key={id}
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease }}
+      transition={{ duration: 0.2, ease }}
     >
       {children}
     </motion.div>
@@ -19,11 +19,11 @@ export function PageTransition({ children, id }: { children: ReactNode; id: stri
 
 const staggerParent = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } },
+  show: { transition: { staggerChildren: 0.04, delayChildren: 0.02 } },
 };
 const staggerChild = {
-  hidden: { opacity: 0, y: 14 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease } },
+  hidden: { opacity: 0, y: 6 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.25, ease } },
 };
 
 export function Stagger({ children, className, ...rest }: HTMLMotionProps<'div'>) {

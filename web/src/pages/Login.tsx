@@ -36,57 +36,29 @@ export default function Login() {
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Brand panel */}
-      <div className="relative hidden overflow-hidden bg-ink p-12 text-white lg:flex lg:flex-col lg:justify-between">
-        <div className="pointer-events-none absolute -top-32 -left-24 h-96 w-96 animate-float rounded-full bg-brand-500/30 blur-3xl" />
-        <div
-          className="pointer-events-none absolute right-0 bottom-0 h-96 w-96 animate-float rounded-full bg-emerald-500/20 blur-3xl"
-          style={{ animationDelay: '-6s' }}
-        />
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.07]"
-          style={{
-            backgroundImage:
-              'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
-            backgroundSize: '44px 44px',
-          }}
-        />
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="relative flex items-center gap-3"
-        >
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 to-brand-700 shadow-lg">
-            <Factory className="h-6 w-6" aria-hidden="true" />
+      <div className="hidden border-r border-slate-200 bg-white p-12 lg:flex lg:flex-col lg:justify-between">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-600 text-white">
+            <Factory className="h-5 w-5" aria-hidden="true" />
           </span>
-          <span className="text-xl font-bold tracking-tight">ManufAI</span>
-        </motion.div>
-        <div className="relative">
-          <motion.h2
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1, duration: 0.6 }}
-            className="text-4xl leading-tight font-bold tracking-tight"
-          >
+          <span className="text-xl font-bold tracking-tight text-slate-900">ManufAI</span>
+        </div>
+        <div>
+          <h2 className="text-3xl leading-tight font-bold tracking-tight text-slate-900">
             From drawing
             <br />
             to machined part.
-          </motion.h2>
+          </h2>
           <ul className="mt-8 space-y-3">
-            {POINTS.map((p, i) => (
-              <motion.li
-                key={p}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.3 + i * 0.1 }}
-                className="flex items-center gap-3 text-slate-300"
-              >
-                <ShieldCheck className="h-5 w-5 text-emerald-400" aria-hidden="true" />
+            {POINTS.map((p) => (
+              <li key={p} className="flex items-center gap-3 text-slate-700">
+                <ShieldCheck className="h-5 w-5 text-slate-500" aria-hidden="true" />
                 {p}
-              </motion.li>
+              </li>
             ))}
           </ul>
         </div>
-        <p className="relative text-xs text-slate-500">
+        <p className="text-sm text-slate-600">
           The machine&apos;s red emergency stop is always the emergency stop.
         </p>
       </div>
@@ -95,14 +67,14 @@ export default function Login() {
       <div className="flex items-center justify-center bg-slate-50 px-4 py-12">
         <motion.form
           onSubmit={onSubmit}
-          initial={{ opacity: 0, y: 16, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
           className="card w-full max-w-sm space-y-5 p-8"
         >
           <div>
             <h1 className="text-2xl font-bold tracking-tight">ManufAI</h1>
-            <p className="mt-1 text-sm text-slate-500">Sign in to continue.</p>
+            <p className="mt-1 text-sm text-slate-600">Sign in to continue.</p>
           </div>
           <label className="block">
             <span className="text-sm font-medium text-slate-700">Username</span>

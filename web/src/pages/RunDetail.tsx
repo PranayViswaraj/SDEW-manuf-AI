@@ -97,14 +97,16 @@ export default function RunDetail() {
         </h1>
         <p className="text-sm text-gray-600">
           Part <span className="font-mono">{run.part_number}</span> · {run.program.title} · status{' '}
-          <b data-testid="run-status">{run.status}</b>
+          <b data-testid="run-status" aria-live="polite">
+            {run.status}
+          </b>
           {run.status_note && <span className="ml-2 text-amber-800">{run.status_note}</span>}
         </p>
         {run.status !== 'aborted' && (
           <div className="mt-4">
             <div className="relative mb-2 h-1.5 overflow-hidden rounded-full bg-slate-200" aria-hidden="true">
               <motion.div
-                className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-brand-500 to-emerald-500"
+                className="absolute inset-y-0 left-0 rounded-full bg-brand-600"
                 initial={false}
                 animate={{ width: `${(Math.max(stepIndex, 0) / (STEPS.length - 1)) * 100}%` }}
                 transition={{ type: 'spring', stiffness: 120, damping: 20 }}
@@ -119,7 +121,7 @@ export default function RunDetail() {
                     i < stepIndex
                       ? 'bg-emerald-100 text-emerald-800'
                       : i === stepIndex
-                        ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30'
+                        ? 'bg-brand-600 text-white'
                         : 'bg-slate-100 text-slate-500'
                   }`}
                 >
@@ -131,7 +133,7 @@ export default function RunDetail() {
         )}
       </div>
       <ErrorBox error={error} />
-      {message && <Notice tone={message.tone}>{message.text}</Notice>}
+      <div aria-live="polite">{message && <Notice tone={message.tone}>{message.text}</Notice>}</div>
       <Notice tone="warn">
         The machine&apos;s red emergency stop is the only emergency stop. Use it in any emergency.
       </Notice>

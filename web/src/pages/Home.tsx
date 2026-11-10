@@ -44,7 +44,6 @@ interface Task {
   text: string;
   icon: LucideIcon;
   roles: Role[];
-  tone: string;
 }
 
 const TASKS: Task[] = [
@@ -54,7 +53,6 @@ const TASKS: Task[] = [
     text: 'Pick a machine and an approved program, tick the checklist, send and start.',
     icon: Play,
     roles: ['operator'],
-    tone: 'from-emerald-500 to-teal-600',
   },
   {
     to: '/parts',
@@ -62,7 +60,6 @@ const TASKS: Task[] = [
     text: 'Enter the drawing values and confirm every one before anything is sent.',
     icon: Ruler,
     roles: ['engineer'],
-    tone: 'from-violet-500 to-purple-600',
   },
   {
     to: '/programs',
@@ -70,7 +67,6 @@ const TASKS: Task[] = [
     text: 'Read the checks, look at the tool path, approve for one machine.',
     icon: FileCode2,
     roles: ['programmer'],
-    tone: 'from-brand-500 to-brand-700',
   },
   {
     to: '/materials',
@@ -78,7 +74,6 @@ const TASKS: Task[] = [
     text: 'Search bar stock or import the company register.',
     icon: Boxes,
     roles: ['engineer', 'admin'],
-    tone: 'from-amber-500 to-orange-600',
   },
   {
     to: '/machines',
@@ -86,7 +81,6 @@ const TASKS: Task[] = [
     text: 'Live status, limits and turret tools of every machine.',
     icon: Cpu,
     roles: ['admin', 'engineer', 'programmer', 'operator'],
-    tone: 'from-sky-500 to-cyan-600',
   },
   {
     to: '/users',
@@ -94,7 +88,6 @@ const TASKS: Task[] = [
     text: 'Give roles and decide who may press Start.',
     icon: Users,
     roles: ['admin'],
-    tone: 'from-slate-600 to-slate-800',
   },
   {
     to: '/logs',
@@ -102,7 +95,6 @@ const TASKS: Task[] = [
     text: 'Every action: who, what, which machine, when.',
     icon: ScrollText,
     roles: ['admin'],
-    tone: 'from-rose-500 to-pink-600',
   },
 ];
 
@@ -132,33 +124,29 @@ function StatCard({
   label,
   value,
   sub,
-  tone,
   to,
 }: {
   icon: LucideIcon;
   label: string;
   value: number | null;
   sub: string;
-  tone: string;
   to: string;
 }) {
   return (
     <StaggerItem>
       <Link
         to={to}
-        className="card group flex items-start gap-4 p-5 transition duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-lift)]"
+        className="card group flex items-start gap-4 p-5 transition hover:border-slate-300 hover:shadow-[var(--shadow-lift)]"
       >
-        <span
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${tone} text-white shadow-md`}
-        >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
           <Icon className="h-5 w-5" aria-hidden="true" />
         </span>
         <span className="min-w-0">
-          <span className="block text-xs font-medium tracking-wide text-slate-500 uppercase">{label}</span>
+          <span className="block text-xs font-semibold tracking-wide text-slate-600 uppercase">{label}</span>
           <span className="mt-0.5 block text-3xl font-bold tracking-tight text-slate-900 tabular-nums">
             {value === null ? <Skeleton className="mt-1 h-8 w-12" /> : <CountUp value={value} />}
           </span>
-          <span className="block text-xs text-slate-500">{sub}</span>
+          <span className="block text-xs text-slate-600">{sub}</span>
         </span>
       </Link>
     </StaggerItem>
@@ -196,44 +184,24 @@ export default function Home() {
 
   return (
     <div className="space-y-8">
-      <motion.section
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="relative overflow-hidden rounded-3xl bg-ink px-6 py-8 text-white shadow-xl sm:px-10"
-      >
-        <div className="pointer-events-none absolute -top-24 -right-16 h-72 w-72 animate-float rounded-full bg-brand-500/30 blur-3xl" />
-        <div
-          className="pointer-events-none absolute -bottom-28 left-1/3 h-72 w-72 animate-float rounded-full bg-emerald-500/20 blur-3xl"
-          style={{ animationDelay: '-7s' }}
-        />
-        <div className="relative">
-          <p className="text-sm font-medium text-brand-200">{greeting}</p>
-          <h1 className="hero-title mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
-            Welcome, {user?.full_name || user?.username}
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-300">
-            From a confirmed drawing to a machined part, one piece at a time. Use the big buttons below, or
-            press <span className="kbd border-white/20 bg-white/10 text-white">Ctrl</span>{' '}
-            <span className="kbd border-white/20 bg-white/10 text-white">K</span> to jump anywhere.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {(user?.roles ?? []).map((r) => (
-              <span
-                key={r}
-                className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold capitalize ring-1 ring-white/20"
-              >
-                {r}
-              </span>
-            ))}
-            {user?.can_start_machine && (
-              <span className="rounded-full bg-emerald-400/20 px-3 py-1 text-xs font-semibold text-emerald-200 ring-1 ring-emerald-300/30">
-                allowed to press Start
-              </span>
-            )}
-          </div>
+      <section className="card px-6 py-6 sm:px-8">
+        <p className="text-sm font-medium text-slate-600">{greeting}</p>
+        <h1 className="hero-title mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+          Welcome, {user?.full_name || user?.username}
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm text-slate-700">
+          From a confirmed drawing to a machined part, one piece at a time. Use the buttons below, or press{' '}
+          <span className="kbd">Ctrl</span> <span className="kbd">K</span> to jump to any page.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {(user?.roles ?? []).map((r) => (
+            <span key={r} className="badge-gray capitalize">
+              {r}
+            </span>
+          ))}
+          {user?.can_start_machine && <span className="badge-green">allowed to press Start</span>}
         </div>
-      </motion.section>
+      </section>
 
       <Notice tone="warn">
         ManufAI never replaces the machine&apos;s physical emergency stop. Always use the red E-stop on the
@@ -246,7 +214,6 @@ export default function Home() {
           label="Machines"
           value={data ? data.machines.length : null}
           sub="in the register"
-          tone="from-sky-500 to-cyan-600"
           to="/machines"
         />
         <StatCard
@@ -254,7 +221,6 @@ export default function Home() {
           label="Approved programs"
           value={approved}
           sub="ready to send"
-          tone="from-brand-500 to-brand-700"
           to="/programs"
         />
         <StatCard
@@ -262,17 +228,9 @@ export default function Home() {
           label="Confirmed parts"
           value={confirmed}
           sub={data ? `${data.parts.length - (confirmed ?? 0)} waiting for an engineer` : 'feature tables'}
-          tone="from-violet-500 to-purple-600"
           to="/parts"
         />
-        <StatCard
-          icon={ClipboardCheck}
-          label="Open runs"
-          value={openRuns}
-          sub="not closed yet"
-          tone="from-emerald-500 to-teal-600"
-          to="/run"
-        />
+        <StatCard icon={ClipboardCheck} label="Open runs" value={openRuns} sub="not closed yet" to="/run" />
       </Stagger>
 
       <section aria-labelledby="tasks-title" className="space-y-3">
@@ -286,12 +244,10 @@ export default function Home() {
               <StaggerItem key={t.to}>
                 <Link
                   to={t.to}
-                  className="card group relative flex h-full items-start gap-4 overflow-hidden p-5 transition duration-200 hover:-translate-y-1 hover:border-brand-200 hover:shadow-[var(--shadow-lift)]"
+                  className="card group relative flex h-full items-start gap-4 p-5 transition hover:border-brand-300 hover:shadow-[var(--shadow-lift)]"
                 >
-                  <span
-                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${t.tone} text-white shadow-lg transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3`}
-                  >
-                    <Icon className="h-6 w-6" aria-hidden="true" />
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 transition-colors group-hover:bg-brand-50 group-hover:text-brand-700">
+                    <Icon className="h-5 w-5" aria-hidden="true" />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1 font-semibold text-slate-900">
@@ -301,7 +257,7 @@ export default function Home() {
                         aria-hidden="true"
                       />
                     </span>
-                    <span className="mt-1 block text-sm text-slate-600">{t.text}</span>
+                    <span className="mt-1 block text-sm text-slate-700">{t.text}</span>
                   </span>
                 </Link>
               </StaggerItem>
@@ -335,12 +291,12 @@ export default function Home() {
                     to={`/machines/${m.id}`}
                     className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 transition hover:bg-slate-50"
                   >
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
                       <Cpu className="h-4 w-4" aria-hidden="true" />
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{m.name}</span>
-                      <span className="block text-xs text-slate-500">{m.controller}</span>
+                      <span className="block text-xs text-slate-600">{m.controller}</span>
                     </span>
                     <MachineLiveBadge machineId={m.id} />
                   </Link>
@@ -354,29 +310,29 @@ export default function Home() {
           <h2 id="flow-title" className="font-semibold tracking-tight">
             From drawing to machined part
           </h2>
-          <p className="text-xs text-slate-500">The 11 steps of the design. Click a step to go there.</p>
+          <p className="text-xs text-slate-600">The 11 steps of the design. Click a step to go there.</p>
           <ol className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {FLOW.map((f, i) => (
               <motion.li
                 key={f.step}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.15 + i * 0.04 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.05 + i * 0.02 }}
               >
                 <Link
                   to={f.to}
-                  className="group flex items-center gap-3 rounded-xl border border-slate-100 px-3 py-2 transition hover:border-brand-200 hover:bg-brand-50/40"
+                  className="group flex min-h-12 items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 transition hover:border-slate-300 hover:bg-slate-50"
                 >
                   <span
                     className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                      f.live ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-400'
+                      f.live ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'
                     }`}
                   >
                     {i + 1}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-slate-800">{f.step}</span>
-                    <span className="block truncate text-xs text-slate-500">{f.live ? f.who : f.note}</span>
+                    <span className="block truncate text-xs text-slate-600">{f.live ? f.who : f.note}</span>
                   </span>
                   {f.live ? (
                     <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-label="available" />
@@ -413,7 +369,7 @@ export default function Home() {
                   to={`/runs/${r.id}`}
                   className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 transition hover:bg-slate-50"
                 >
-                  <span className="font-mono text-xs text-slate-400">#{r.id}</span>
+                  <span className="font-mono text-xs text-slate-600">#{r.id}</span>
                   <span className="min-w-0 flex-1 truncate text-sm">
                     <span className="font-mono font-medium">{r.program_name}</span> on {r.machine_name}
                     {r.operator && <span className="text-slate-500"> · {r.operator}</span>}

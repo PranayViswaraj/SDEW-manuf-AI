@@ -54,7 +54,7 @@ export default function CommandPalette({
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 px-4 pt-[12vh] backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 px-4 pt-[12vh]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -111,15 +111,15 @@ export default function CommandPalette({
                       onClick={() => go(c)}
                     >
                       <span
-                        className={`flex h-9 w-9 items-center justify-center rounded-lg ${on ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500'}`}
+                        className={`flex h-9 w-9 items-center justify-center rounded-lg ${on ? 'bg-brand-100 text-brand-800' : 'bg-slate-100 text-slate-600'}`}
                       >
                         <Icon className="h-4.5 w-4.5" aria-hidden="true" />
                       </span>
                       <span className="flex-1">
                         <span className="block text-sm font-medium">{c.label}</span>
-                        <span className="block text-xs text-slate-500">{c.hint}</span>
+                        <span className="block text-xs text-slate-600">{c.hint}</span>
                       </span>
-                      <span className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase">
+                      <span className="text-[10px] font-semibold tracking-wide text-slate-600 uppercase">
                         {c.group}
                       </span>
                       {on && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
@@ -128,7 +128,7 @@ export default function CommandPalette({
                 );
               })}
             </ul>
-            <div className="flex items-center gap-3 border-t border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-500">
+            <div className="flex items-center gap-3 border-t border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-600">
               <span>
                 <span className="kbd">↑</span> <span className="kbd">↓</span> move
               </span>

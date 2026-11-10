@@ -65,9 +65,13 @@ cd web && npm run dev
   "materials" - and press Enter.
 - **Home**: live counts, big buttons for what your role does, machines right now, the 11-step
   drawing-to-part flow (shows which steps are live and which wait for inputs), latest runs.
-- Animations switch off automatically when the computer's "reduce motion" setting is on.
-  Keyboard: Tab moves through everything, "Skip to content" is the first Tab stop, Esc closes
-  dialogs.
+- **Accessibility menu** (person icon in the top bar), saved on each computer:
+  text size Normal / Large / Larger (the whole app scales), **High contrast** (darker text and
+  borders, underlined links), **Reduce motion** (no animations). Animations also switch off when
+  the computer's own "reduce motion" setting is on.
+- Keyboard: Tab moves through everything, "Skip to content" is the first Tab stop, Esc closes
+  dialogs and menus. Each page sets the browser tab title; run status changes are announced to
+  screen readers. Status is always written in words, never shown by colour alone.
 
 ## Logging in (dev)
 
