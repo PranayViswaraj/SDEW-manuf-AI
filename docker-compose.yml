@@ -25,8 +25,10 @@ services:
       MANUFAI_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-manufai}:${POSTGRES_PASSWORD:-manufai}@db:5432/${POSTGRES_DB:-manufai}
       MANUFAI_JWT_SECRET: ${MANUFAI_JWT_SECRET:-dev-only-insecure-secret-change-me-in-prod}
       MANUFAI_CORS_ORIGINS: ${MANUFAI_CORS_ORIGINS:-http://localhost:5173}
-      # Dev users with published passwords (README). Set false for any shared deployment.
-      MANUFAI_SEED_DEV_DATA: ${MANUFAI_SEED_DEV_DATA:-true}
+      # Off by default: only the real LMW Lathe 1 and the 5 trusted programs are created.
+      # Demo mode (dev users with public passwords, SIM Lathe, sample data):
+      #   MANUFAI_SEED_DEV_DATA=true docker compose --profile demo up --build
+      MANUFAI_SEED_DEV_DATA: ${MANUFAI_SEED_DEV_DATA:-false}
       MANUFAI_SAMPLES_DIR: /samples/programs
       MANUFAI_SAMPLE_MATERIALS_CSV: /samples/materials/raw-material-register.sample.csv
     volumes:
@@ -42,10 +44,10 @@ services:
       timeout: 3s
       retries: 20
 
-  # DEV ONLY: bridge with two SIMULATED machines. Stop it (docker compose stop bridge) to see
-  # the machine status go Stale/Offline in the web app.
+  # DEMO ONLY: bridge with SIMULATED machines. Starts only with --profile demo.
   bridge:
     build: ./bridge
+    profiles: ["demo"]
     depends_on:
       server:
         condition: service_healthy

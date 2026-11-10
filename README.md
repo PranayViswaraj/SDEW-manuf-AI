@@ -80,10 +80,23 @@ cd web && npm run dev
   dialogs and menus. Each page sets the browser tab title; run status changes are announced to
   screen readers. Status is always written in words, never shown by colour alone.
 
-## Logging in (dev)
+## Logging in
 
-With `MANUFAI_SEED_DEV_DATA=true` (the default in `docker-compose.yml` and `.env.example`) the server
-creates one user per role on start-up. **These passwords are public. Dev only.** Seeding is refused
+By default the database holds **only real data**: the machine **LMW Lathe 1** (every unknown value
+empty) and the 5 trusted programs O0001–O0004, O0009. No users exist until you create one:
+
+```bash
+docker compose exec server python -m app.cli create-user YOURNAME --role admin --full-name "Your Name"
+docker compose exec server python -m app.cli check
+```
+
+Add everyone else on the **Users** page.
+
+### Demo mode (optional, dev only)
+
+`MANUFAI_SEED_DEV_DATA=true docker compose --profile demo up --build` also creates the simulated
+bridge, a **SIM Lathe**, the demo program O9000, the DEMO-SIM-001 feature table, sample materials
+(marked SAMPLE DATA) and one user per role. **These passwords are public.** Seeding is refused
 when `MANUFAI_ENV=production`.
 
 | Username     | Password              | Roles      | Allowed to press Start |
@@ -325,7 +338,7 @@ status; every 2 s it sends a heartbeat. It acts only on **signed** commands (`se
 unknown machines and program-hash mismatches. If the link drops it takes no machine action and
 reconnects with backoff.
 
-**See it:** with `docker compose up`, the `bridge` container drives two **simulated** machines:
+**See it (demo mode, see "Logging in"):** with `docker compose --profile demo up`, the `bridge` container drives two **simulated** machines:
 LMW Lathe 1 (remote control off) and a fictional "SIM Lathe (dev - simulated)" (remote control on).
 Open **Machines -> LMW Lathe 1**: the *Live status* panel shows mode, run state, alarms, program,
 block, spindle, override and part count with an **Online** badge and a **SIMULATED** tag. Then:
