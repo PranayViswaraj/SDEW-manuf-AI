@@ -26,3 +26,4 @@ Every `TODO(REAL-DATA):` in the code is listed here. Search the repo for `TODO(R
 | 20 | Confirm the safety checklist wording with the shop floor (6 items from the build plan) | Run screen | `server/app/services/run_service.py` `CHECKLIST` | M11 |
 | 21 | First-piece measurement template per part (which dimensions to measure) - needs drawings | First piece form | `web/src/pages/RunDetail.tsx` | M11 |
 | 22 | Programmer templates, cutting speeds and feeds for the deterministic program generator | `ProgramGenerator` (interface only) | `server/app/gcode/generator.py` | M12 |
+| 23 | Whether parts are made from bar (bar feeder / long bar) or cut blanks, and if a parting tool is then required | Capability check tool rules | `server/app/services/capability_check.py` `REQUIRED_TOOLS` | M13 |

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import type { Cell, CellValue, FeatureSchema, FeatureTable, FeatureTableData, FieldDef } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
+import CapablePanel from '../components/CapablePanel';
 import { ErrorBox, Notice } from '../components/ui';
 
 const UNIT: Record<FieldDef['kind'], string> = { mm: 'mm', deg: '°', tol: 'mm', text: '' };
@@ -323,6 +324,8 @@ export default function PartDetail() {
           </button>
         </div>
       )}
+
+      {ft.status === 'confirmed' && !dirty && <CapablePanel featureTableId={ft.id} />}
 
       {ft.programs.length > 0 && (
         <section className="rounded border bg-white p-4 text-sm">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import type { Machine, ProgramDetail, ProgramSummary } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
@@ -10,8 +10,9 @@ export default function Programs() {
   const { hasRole } = useAuth();
   const [rows, setRows] = useState<ProgramSummary[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
-  const [machineId, setMachineId] = useState('');
-  const [part, setPart] = useState('');
+  const [params] = useSearchParams();
+  const [machineId, setMachineId] = useState(params.get('machine') ?? '');
+  const [part, setPart] = useState(params.get('part') ?? '');
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
 

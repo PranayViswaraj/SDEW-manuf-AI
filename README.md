@@ -240,6 +240,19 @@ feature table** with that part number, enter + tick every value from the drawing
 (`server/app/gcode/generator.py`) are interfaces only. The AI package is tested to never import
 program, G-code or run-control code.
 
+## Capability check (Milestone 13)
+
+Open a **confirmed** part on the **Parts** page: the *Machines for this part* section lists machines
+that are **capable, online and idle**, and every other machine with the reason it is not offered.
+Rules (`server/app/services/capability_check.py`, no AI): machine in service; bar diameter <= max bar
+diameter; largest diameter <= max turning diameter; overall length <= max turning length; the tool
+list has a tool for every feature (turning tool for OD/face/chamfer/radius, boring bar + drill for a
+bore, drill, grooving, threading). **Unknown limits or an empty tool list give "Unknown – machine
+limits not entered" - never "capable".**
+
+In dev: LMW Lathe 1 shows *Unknown* (its limits are not entered); the fictional SIM Lathe is capable
+for DEMO-SIM-001 and listed as available while the bridge is running.
+
 ## Run all tests and linters (one command)
 
 ```powershell
@@ -283,4 +296,5 @@ Windows -> `bridge/deploy/install-windows-service.md` (NSSM); Linux ->
 
 ## Status
 
-See [docs/open-items.md](docs/open-items.md) for everything waiting on real-world data.
+Milestones 1-13 are built (tags `m1`..`m13`). See [docs/build-plan.md](docs/build-plan.md)
+for the plan and [docs/open-items.md](docs/open-items.md) for everything waiting on real-world data.
