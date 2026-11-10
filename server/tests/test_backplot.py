@@ -153,3 +153,20 @@ def test_toolpath_endpoint(
     body = r.json()
     assert body["segments"] and body["blocks"] and body["stock"]["r"] == 25.0
     assert {"z_min", "z_max", "r_min", "r_max"} <= set(body["bounds"])
+
+
+def test_segments_carry_operation_and_tool_name() -> None:
+    bp = backplot(sample("O0001"))
+    ops = {s.op for s in bp.segments}
+    assert ops == {1, 2}  # 1ST OPN and 2ND OPN (split at the first M30)
+    labels = {s.label for s in bp.segments if s.op == 1}
+    assert {"32.0 UDRILL", "WNMG 0.8 RG", "BORE FIN", "3MM PARTING"} <= labels
+    drill = next(s for s in bp.segments if s.label == "32.0 UDRILL" and s.kind == "feed")
+    assert drill.to_dict()["op"] == 1 and drill.to_dict()["label"] == "32.0 UDRILL"
+
+
+def test_unlabelled_tool_gets_no_stale_name() -> None:
+    bp = backplot(sample("O0009"))
+    # N4 has no comment: its tool must not inherit the previous "19 UD" name.
+    n4 = [s for s in bp.segments if s.op == 2 and s.tool == 1]
+    assert n4 and all(s.label == "" for s in n4)

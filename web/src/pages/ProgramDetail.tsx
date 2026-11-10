@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import type { Issue, ProgramDetail as Detail } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { ProgramStatusBadge, ProvenBadge } from '../components/ProgramStatusBadge';
+import MachiningView from '../components/MachiningView';
 import ToolpathView from '../components/ToolpathView';
 import { ErrorBox, PageLoading, Notice } from '../components/ui';
 
@@ -214,6 +215,8 @@ export default function ProgramDetail() {
           ))}
         </ul>
       </section>
+
+      <MachiningView programId={p.id} />
 
       <ToolpathView programId={p.id} selectedLine={highlight} onSelectLine={setHighlight} />
 

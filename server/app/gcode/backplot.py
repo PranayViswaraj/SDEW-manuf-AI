@@ -30,12 +30,16 @@ class Segment:
     kind: Kind
     points: list[Point]
     cycle: bool = False
+    op: int = 1  # operation number (a new one starts after each M30 / M02)
+    label: str = ""  # tool name from the program comments, e.g. "32.0 UDRILL"
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "block": self.block,
             "line": self.line,
             "tool": self.tool,
+            "op": self.op,
+            "label": self.label,
             "kind": self.kind,
             "cycle": self.cycle,
             "points": [[round(z, 4), round(r, 4)] for z, r in self.points],
@@ -104,6 +108,9 @@ class _Plotter:
         self.s = _State()
         self.cur: Block | None = None
         self._corner_warned = False
+        self.op = 1
+        self.label = ""
+        self.pending_label = ""
 
     # ------------------------------------------------------------ output helpers
 
@@ -111,7 +118,16 @@ class _Plotter:
         if len(pts) < 2 or self.cur is None:
             return
         self.res.segments.append(
-            Segment(self.cur.index, self.cur.line_no, self.s.tool, kind, pts, cycle)
+            Segment(
+                self.cur.index,
+                self.cur.line_no,
+                self.s.tool,
+                kind,
+                pts,
+                cycle,
+                op=self.op,
+                label=self.label,
+            )
         )
 
     def _move_to(self, x: float | None, z: float | None, kind: Kind, cycle: bool = False) -> None:
@@ -189,7 +205,11 @@ class _Plotter:
         if not b.words:
             return i + 1
         gs = b.g_codes()
+        # Tool names live in comments on N blocks, e.g. N1(32.0 UDRILL) before T0101.
+        if b.seq is not None:
+            self.pending_label = b.comments[0].strip() if b.comments else ""
         if b.get("T") is not None:
+            self.label = b.comments[0].strip() if b.comments else self.pending_label
             digits = b.get("T").text.split(".")[0]  # type: ignore[union-attr]
             if digits.isdigit() and len(digits) >= 3:
                 self.s.tool = int(digits[:-2])
@@ -232,6 +252,7 @@ class _Plotter:
             self._motion(b)
         if 30 in mcs or 2 in mcs:
             self.s.x = self.s.z = None  # end of operation: part re-clamped next
+            self.op += 1
         return i + 1
 
     def _motion(self, b: Block) -> None:

@@ -257,6 +257,22 @@ feature table** with that part number, enter + tick every value from the drawing
 (`server/app/gcode/generator.py`) are interfaces only. The AI package is tested to never import
 program, G-code or run-control code.
 
+## Machining simulation
+
+Every program page has a **Machining simulation** above the tool-path drawing: press **Play** and
+watch the bar being cut, shown as a hatched lathe cross-section with the spindle axis in the middle.
+Controls: Play / Pause, previous / next block, restart, speed 1x 2x 5x 10x, and a progress slider.
+The readout shows the block, tool (name from the program comments), X/Z position and rapid / feed.
+
+- Each operation (1st, 2nd …) is shown on its own, because the part is re-clamped in between.
+- Tools are recognised from their names: drills open a hole of the diameter in the name
+  ("32.0 UDRILL"), boring / ID tools cut from the inside, parting / grooving tools only cut their
+  width ("3MM PARTING"), everything else turns from the outside. Unnamed tools are judged by where
+  the tip is. Rapid moves never cut.
+- Enter the real **Bar Ø** for the right stock size (otherwise it is estimated from the cuts).
+- It is a visual aid (`web/src/sim/machining.ts`, fixed rules): it does not prove a program is safe
+  and does not replace the programmer's approval.
+
 ## Capability check (Milestone 13)
 
 Open a **confirmed** part on the **Parts** page: the *Machines for this part* section lists machines
