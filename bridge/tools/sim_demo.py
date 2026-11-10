@@ -12,7 +12,6 @@ from pathlib import Path
 
 from bridge.drivers.base import RunState
 from bridge.drivers.simulated import SimConfig, SimulatedDriver
-from bridge.program_text import program_number_from_text
 
 DEFAULT_PROGRAM = Path(__file__).resolve().parents[2] / "samples" / "demo" / "O9000"
 
