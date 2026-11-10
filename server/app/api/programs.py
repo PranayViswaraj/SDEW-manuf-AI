@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import any_user, get_audit, require_roles
 from app.db.models import Machine, Program, ProgramSource, ProgramStatus, Role, User
 from app.db.session import get_db
+from app.gcode.backplot import backplot, stock_outline
 from app.services.approval import approval_problem
 from app.services.audit_log import AuditLogger, AuditResult
 from app.services.program_store import (
@@ -174,6 +175,19 @@ def get_program(
     program_id: int, db: Session = Depends(get_db), _: User = Depends(any_user)
 ) -> ProgramDetail:
     return _detail(db, _get(db, program_id))
+
+
+@router.get("/{program_id}/toolpath")
+def toolpath(
+    program_id: int,
+    bar_diameter: float | None = Query(default=None, gt=0, le=1000),
+    db: Session = Depends(get_db),
+    _: User = Depends(any_user),
+) -> dict[str, Any]:
+    """Backplot segments in the X-Z plane (z, radius), one entry per drawn move."""
+    p = _get(db, program_id)
+    plot = backplot(p.text)
+    return plot.to_dict(stock=stock_outline(bar_diameter, plot))
 
 
 @router.post("", response_model=ProgramDetail, status_code=status.HTTP_201_CREATED)

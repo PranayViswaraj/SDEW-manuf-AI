@@ -21,3 +21,5 @@ Every `TODO(REAL-DATA):` in the code is listed here. Search the repo for `TODO(R
 | 15 | LMW machine-specific M codes (e.g. what M11 does) | Validator: turn the `W_MACHINE_M_CODE` warning into a known list | `server/app/gcode/validator.py` `STANDARD_M` | M9 |
 | 16 | Parameter 3401 (decimal point programming) on the 0i-TF | Validator `W_NO_DECIMAL`, backplot units | `server/app/gcode/validator.py` | M9 |
 | 17 | Confirm the turret setup per operation: the trusted programs use the same T code for different tools in 1st/2nd operation (e.g. O0001 T0404 = parting and TNMG finish) | Tool list (one list per machine today) | validator `W_TOOL_CONFLICT` | M9 |
+| 18 | G83 R-point meaning on this 0i-TF (incremental vs absolute, parameter dependent) | Backplot accuracy for G83 (drawn from the start point) | `server/app/gcode/backplot.py` `_g83` | M10 |
+| 19 | First block of G71 in O0004 uses `U1.0 W.5` (W instead of R): confirm meaning with the programmer | Backplot G71 retract | `server/app/gcode/backplot.py` `_rough_cycle` | M10 |

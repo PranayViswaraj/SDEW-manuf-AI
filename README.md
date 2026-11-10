@@ -176,6 +176,20 @@ different tools, code after M30, coordinates without a decimal point, G96 withou
 The 5 trusted programs have **no errors**; their expected warnings are pinned in
 `server/tests/test_validator.py`.
 
+## Tool path simulation (Milestone 10)
+
+Every program page shows a **Tool path** drawing (`server/app/gcode/backplot.py`, fixed code):
+Z horizontal, X as radius vertical, rapid moves dashed, feed moves solid, one colour per tool.
+Drag the **block slider** (or click a segment, or a line in the program text) to step through the
+program; the current block is highlighted in both. Enter a **Bar Ø** to draw the stock outline.
+
+Supported: G0/G1/G2/G3 (R and I/K), X/Z and U/W, `A` angle moves, G28/G30, G70/G71/G72 (rough passes
+from the P..Q profile), G74/G83 peck drilling (Q in microns), G76 thread passes, G90/G92/G94.
+Anything that cannot be drawn is listed as a warning and its finish profile is drawn instead.
+Limitations: the programmed path is drawn (no nose-radius compensation, corner R drawn sharp), and
+both operations of a two-operation program are drawn in the same coordinates. Visual checks of the
+5 trusted programs: `docs/images/backplot-check-*.png`.
+
 ## Run all tests and linters (one command)
 
 ```powershell

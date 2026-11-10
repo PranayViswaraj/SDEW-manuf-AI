@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import type { Issue, ProgramDetail as Detail } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { ProgramStatusBadge, ProvenBadge } from '../components/ProgramStatusBadge';
+import ToolpathView from '../components/ToolpathView';
 import { ErrorBox, Notice } from '../components/ui';
 
 const SEV_CLS: Record<Issue['severity'], string> = {
@@ -213,6 +214,8 @@ export default function ProgramDetail() {
           ))}
         </ul>
       </section>
+
+      <ToolpathView programId={p.id} selectedLine={highlight} onSelectLine={setHighlight} />
 
       <section className="rounded border bg-white">
         <h2 className="border-b px-4 py-2 font-semibold">Program text</h2>
