@@ -56,6 +56,27 @@ cd server && ../.venv/bin/alembic upgrade head
 cd web && npm run dev
 ```
 
+## Logging in (dev)
+
+With `MANUFAI_SEED_DEV_DATA=true` (the default in `docker-compose.yml` and `.env.example`) the server
+creates one user per role on start-up. **These passwords are public. Dev only.** Seeding is refused
+when `MANUFAI_ENV=production`.
+
+| Username     | Password              | Roles      | Allowed to press Start |
+|--------------|-----------------------|------------|------------------------|
+| `admin`      | `admin-dev-pass`      | admin      | no                     |
+| `engineer`   | `engineer-dev-pass`   | engineer   | no                     |
+| `programmer` | `programmer-dev-pass` | programmer | no                     |
+| `operator`   | `operator-dev-pass`   | operator   | yes                    |
+
+- **Users** page (admin): tick roles per user (a user can have several), and the separate
+  **Allowed to press Start** list.
+- **Audit log** page (admin): every action, newest first, filter by action. Entries cannot be edited
+  or deleted: there is no API for it, the app blocks it, and database triggers block it too.
+
+Without Docker, seed manually: `cd server; ..\.venv\Scripts\python -m app.seed` (set
+`MANUFAI_SEED_DEV_DATA=true` in `.env` first).
+
 ## Run all tests and linters (one command)
 
 ```powershell

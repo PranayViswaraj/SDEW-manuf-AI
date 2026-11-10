@@ -23,8 +23,10 @@ services:
     environment:
       MANUFAI_ENV: ${MANUFAI_ENV:-dev}
       MANUFAI_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-manufai}:${POSTGRES_PASSWORD:-manufai}@db:5432/${POSTGRES_DB:-manufai}
-      MANUFAI_JWT_SECRET: ${MANUFAI_JWT_SECRET:-dev-only-insecure-secret}
+      MANUFAI_JWT_SECRET: ${MANUFAI_JWT_SECRET:-dev-only-insecure-secret-change-me-in-prod}
       MANUFAI_CORS_ORIGINS: ${MANUFAI_CORS_ORIGINS:-http://localhost:5173}
+      # Dev users with published passwords (README). Set false for any shared deployment.
+      MANUFAI_SEED_DEV_DATA: ${MANUFAI_SEED_DEV_DATA:-true}
     depends_on:
       db:
         condition: service_healthy

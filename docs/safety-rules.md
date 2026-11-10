@@ -3,6 +3,8 @@
 Each rule is enforced in code and has at least one automated test. The "Enforced in" column
 is filled in as each milestone lands.
 
+Role checks on every endpoint: `server/tests/test_route_roles.py` (every route must be declared).
+
 | # | Rule | Enforced in | Tests |
 |---|------|-------------|-------|
 | 1 | Software never replaces the physical emergency stop. No button is ever presented as an emergency stop. | Web UI (M11) | – |

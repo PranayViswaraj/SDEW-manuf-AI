@@ -1,19 +1,116 @@
-from collections.abc import Iterator
+"""Shared fixtures.
+
+The schema is built ONCE per test session by running the real Alembic migrations (so DB
+triggers exist exactly as in production), then each test gets its own copy of that file.
+"""
+
+import shutil
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from alembic import command
+from alembic.config import Config
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
+from app.auth.security import create_access_token, hash_password
 from app.config import Settings
+from app.db.models import Role, User
 from app.main import create_app
 
+SERVER_DIR = Path(__file__).resolve().parents[1]
+REPO_DIR = SERVER_DIR.parent
+JWT_SECRET = "test-secret-that-is-at-least-32-characters"
+
+
+def sqlite_url(path: Path) -> str:
+    return f"sqlite:///{path.as_posix()}"
+
+
+@pytest.fixture(scope="session")
+def template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    path = tmp_path_factory.mktemp("template") / "template.db"
+    cfg = Config(str(SERVER_DIR / "alembic.ini"))
+    cfg.set_main_option("script_location", str(SERVER_DIR / "app" / "db" / "migrations"))
+    cfg.set_main_option("sqlalchemy.url", sqlite_url(path))
+    command.upgrade(cfg, "head")
+    return path
+
 
 @pytest.fixture
-def settings(tmp_path: Path) -> Settings:
-    return Settings(database_url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
+def db_path(template_db: Path, tmp_path: Path) -> Path:
+    path = tmp_path / "test.db"
+    shutil.copy(template_db, path)
+    return path
 
 
 @pytest.fixture
-def client(settings: Settings) -> Iterator[TestClient]:
-    with TestClient(create_app(settings)) as c:
+def settings(db_path: Path) -> Settings:
+    return Settings(
+        database_url=sqlite_url(db_path),
+        jwt_secret=JWT_SECRET,
+        samples_dir=str(REPO_DIR / "samples" / "programs"),
+    )
+
+
+@pytest.fixture
+def app(settings: Settings) -> FastAPI:
+    return create_app(settings)
+
+
+@pytest.fixture
+def client(app: FastAPI) -> Iterator[TestClient]:
+    with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture
+def db(app: FastAPI) -> Iterator[Session]:
+    with app.state.session_factory() as s:
+        yield s
+
+
+UserFactory = Callable[..., User]
+
+
+@pytest.fixture
+def make_user(db: Session) -> UserFactory:
+    counter = {"n": 0}
+
+    def _make(
+        *roles: Role,
+        username: str | None = None,
+        can_start_machine: bool = False,
+        password: str = "password123",
+    ) -> User:
+        counter["n"] += 1
+        u = User(
+            username=username or f"user{counter['n']}",
+            full_name="Test User",
+            password_hash=hash_password(password),
+            can_start_machine=can_start_machine,
+        )
+        u.set_roles(set(roles))
+        db.add(u)
+        db.commit()
+        return u
+
+    return _make
+
+
+def token_for(user: User) -> str:
+    return create_access_token(user.id, JWT_SECRET, 60)
+
+
+def headers_for(user: User) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token_for(user)}"}
+
+
+@pytest.fixture
+def role_headers(make_user: UserFactory) -> dict[str, dict[str, str]]:
+    """Auth headers for one user per role, plus 'none' (logged in, no roles)."""
+    out = {r.value: headers_for(make_user(r, username=f"only_{r.value}")) for r in Role}
+    out["none"] = headers_for(make_user(username="no_roles"))
+    return out

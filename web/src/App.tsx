@@ -1,54 +1,57 @@
-import { NavLink, Route, Routes } from 'react-router-dom';
-import HealthBadge from './components/HealthBadge';
+import type { ReactNode } from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
+import type { Role } from './api/types';
+import { useAuth } from './auth/AuthContext';
+import Layout from './components/Layout';
+import Home from './pages/Home';
+import Login from './pages/Login';
+import Logs from './pages/Logs';
+import Users from './pages/Users';
 
-// Pages are filled in milestone by milestone (Login, Machines, Programs, Run, Logs, Materials).
-const NAV = [
-  { to: '/', label: 'Home' },
-  { to: '/machines', label: 'Machines' },
-  { to: '/programs', label: 'Programs' },
-  { to: '/materials', label: 'Materials' },
-  { to: '/logs', label: 'Logs' },
-];
-
-function Placeholder({ title }: { title: string }) {
-  return (
-    <div>
-      <h1 className="text-xl font-semibold">{title}</h1>
-      <p className="mt-2 text-gray-600">Not built yet.</p>
-    </div>
-  );
+function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] }) {
+  const { user, loading, hasRole } = useAuth();
+  if (loading) return <p className="p-4 text-gray-600">Loading…</p>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (roles && !hasRole(...roles)) {
+    return (
+      <p role="alert" className="p-4 text-red-800">
+        You need the {roles.join(' or ')} role to open this page.
+      </p>
+    );
+  }
+  return <>{children}</>;
 }
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
-      <header className="flex items-center justify-between border-b bg-white px-4 py-3">
-        <div className="flex items-center gap-6">
-          <span className="text-lg font-bold">ManufAI</span>
-          <nav className="flex gap-4 text-sm">
-            {NAV.map((n) => (
-              <NavLink
-                key={n.to}
-                to={n.to}
-                end
-                className={({ isActive }) => (isActive ? 'font-semibold text-blue-700' : 'text-gray-600')}
-              >
-                {n.label}
-              </NavLink>
-            ))}
-          </nav>
-        </div>
-        <HealthBadge />
-      </header>
-      <main className="p-4">
-        <Routes>
-          <Route path="/" element={<Placeholder title="ManufAI" />} />
-          <Route path="/machines" element={<Placeholder title="Machines" />} />
-          <Route path="/programs" element={<Placeholder title="Programs" />} />
-          <Route path="/materials" element={<Placeholder title="Materials" />} />
-          <Route path="/logs" element={<Placeholder title="Logs" />} />
-        </Routes>
-      </main>
-    </div>
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route
+        element={
+          <RequireAuth>
+            <Layout />
+          </RequireAuth>
+        }
+      >
+        <Route path="/" element={<Home />} />
+        <Route
+          path="/users"
+          element={
+            <RequireAuth roles={['admin']}>
+              <Users />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/logs"
+          element={
+            <RequireAuth roles={['admin']}>
+              <Logs />
+            </RequireAuth>
+          }
+        />
+        <Route path="*" element={<p className="text-gray-600">Page not found.</p>} />
+      </Route>
+    </Routes>
   );
 }
