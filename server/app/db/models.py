@@ -192,3 +192,58 @@ class Bridge(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     signing_key: Mapped[str] = mapped_column(String(128))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class ProgramStatus(StrEnum):
+    DRAFT = "draft"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    RETIRED = "retired"
+
+
+class ProgramSource(StrEnum):
+    """Where a program came from. There is deliberately no AI source (safety rule 2)."""
+
+    TRUSTED_IMPORT = "trusted_import"
+    UPLOAD = "upload"
+    DEMO = "demo"
+    GENERATOR = "generator"  # deterministic ProgramGenerator (future)
+
+
+class Program(Base):
+    """One VERSION of a CNC program for one part on one machine.
+
+    A "family" is (machine_id, part_number, program_number). Changing the text always creates a
+    new version (draft); approval belongs to one version and its exact text hash.
+    """
+
+    __tablename__ = "programs"
+    __table_args__ = (
+        UniqueConstraint(
+            "machine_id", "part_number", "program_number", "version", name="uq_program_version"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    machine_id: Mapped[int] = mapped_column(ForeignKey("machines.id", ondelete="RESTRICT"))
+    part_number: Mapped[str] = mapped_column(String(64), index=True)
+    program_number: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(128), default="")
+    version: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text)  # exactly as stored (may contain \r)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(16), default=ProgramStatus.DRAFT.value)
+    source: Mapped[str] = mapped_column(String(32))
+    source_note: Mapped[str] = mapped_column(String(256), default="")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    approved_by_name: Mapped[str | None] = mapped_column(String(128))
+    approved_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    approved_hash: Mapped[str | None] = mapped_column(String(64))
+    status_note: Mapped[str] = mapped_column(Text, default="")
+    proven: Mapped[bool] = mapped_column(Boolean, default=False)
+    proven_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    proven_note: Mapped[str] = mapped_column(String(256), default="")
+
+    machine: Mapped[Machine] = relationship(lazy="joined")

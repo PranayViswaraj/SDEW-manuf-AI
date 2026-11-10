@@ -182,3 +182,45 @@ export interface BridgeInfo {
 }
 
 export const oNumber = (n: number | null | undefined): string => (n ? `O${String(n).padStart(4, '0')}` : '–');
+
+export type ProgramStatus = 'draft' | 'approved' | 'rejected' | 'retired';
+
+export interface ProgramSummary {
+  id: number;
+  machine_id: number;
+  machine_name: string;
+  part_number: string;
+  program_number: number;
+  name: string;
+  title: string;
+  version: number;
+  is_latest: boolean;
+  sha256: string;
+  status: ProgramStatus;
+  source: string;
+  source_note: string;
+  approved_by_name: string | null;
+  approved_at: string | null;
+  proven: boolean;
+  created_at: string;
+  error_count: number;
+  warning_count: number;
+}
+
+export interface Issue {
+  code: string;
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  line: number | null;
+}
+
+export interface ProgramDetail extends ProgramSummary {
+  text: string;
+  lines: string[];
+  approved_hash: string | null;
+  status_note: string;
+  proven_note: string;
+  validation: { ok: boolean; errors: Issue[]; warnings: Issue[]; infos: Issue[] };
+  versions: { id: number; version: number; status: ProgramStatus; sha256: string; created_at: string }[];
+  sendable_problem: string | null;
+}

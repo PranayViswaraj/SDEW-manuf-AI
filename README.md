@@ -153,6 +153,29 @@ Practice without a machine: `--simulate` (simulated 0i-TF preloaded with the 5 t
 If step 1 fails: power, cable, IP/subnet, port, PC firewall. If step 2 fails with "FOCAS library not
 found": wrong `--lib` path, or a 32-bit DLL with 64-bit Python.
 
+## Programs, approval and validator (Milestone 9)
+
+**Programs** page lists the latest version of every program. On first start the server imports
+the 5 trusted O-files from `samples/programs/` as **approved + proven** programs for LMW Lathe 1
+(source "trusted, supplied by company"), byte-for-byte, with their SHA-256.
+
+Open a program to see: the exact hash, version history, validator results (click a line number to
+jump to it in the text) and whether it can be sent. A programmer can:
+- **Upload program** (saved as draft; part number taken from the header comment if not given),
+- **Approve** (only the latest version, only with no validation errors),
+- **Reject** (with a reason) or **Retire**,
+- **Edit (new version)**: the text is never changed in place. A new draft version is created and the
+  previously approved version is retired, so approval is always tied to one exact text hash.
+
+The **validator** is fixed rules, no AI. Errors (block approval and sending): `%` start/end, O-number
+header, brackets, unreadable characters, unknown 0i-TF G codes, program must end with M30/M99,
+spindle speed above the machine limit (only when limits are entered), tools not in the machine's tool
+list (only when the list is filled in), missing `M99 P` targets. Warnings: M00 stops, multiple
+operations, `M99 Pn` skip lines, machine-specific M codes, empty tool list, the same T code used for
+different tools, code after M30, coordinates without a decimal point, G96 without a G50 clamp.
+The 5 trusted programs have **no errors**; their expected warnings are pinned in
+`server/tests/test_validator.py`.
+
 ## Run all tests and linters (one command)
 
 ```powershell

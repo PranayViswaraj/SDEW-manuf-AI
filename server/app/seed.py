@@ -16,6 +16,8 @@ from app.db.models import (
     Bridge,
     Machine,
     Material,
+    Program,
+    ProgramSource,
     Role,
     Tool,
     User,
@@ -25,6 +27,7 @@ from app.db.models import (
 from app.db.session import make_engine, make_session_factory
 from app.services.command_signing import hash_token
 from app.services.material_import import map_rows, parse_table, suggest_mapping
+from app.services.program_store import create_version, import_trusted_programs
 
 # username -> (full name, password, roles, can_start_machine). DEV ONLY - see README.
 DEV_USERS: dict[str, tuple[str, str, set[Role], bool]] = {
@@ -158,16 +161,47 @@ def seed_dev_bridge(db: Session, settings: Settings) -> list[str]:
     return log
 
 
+def seed_trusted_programs(db: Session, settings: Settings) -> list[str]:
+    """The company's trusted O-files -> approved programs for LMW Lathe 1 (always, not dev-only)."""
+    lmw = db.scalar(select(Machine).where(Machine.key == "lmw-lathe-1"))
+    if lmw is None:
+        return []
+    return import_trusted_programs(db, lmw, Path(settings.samples_dir))
+
+
+def seed_demo_program(db: Session, settings: Settings) -> list[str]:
+    """DEV ONLY: synthetic O9000 as a DRAFT for the fictional SIM lathe (never for LMW)."""
+    sim = db.scalar(select(Machine).where(Machine.key == SIM_MACHINE_KEY))
+    path = Path(settings.samples_dir).parent / "demo" / "O9000"
+    if sim is None or not path.is_file():
+        return []
+    if db.scalar(select(Program).where(Program.machine_id == sim.id)):
+        return []
+    create_version(
+        db,
+        machine=sim,
+        text=path.read_bytes().decode("ascii"),
+        source=ProgramSource.DEMO,
+        user=None,
+        part_number="DEMO-SIM-001",
+        source_note="SIMULATOR DEMO - NOT FOR MACHINE USE",
+    )
+    db.commit()
+    return ["created demo program O9000 (draft) for SIM Lathe"]
+
+
 def run_seed(settings: Settings, db: Session) -> list[str]:
     """Run all seed steps that apply to these settings. Returns a log of what was done."""
     log: list[str] = []
     log += seed_machines(db)
+    log += seed_trusted_programs(db, settings)
     if settings.seed_dev_data:
         if settings.env == "production":
             raise SeedRefusedError("Refusing to seed dev users in production.")
         log += [f"created dev user {u}" for u in seed_dev_users(db)]
         log += seed_sample_materials(db, settings.sample_materials_csv)
         log += seed_dev_bridge(db, settings)
+        log += seed_demo_program(db, settings)
     return log
 
 

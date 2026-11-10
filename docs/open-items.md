@@ -18,3 +18,6 @@ Every `TODO(REAL-DATA):` in the code is listed here. Search the repo for `TODO(R
 | 12 | Whether programs on the CNC are kept in sub-folders (e.g. `/SLEEVE/`) or in `PATH1` | Program list / send folder | `bridge/bridge/drivers/focas.py` `list_programs` | M6 |
 | 13 | Factory PC for the bridge (Windows or Linux), outbound network path to the server (WSS allowed), NTP time sync | Running the bridge as a service | `bridge/deploy/` | M8 |
 | 14 | Bridge token + signing key for the factory bridge (create on the Bridges page once the server is deployed) | Bridge config | `bridge/config.example.yaml` | M8 |
+| 15 | LMW machine-specific M codes (e.g. what M11 does) | Validator: turn the `W_MACHINE_M_CODE` warning into a known list | `server/app/gcode/validator.py` `STANDARD_M` | M9 |
+| 16 | Parameter 3401 (decimal point programming) on the 0i-TF | Validator `W_NO_DECIMAL`, backplot units | `server/app/gcode/validator.py` | M9 |
+| 17 | Confirm the turret setup per operation: the trusted programs use the same T code for different tools in 1st/2nd operation (e.g. O0001 T0404 = parting and TNMG finish) | Tool list (one list per machine today) | validator `W_TOOL_CONFLICT` | M9 |
