@@ -101,10 +101,10 @@ when `MANUFAI_ENV=production`.
 
 | Username     | Password              | Roles      | Allowed to press Start |
 |--------------|-----------------------|------------|------------------------|
-| `admin`      | `admin-dev-pass`      | admin      | no                     |
-| `engineer`   | `engineer-dev-pass`   | engineer   | no                     |
-| `programmer` | `programmer-dev-pass` | programmer | no                     |
-| `operator`   | `operator-dev-pass`   | operator   | yes                    |
+| `admin`      | `qwerty`              | admin      | no                     |
+| `engineer`   | `qwerty`              | engineer   | no                     |
+| `programmer` | `qwerty`              | programmer | no                     |
+| `operator`   | `qwerty`              | operator   | yes                    |
 
 - **Users** page (admin): tick roles per user (a user can have several), and the separate
   **Allowed to press Start** list.
@@ -246,7 +246,18 @@ programs, **Start a run**. The run screen shows:
    the screen says **"Program sent. Press Cycle Start at the machine."** and follows the run from
    live status.
 6. **First piece result** after the machine finishes: measurements, pass/fail, notes. A pass marks
-   the program **proven** for that part number.
+   the program **proven** for that part number. When the part has a confirmed feature table, the
+   form is **pre-filled** with every dimension to measure (overall length, each feature's sizes,
+   threads to check with a gauge). The feature's tolerance applies to its main dimension (e.g. an
+   OD's diameter): limits are nominal + the signed tolerances, values outside are marked **OUT**.
+   The operator still chooses Pass or Fail.
+
+**Made for the shop floor:** the screen always shows one "do this now" card with large buttons and
+a plain list of what is still missing; Feed hold / Stop appear only once the program is on the
+machine; the material picker lists matching bars first (✓) and warns when the chosen bar is not the
+grade or size the part needs; **Full screen** hides the browser for a tablet at the machine; after a
+run, **Run this program again** starts the next one. The Run page and Home show **Continue run #N**
+for any open run, and the Run page shows each machine's live state.
 
 Every step is in the audit log (`run_create`, `checklist_tick`, `send_program`, `start`,
 `run_started`, `run_completed`, `first_piece_result`, `program_proven`).

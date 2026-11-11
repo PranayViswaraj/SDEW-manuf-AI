@@ -227,6 +227,87 @@ def feature_table_problem(db: Session, part_number: str) -> str | None:
     return None
 
 
+def _num(v: CellValue) -> float | None:
+    return float(v) if isinstance(v, int | float) and not isinstance(v, bool) else None
+
+
+def _fmt(v: float) -> str:
+    return f"{v:g}"
+
+
+def build_inspection_plan(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """First-piece measurement rows from a feature table (fixed rules, no AI).
+
+    The tolerance of a feature applies to its first (main) dimension, e.g. an OD's diameter.
+    Its other dimensions are listed with their nominal only. Tolerances are signed values
+    added to the nominal (e.g. +0 / -0.05), so the limits are never guessed.
+    """
+    rows: list[dict[str, Any]] = []
+    length = _num(data["header"]["overall_length"]["value"])
+    if length is not None:
+        rows.append(
+            {"feature": "Overall length", "nominal": length, "unit": "mm", "min": None, "max": None}
+        )
+    for n, f in enumerate(data["features"], start=1):
+        label, fields = FEATURE_TYPES[f["type"]]
+        short = label.split(" (")[0]
+        cells = f["fields"]
+        if f["type"] == "thread":
+            size = cells["size"]["value"]
+            cls = cells["tol_class"]["value"]
+            pitch = _num(cells["pitch"]["value"])
+            desc = " ".join(str(x) for x in (size, f"x {_fmt(pitch)}" if pitch else None, cls) if x)
+            rows.append(
+                {
+                    "feature": f"{n}. Thread {desc}".strip(),
+                    "nominal": None,
+                    "unit": "gauge",
+                    "min": None,
+                    "max": None,
+                }
+            )
+            if (tl := _num(cells["length"]["value"])) is not None:
+                rows.append(
+                    {
+                        "feature": f"{n}. Thread length",
+                        "nominal": tl,
+                        "unit": "mm",
+                        "min": None,
+                        "max": None,
+                    }
+                )
+            continue
+        tp, tm = _num(cells.get("tol_plus", {}).get("value")), _num(
+            cells.get("tol_minus", {}).get("value")
+        )
+        dims = [(k, flabel, kind) for k, flabel, kind in fields if kind in ("mm", "deg")]
+        for i, (key, flabel, kind) in enumerate(dims):
+            nominal = _num(cells[key]["value"])
+            if nominal is None:
+                continue
+            lo = hi = None
+            if i == 0 and tp is not None and tm is not None:
+                lo, hi = sorted((round(nominal + tm, 6), round(nominal + tp, 6)))
+            rows.append(
+                {
+                    "feature": f"{n}. {short} {flabel.lower()}",
+                    "nominal": nominal,
+                    "unit": "°" if kind == "deg" else "mm",
+                    "min": lo,
+                    "max": hi,
+                }
+            )
+    return rows
+
+
+def inspection_plan(db: Session, part_number: str) -> list[dict[str, Any]]:
+    """Measurement rows for the first piece, only from a CONFIRMED, unchanged feature table."""
+    ft = db.scalar(select(FeatureTable).where(FeatureTable.part_number == part_number))
+    if ft is None or feature_table_problem(db, part_number) is not None:
+        return []
+    return build_inspection_plan(ft.data)
+
+
 def required_material(db: Session, part_number: str) -> dict[str, Any] | None:
     """Material grade and bar diameter from a CONFIRMED feature table, if any."""
     ft = db.scalar(select(FeatureTable).where(FeatureTable.part_number == part_number))

@@ -203,6 +203,29 @@ export default function Home() {
         </div>
       </section>
 
+      {hasRole('operator') &&
+        data?.runs
+          .filter((r) => ['checklist', 'send_failed', 'sent', 'running', 'completed'].includes(r.status))
+          .map((r) => (
+            <Link
+              key={r.id}
+              to={`/runs/${r.id}`}
+              className="flex items-center gap-4 rounded-2xl border-2 border-brand-300 bg-brand-50 p-4 transition hover:border-brand-500"
+            >
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white">
+                <ClipboardCheck className="h-6 w-6" aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-lg font-bold">
+                  Continue run #{r.id}: {r.program_name} on {r.machine_name}
+                </span>
+                <span className="block text-sm text-slate-700">
+                  Part {r.part_number} · status {r.status}
+                </span>
+              </span>
+            </Link>
+          ))}
+
       <Notice tone="warn">
         ManufAI never replaces the machine&apos;s physical emergency stop. Always use the red E-stop on the
         machine in an emergency.

@@ -15,7 +15,7 @@ export default function Checklist({
   const pct = items.length ? (done / items.length) * 100 : 0;
   const all = done === items.length;
   return (
-    <section className="space-y-3 rounded border bg-white p-4" aria-label="Safety checklist">
+    <section className="space-y-3 card h-full p-4" aria-label="Safety checklist">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">Safety checklist</h2>
         <span className={`text-sm font-medium ${all ? 'text-emerald-700' : 'text-slate-600'}`}>
@@ -37,7 +37,7 @@ export default function Checklist({
         {items.map((i) => (
           <li key={i.key}>
             <label
-              className={`relative flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 text-sm transition ${
+              className={`relative flex cursor-pointer items-center min-h-16 gap-3 rounded-xl border-2 px-4 py-3 text-base transition ${
                 i.ticked
                   ? 'border-emerald-200 bg-emerald-50/70 text-slate-900'
                   : 'border-slate-200 bg-white text-slate-700 hover:border-brand-300 hover:bg-brand-50/40'
@@ -51,14 +51,14 @@ export default function Checklist({
                 onChange={(e) => onToggle(i.key, e.target.checked)}
               />
               <span
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition peer-focus-visible:ring-4 peer-focus-visible:ring-brand-200 ${
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 transition peer-focus-visible:ring-4 peer-focus-visible:ring-brand-200 ${
                   i.ticked ? 'border-emerald-500 bg-emerald-500' : 'border-slate-300 bg-white'
                 }`}
                 aria-hidden="true"
               >
                 {i.ticked && (
                   <motion.span initial={{ scale: 0, rotate: -30 }} animate={{ scale: 1, rotate: 0 }}>
-                    <Check className="h-4 w-4 text-white" strokeWidth={3} />
+                    <Check className="h-5 w-5 text-white" strokeWidth={3} />
                   </motion.span>
                 )}
               </span>

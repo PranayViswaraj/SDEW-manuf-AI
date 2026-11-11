@@ -236,3 +236,43 @@ def test_dev_seed_demo_table_has_confirmation_time(settings: object, db: Session
     run_seed(settings.model_copy(update={"seed_dev_data": True}), db)
     ft = db.scalars(select(FeatureTable).where(FeatureTable.part_number == "DEMO-SIM-001")).one()
     assert ft.confirmed_at is not None and ft.confirmed_by_name
+
+
+def test_inspection_plan_from_feature_table() -> None:
+    from app.services.feature_tables import build_inspection_plan, normalise
+
+    rows = build_inspection_plan(normalise(full_data()))
+    assert rows == [
+        {"feature": "Overall length", "nominal": 27.0, "unit": "mm", "min": None, "max": None},
+        # tolerance applies to the main dimension only; signed values are added, never guessed
+        {"feature": "1. OD diameter", "nominal": 44.7, "unit": "mm", "min": 44.65, "max": 44.7},
+        {"feature": "1. OD length", "nominal": 26.0, "unit": "mm", "min": None, "max": None},
+        {
+            "feature": "2. Thread M24 x 1.5 6g",
+            "nominal": None,
+            "unit": "gauge",
+            "min": None,
+            "max": None,
+        },
+        {"feature": "2. Thread length", "nominal": 12.0, "unit": "mm", "min": None, "max": None},
+    ]
+
+
+def test_inspection_plan_empty_unless_confirmed(
+    client: TestClient, role_headers: H, db: Session
+) -> None:
+    from app.services.feature_tables import inspection_plan
+
+    ft = create(client, role_headers)
+    assert inspection_plan(db, "3773480M01") == []
+    r = client.put(
+        f"/api/feature-tables/{ft['id']}",
+        headers=role_headers["engineer"],
+        json={"data": full_data()},
+    )
+    assert r.status_code == 200, r.text
+    assert inspection_plan(db, "3773480M01") == []  # saved but not confirmed
+    r = client.post(f"/api/feature-tables/{ft['id']}/confirm", headers=role_headers["engineer"])
+    assert r.status_code == 200, r.text
+    db.expire_all()
+    assert len(inspection_plan(db, "3773480M01")) == 5

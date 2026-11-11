@@ -13,16 +13,21 @@ describe('login', () => {
     expect(await screen.findByRole('button', { name: 'Sign in' })).toBeInTheDocument();
   });
 
-  it('logs in and shows the home page', async () => {
-    const user = makeUser(['operator']);
-    renderApp('/login', null, {
+  it('logs in by choosing a role and shows the home page', async () => {
+    const user = makeUser(['engineer']);
+    const { calls } = renderApp('/login', null, {
       'POST /auth/login': { access_token: 't', token_type: 'bearer', user },
     });
-    fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'operator' } });
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } });
+    fireEvent.click(await screen.findByLabelText(/Engineer/));
+    expect(screen.queryByLabelText('Username')).not.toBeInTheDocument(); // nothing to type
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'qwerty' } });
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(await screen.findByText(/Welcome/)).toBeInTheDocument();
     expect(localStorage.getItem('manufai.token')).toBe('t');
+    expect(calls.find((c) => c.path === '/auth/login')?.body).toMatchObject({
+      username: 'engineer',
+      password: 'qwerty',
+    });
   });
 
   it('shows a plain error on wrong password', async () => {
@@ -31,7 +36,8 @@ describe('login', () => {
         throw new HttpError(401, 'Wrong username or password.');
       },
     });
-    fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'x' } });
+    fireEvent.click(await screen.findByLabelText(/Other user/));
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'x' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'y' } });
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Wrong username or password.');

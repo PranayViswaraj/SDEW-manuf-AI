@@ -264,6 +264,16 @@ export interface RunDetail {
   live: LiveStatus;
   send_blockers: string[];
   start_blockers: string[];
+  /** First-piece rows from the engineer-confirmed feature table (empty when none). */
+  inspection_plan?: InspectionRow[];
+}
+
+export interface InspectionRow {
+  feature: string;
+  nominal: number | null;
+  unit: string;
+  min: number | null;
+  max: number | null;
 }
 
 export interface RunSummary {

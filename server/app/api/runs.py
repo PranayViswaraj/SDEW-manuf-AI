@@ -24,7 +24,7 @@ from app.db.session import get_db
 from app.services.approval import approval_problem
 from app.services.audit_log import AuditLogger, AuditResult
 from app.services.bridge_hub import BridgeHub
-from app.services.feature_tables import required_material
+from app.services.feature_tables import inspection_plan, required_material
 from app.services.run_control import ActionResult, execute_machine_action
 from app.services.run_service import (
     CHECKLIST,
@@ -138,6 +138,7 @@ def _out(db: Session, hub: BridgeHub, run: Run, user: User) -> dict[str, Any]:
             "notes": run.first_piece_notes,
             "at": run.first_piece_at,
         },
+        "inspection_plan": inspection_plan(db, run.part_number),
         "live": {
             **hub.live_view(run.machine.key, run.machine.bridge_id),
             "machine_id": run.machine.id,

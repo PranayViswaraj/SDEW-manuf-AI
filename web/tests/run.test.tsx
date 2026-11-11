@@ -177,4 +177,69 @@ describe('run screen', () => {
     expect(screen.getByText('started at machine')).toBeInTheDocument();
     expect(screen.getByText('pass')).toBeInTheDocument();
   });
+
+  it('pre-fills the first piece from the confirmed feature table and marks values out of tolerance', async () => {
+    const { calls } = renderApp('/runs/5', makeUser(['operator']), {
+      ...base,
+      'GET /runs/5': run({
+        status: 'completed',
+        inspection_plan: [
+          { feature: '1. OD diameter', nominal: 44.7, unit: 'mm', min: 44.65, max: 44.7 },
+          { feature: '1. OD length', nominal: 26, unit: 'mm', min: null, max: null },
+        ],
+      }),
+      'POST /runs/5/first-piece': run({ status: 'closed' }),
+    });
+    expect(await screen.findByText('1. OD diameter')).toBeInTheDocument();
+    expect(screen.getByText('44.65 to 44.7')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('measured 1'), { target: { value: '44.80' } });
+    expect(screen.getByText('OUT')).toBeInTheDocument();
+    expect(screen.getByText('1 value is outside the tolerance.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('measured 1'), { target: { value: '44,68' } });
+    expect(screen.getByText('OK')).toBeInTheDocument();
+    expect(screen.getByText('Every toleranced value is within the limits.')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Fail'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save result' }));
+    await waitFor(() => expect(calls.some((c) => c.path === '/runs/5/first-piece')).toBe(true));
+    expect(calls.find((c) => c.path === '/runs/5/first-piece')?.body).toMatchObject({
+      result: 'fail',
+      measurements: [{ feature: '1. OD diameter', nominal: '44.7 (44.65 to 44.7)', measured: '44,68' }],
+    });
+  });
+
+  it('warns when the chosen bar is not what the part needs', async () => {
+    renderApp('/runs/5', makeUser(['operator']), {
+      ...base,
+      'GET /runs/5': run({ material: { id: 3, grade: 'EN 24', bar_diameter: 45, notes: '' } }),
+    });
+    expect(await screen.findByText(/Not the grade or size this part needs/)).toBeInTheDocument();
+  });
+
+  it('shows the next step and offers to continue an open run', async () => {
+    renderApp('/run', makeUser(['operator']), {
+      'GET /machines': [],
+      'GET /runs': [
+        {
+          id: 8,
+          status: 'sent',
+          operator: 'Dev Operator',
+          sent_at: null,
+          started_at: null,
+          finished_at: null,
+          start_mode: null,
+          first_piece_by: null,
+          first_piece_at: null,
+          machine_name: 'LMW Lathe 1',
+          program_name: 'O0001',
+          program_version: 1,
+          part_number: '3773480M01',
+          created_at: '2026-11-10T09:58:00Z',
+          first_piece_result: null,
+        },
+      ],
+    });
+    const link = await screen.findByRole('link', { name: /Continue run #8: O0001 on LMW Lathe 1/ });
+    expect(link).toHaveAttribute('href', '/runs/8');
+    expect(screen.getByText(/next: start the machine/)).toBeInTheDocument();
+  });
 });

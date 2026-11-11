@@ -104,3 +104,22 @@ def test_dev_seed_refused_in_production(settings: Settings, db: Session) -> None
     except SeedRefusedError:
         return
     raise AssertionError("seed should refuse in production")
+
+
+def test_dev_users_all_use_the_demo_password(
+    settings: Settings, db: Session, client: TestClient
+) -> None:
+    from app.auth.security import hash_password
+    from app.db.models import User
+    from app.seed import DEV_PASSWORD
+
+    s = settings.model_copy(update={"seed_dev_data": True})
+    run_seed(s, db)
+    # an older demo database with a different password is reset by the next seed
+    op = db.query(User).filter_by(username="operator").one()
+    op.password_hash = hash_password("old-password")
+    db.commit()
+    run_seed(s, db)
+    for name in DEV_USERS:
+        r = client.post("/api/auth/login", json={"username": name, "password": DEV_PASSWORD})
+        assert r.status_code == 200, (name, r.text)

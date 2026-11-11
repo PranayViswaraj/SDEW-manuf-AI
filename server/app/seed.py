@@ -10,7 +10,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.security import hash_password
+from app.auth.security import hash_password, verify_password
 from app.config import Settings, get_settings
 from app.db.guards import install_audit_guards
 from app.db.models import (
@@ -33,12 +33,15 @@ from app.services.feature_tables import data_hash, normalise
 from app.services.material_import import map_rows, parse_table, suggest_mapping
 from app.services.program_store import create_version, import_trusted_programs
 
+# Demo accounts only (never created in production). One shared, public password - see README.
+DEV_PASSWORD = "qwerty"  # noqa: S105 - published demo value
+
 # username -> (full name, password, roles, can_start_machine). DEV ONLY - see README.
 DEV_USERS: dict[str, tuple[str, str, set[Role], bool]] = {
-    "admin": ("Dev Admin", "admin-dev-pass", {Role.ADMIN}, False),
-    "engineer": ("Dev Engineer", "engineer-dev-pass", {Role.ENGINEER}, False),
-    "programmer": ("Dev Programmer", "programmer-dev-pass", {Role.PROGRAMMER}, False),
-    "operator": ("Dev Operator", "operator-dev-pass", {Role.OPERATOR}, True),
+    "admin": ("Dev Admin", DEV_PASSWORD, {Role.ADMIN}, False),
+    "engineer": ("Dev Engineer", DEV_PASSWORD, {Role.ENGINEER}, False),
+    "programmer": ("Dev Programmer", DEV_PASSWORD, {Role.PROGRAMMER}, False),
+    "operator": ("Dev Operator", DEV_PASSWORD, {Role.OPERATOR}, True),
 }
 
 
@@ -49,7 +52,11 @@ class SeedRefusedError(RuntimeError):
 def seed_dev_users(db: Session) -> list[str]:
     created: list[str] = []
     for username, (full_name, password, roles, can_start) in DEV_USERS.items():
-        if db.scalar(select(User).where(User.username == username)):
+        existing = db.scalar(select(User).where(User.username == username))
+        if existing is not None:
+            # Demo accounts always use the published demo password (older demos had others).
+            if not verify_password(password, existing.password_hash):
+                existing.password_hash = hash_password(password)
             continue
         user = User(
             username=username,
