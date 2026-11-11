@@ -1,60 +1,355 @@
-# ManufAI
+<div align="center">
 
-Takes a turned-part drawing and runs one machined piece on a CNC lathe (FANUC 0i-TF) from a computer,
-with engineer confirmation, programmer approval and operator safety checks at every step.
+# SDEW: manuf AI
 
-> **Safety first.** Software never replaces the physical emergency stop. The AI never writes CNC
-> programs. See [docs/safety-rules.md](docs/safety-rules.md).
+### From a turned-part drawing to one machined piece on a CNC lathe, with every step checked
 
-## Parts
+**ManufAI** is shop-floor software for the **LMW CNC lathe with a FANUC Series 0i-TF control**.
+An engineer confirms the part, a programmer approves the CNC program, and an operator runs it
+from a computer or tablet. Safety checks at every step, and a log of every action that nobody can edit.
 
-| Folder    | What                                                                      | Runs on            |
-|-----------|---------------------------------------------------------------------------|--------------------|
-| `server/` | FastAPI + SQLAlchemy + Alembic. Users, machines, programs, audit log.     | Cloud / server     |
-| `web/`    | React + Vite + TypeScript + Tailwind UI.                                  | Browser            |
-| `bridge/` | Outbound-only link from the factory PC to the machines (FOCAS2 or simulated). | Factory PC (Win/Linux) |
-| `samples/programs/` | Trusted FANUC O-files supplied by the company.                  | –                  |
-| `docs/`   | Architecture, safety rules, FOCAS notes, open items.                      | –                  |
+`13 / 13 milestones built` · `472 automated tests passing` · `9 / 9 safety rules enforced and tested` · `5 company programs loaded with 0 errors`
 
-## Prerequisites
+📄 **[Download the 7-page progress report (PDF)](docs/ManufAI_Progress_Report.pdf)**
 
-- Python 3.11+
-- Node.js 20+ (22 recommended)
-- Docker Desktop (Windows) or Docker Engine + Compose plugin (Linux), for the full stack
+</div>
 
-## Production
+> [!IMPORTANT]
+> **Safety first.** The software never replaces the machine's physical emergency stop: the red
+> E-stop on the machine is always in charge. The AI never writes or edits CNC programs. See
+> [docs/safety-rules.md](docs/safety-rules.md).
 
-Use **`docker-compose.prod.yml`** (PostgreSQL, server, web with automatic HTTPS) and follow
-**[docs/deployment.md](docs/deployment.md)**: install, first admin (`python -m app.cli`), bridge,
-health checks (`/api/health`, `/api/ready`), backups, upgrades and the security checklist.
-The server refuses unsafe production settings at start-up.
+![Home page](docs/images/screens/home.jpg)
 
-## Option A: Full stack in Docker (server + Postgres + web)
+---
+
+## Contents
+
+1. [Built as per the project documents](#1-built-as-per-the-project-documents)
+2. [How it works](#2-how-it-works)
+3. [The 11 steps from drawing to part](#3-the-11-steps-from-drawing-to-part)
+4. [Roles and logging in](#4-roles-and-logging-in)
+5. [Tour of the app, with screenshots](#5-tour-of-the-app-with-screenshots)
+6. [Safety rules](#6-safety-rules)
+7. [Milestones](#7-milestones)
+8. [Getting started](#8-getting-started)
+9. [Connecting the real machine](#9-connecting-the-real-machine)
+10. [Tests and proof](#10-tests-and-proof)
+11. [What is still waiting on factory data](#11-what-is-still-waiting-on-factory-data)
+12. [Repository layout and documents](#12-repository-layout-and-documents)
+
+---
+
+## 1. Built as per the project documents
+
+Everything has been built as the project documents specify. All 13 milestones of the build plan
+are done, every safety rule is enforced in code with its own test, and every go-live check from the
+design document has a tool. The documents also say **never to invent real-world data** (drawings,
+machine limits, tool layout, speeds and feeds). Where that data is missing, the software keeps an
+empty, clearly marked placeholder and lists it in [open-items.md](docs/open-items.md), exactly as
+the documents require.
+
+| Document | What it asks for | Status |
+|---|---|---|
+| [Build plan](docs/build-plan.md) | 13 milestones: repo, users and roles, machine register, material register, simulated FANUC, FOCAS driver, probe tool, bridge, programs and validator, tool path, run screen, feature table, capability check | ✅ All 13 done |
+| [Safety rules](docs/safety-rules.md) | 9 non-negotiable rules, each enforced in code and tested | ✅ 9 / 9, each with tests |
+| [Architecture](docs/architecture.md) | Server, web app and an outbound-only bridge at the factory | ✅ Built as described |
+| Design document (Nov 3, 2026) | The 11-step flow, roles, run log and go-live checks | ✅ 9 of 11 steps live; steps 2 and 6 wait on drawings and programming data (kept out of scope by the build plan) |
+| [Deployment](docs/deployment.md) | Production setup: HTTPS, PostgreSQL, first admin, health checks, backups, upgrades | ✅ Written and tested; not yet installed at the factory |
+| [FOCAS notes](docs/focas-notes.md) | What to verify on the real 0i-TF on the first day | ✅ Probe tool ready; checks happen at the machine |
+| [Open items](docs/open-items.md) | Every input still needed from the factory | 📋 23 items, all marked `TODO(REAL-DATA)` in the code |
+
+---
+
+## 2. How it works
+
+```mermaid
+flowchart LR
+    A["🖥️ Web app (browser)<br/>Engineer · Programmer<br/>Operator · Admin"] -- HTTPS --> B["🗄️ ManufAI server<br/>roles · approvals · Send/Start locks<br/>append-only audit log · database"]
+    C["🔌 Bridge PC at the machine<br/>connects OUT only<br/>5 signed commands"] -- secure WebSocket --> B
+    C -- FOCAS2 over Ethernet --> D["⚙️ LMW lathe<br/>FANUC 0i-TF<br/>physical E-stop in charge"]
+```
+
+| Part | What it does | Runs on |
+|---|---|---|
+| **Web app** (`web/`) | The screens for every role. React, TypeScript and Tailwind. Works on a PC or a tablet at the machine. | Any browser |
+| **Server** (`server/`) | Users and roles, machines, materials, programs, parts, runs, and the audit log. Checks every lock (who may send, who may start) on the server side, so a hidden button can't be bypassed. FastAPI, SQLAlchemy, Alembic, PostgreSQL or SQLite. | Factory server or cloud |
+| **Bridge** (`bridge/`) | Small service next to the machine. It dials **out** to the server and never opens a port. It accepts only `send_program`, `start`, `feed_hold`, `stop` and `read_status`, each signed and valid for 10 seconds. It talks to the CNC through FANUC FOCAS2, or to a built-in simulated 0i-TF. | Factory PC (Windows or Linux) |
+
+---
+
+## 3. The 11 steps from drawing to part
+
+| # | Step | Who | Status |
+|:-:|---|---|---|
+| 1 | Upload the drawing | Engineer | ✅ Live |
+| 2 | AI reads the drawing into a feature table | ManufAI | ⏳ Waiting for real part drawings (interface ready) |
+| 3 | Confirm or correct every value in the feature table | Engineer | ✅ Live |
+| 4 | List machines that can make the part and are online and idle | ManufAI | ✅ Live |
+| 5 | Select the machine | Engineer | ✅ Live |
+| 6 | Build the CNC program from the table (fixed code, never AI) | ManufAI | ⏳ Waiting for programmer templates, speeds and feeds (interface ready) |
+| 7 | Approve the program | Programmer | ✅ Live |
+| 8 | Confirm raw material and the safety checklist | Operator | ✅ Live |
+| 9 | Send the program to the machine | Operator | ✅ Live, tested on the simulated lathe |
+| 10 | Start, Feed hold and Stop, with live status | Operator | ✅ Live, tested on the simulated lathe |
+| 11 | Measure the first piece and record Pass or Fail | Operator | ✅ Live |
+
+---
+
+## 4. Roles and logging in
+
+On the login page you **tap your role** instead of typing a username. **Other user** is there for
+named accounts.
+
+<img src="docs/images/screens/login.jpg" alt="Login page with role tiles" width="720">
+
+| Role | What they do |
+|---|---|
+| **Engineer** | Enters and confirms a part's feature table; picks a capable machine |
+| **Programmer** | Imports, checks and approves CNC programs; reads validator warnings and the tool path |
+| **Operator** | Runs the part: material, checklist, send, start, first-piece result. Only people on the **Allowed to press Start** list can press Start. |
+| **Admin** | Users and the Start list, bridges, audit log |
+
+A person can have more than one role. The server checks the role again on every request.
+
+### Demo accounts
+
+Demo mode creates one account per role. **These passwords are public, for demos only.**
+
+| Username | Password | Role | Allowed to press Start |
+|---|---|---|:-:|
+| `operator` | `qwerty` | operator | ✅ |
+| `engineer` | `qwerty` | engineer | – |
+| `programmer` | `qwerty` | programmer | – |
+| `admin` | `qwerty` | admin | – |
+
+> [!WARNING]
+> In production, demo data is refused at start-up and no users exist until you create the first admin
+> (see [Getting started](#8-getting-started)).
+
+---
+
+## 5. Tour of the app, with screenshots
+
+### 5.1 Home
+
+Live counts (machines, approved programs, confirmed parts, open runs), big buttons for what your role
+does, the machines' live status, the 11-step flow with a tick or a waiting sign on each step, and the
+latest runs. The E-stop reminder appears on every main screen.
+
+- **Left sidebar**: every page, grouped by job (Production, Engineering, Admin). Admin pages only
+  appear for admins.
+- **Ctrl + K**: type where you want to go ("run", "approve", "materials") and press Enter.
+- **Accessibility menu** (person icon in the top bar): larger text, high contrast and reduced
+  motion. Status is always written in words, never shown by colour alone, and everything works with
+  the keyboard.
+
+### 5.2 Programs: check, simulate, approve
+
+The company's 5 trusted programs (O0001, O0002, O0003, O0004, O0009) are imported byte for byte,
+approved and marked proven for LMW Lathe 1, each with its SHA-256 fingerprint.
+
+![Program O0001 with validation results](docs/images/screens/validation.jpg)
+
+**Validator** (fixed rules, no AI). Every line is checked against FANUC 0i-TF lathe rules:
+- **Errors** block approval and sending: missing `%`, O-number header, brackets, unreadable
+  characters, unknown G codes, no M30/M99 at the end, spindle speed above the machine limit, tools
+  not in the tool list, missing `M99 P` targets.
+- **Warnings** are shown with their line number: M00 stops, two operations in one program,
+  machine-specific M codes, the same T code used for two tools, code after M30, numbers without a
+  decimal point, G96 without a G50 clamp.
+- The 5 trusted programs have **0 errors**. Their expected warnings are pinned in
+  `server/tests/test_validator.py`.
+
+**Approval is tied to the exact text.** A programmer can upload, approve, reject or retire a program.
+The text is never changed in place: any edit creates a new version and retires the approved one, so
+an approval always belongs to one exact program text.
+
+| Machining simulation | Tool path |
+|---|---|
+| ![Machining simulation](docs/images/screens/simulation.jpg) | ![Tool path](docs/images/screens/toolpath.jpg) |
+| Press **Play** to watch the bar being cut, block by block, at 1×, 2×, 5× or 10× speed. Drills, boring bars and parting tools are recognised from their names in the program comments. Each operation is shown on its own, because the part is re-clamped in between. | Every move drawn: Z horizontal, X as radius, rapid moves dashed, feed moves solid, one colour per tool. Drag the slider or click a line of the program to step through it. Supports G0–G3, G28/G30, G70–G72, G74/G83, G76, G90/G92/G94. |
+
+> Both are visual aids made with fixed rules. They don't prove a program is safe and don't replace
+> the programmer's approval.
+
+### 5.3 Parts: the feature table and capability check
+
+![Feature table](docs/images/screens/part_top.jpg)
+
+A part is a table of values: material grade, bar diameter, overall length, and an ordered list of
+features (OD, bore, face, chamfer, radius, groove, thread, drill), each with tolerances.
+- Each value has an **AI value** column (for the future drawing reader) and a **Confirmed value**
+  with a tick box.
+- **Only an engineer can confirm** the table, and only when every value is entered and ticked.
+- **Any later change clears the confirmation**, and the part's programs can't be sent until it is
+  confirmed again.
+
+![Capability check](docs/images/screens/capability.jpg)
+
+**Capability check** (fixed rules): a machine is offered only if it is in service, the bar and part
+fit its limits, its tool list covers every feature, and it is online and idle. **Unknown limits are
+never treated as capable**, which is why LMW Lathe 1 shows "unknown" until its nameplate limits and
+tools are entered.
+
+### 5.4 Running a part
+
+The run screen is made for the shop floor. A progress bar shows **Prepare & send → Start →
+Running → First piece → Done**, one **"do this now"** card shows only the next allowed action with
+big buttons, and every locked button explains why it is locked.
+
+| ① Choose machine and program | ② Material and safety checklist |
+|---|---|
+| ![Run picker](docs/images/screens/run_picker.jpg) | ![Checklist](docs/images/screens/ready.jpg) |
+| Machine tiles show live state. Only **approved** programs are listed. An unfinished run is offered as **Continue run #N**. | The bar is matched to what the part needs: matching bars are listed first (✓), and a wrong grade or size shows a red alert. **Send** unlocks only when all 6 checklist items are ticked. |
+
+**Send is locked until** the checklist is complete, the program is approved for this exact machine,
+version and text, the part's feature table is confirmed by an engineer, and the machine is online
+and idle with no alarm and no emergency stop.
+
+**Start is locked until** all of that holds, the verified program is selected on the machine, and
+the user is on the **Allowed to press Start** list. When a machine has remote control off (the
+default, and the setting for LMW Lathe 1), the screen says **"Program sent. Press Cycle Start at the
+machine."** and follows the run from the live status.
+
+| ③ Running | ④ First piece |
+|---|---|
+| ![Running](docs/images/screens/running.jpg) | ![First piece](docs/images/screens/first_piece.jpg) |
+| Live state, spindle speed, program, block and part count. **Feed hold** and **Stop** stay available, and Stop is labelled as a control reset, **not** an emergency stop. | The measurement list is **pre-filled** from the confirmed feature table, with min and max limits. Each value is marked **OK** or **OUT**, and the operator chooses **Pass** or **Fail**. |
+
+![Run complete](docs/images/screens/run_closed.jpg)
+
+⑤ **Done.** A passed first piece marks the program **proven** for that part, and **Run this program
+again** starts the next one. **Full screen** hides the browser for a tablet at the machine. Every
+step is written to the audit log and to the **Run log** (who, which program, which machine, when,
+how it was started, the first-piece result).
+
+### 5.5 Machines
+
+<img src="docs/images/screens/machines.jpg" alt="Machine register" width="49%"> <img src="docs/images/screens/machine_lmw.jpg" alt="LMW Lathe 1" width="49%">
+
+The register lists every machine with its control, IP address, live status and limits.
+- **LMW Lathe 1 – FANUC 0i-TF** is created with every unknown value left empty. Limits show
+  "Not entered – from nameplate" and are never guessed.
+- Admins edit details and limits; admins and programmers manage turret tools (station, `T0101`-style
+  tool and offset, insert, nose radius).
+- **Remote control** (Start, Feed hold and Stop from the screen) is **off by default** and must also
+  be enabled in the bridge's own settings.
+
+### 5.6 Raw materials
+
+![Raw material register](docs/images/screens/materials.jpg)
+
+Search by grade (`en8` finds `EN8`) or diameter range. Admins and engineers can import the company
+register from **CSV or Excel**:
+1. Choose the file. The server reads the header row and suggests which column is grade, diameter,
+   length, quantity and notes.
+2. Change any mapping in the drop-downs, so your column names can be anything.
+3. Choose **skip** or **update** for rows that already exist.
+4. **Check** shows the result without saving; **Import** saves it and writes an audit entry.
+
+Values like `Ø25`, `25 mm` and `25,5` are understood. The sample file
+`samples/materials/raw-material-register.sample.csv` is marked SAMPLE DATA on every row.
+
+### 5.7 Users, bridges and audit log
+
+| Users and Start list | Bridges |
+|---|---|
+| ![Users](docs/images/screens/users.jpg) | ![Bridges](docs/images/screens/bridges.jpg) |
+| Tick roles per person, and keep the separate **Allowed to press Start** list. | Register the bridge PC at the machine and see whether it is connected. Each bridge gets its own token and signing key, shown once. |
+
+![Audit log](docs/images/screens/logs.jpg)
+
+**Audit log**: every login, approval, send, start and result, with user, machine, program, program
+fingerprint and time, newest first. Entries **can't be edited or deleted**: there is no API for it,
+the app blocks it, and database triggers block it too.
+
+---
+
+## 6. Safety rules
+
+Each rule is enforced in code and covered by automated tests. Full details are in
+[docs/safety-rules.md](docs/safety-rules.md).
+
+| # | Rule | Proven by |
+|:-:|---|---|
+| 1 | The software is never an emergency stop, and no button claims to be one. | `web/tests/run.test.tsx`, `web/tests/App.test.tsx` |
+| 2 | The AI never writes or edits CNC programs. | `test_program_sources_never_include_ai`, `test_ai_package_cannot_touch_programs` |
+| 3 | A program is sent only if the feature table is confirmed **and** the program is approved for this part, machine and exact text. | `test_approval_problem_rules`, bridge `test_hash_mismatch_rejected` |
+| 4 | Start unlocks only with the checklist done, no alarm, the machine idle, the approved program loaded, and the user on the Start list. | `test_start_lock_conditions`, `test_each_checklist_item_is_required` |
+| 5 | The bridge connects outward only and never listens on a port. | `test_server_url_must_be_outbound_websocket` |
+| 6 | The bridge accepts only 5 signed commands; anything else is rejected and logged. | `test_action_allow_list_is_exact`, `test_actions.py` |
+| 7 | Every action is logged, and the log is append-only. | `test_audit_log.py` |
+| 8 | If the bridge loses the server it does nothing on its own; the screen shows stale or offline after 5 s. | `test_no_machine_action_while_server_unreachable` |
+| 9 | Remote Start, Feed hold and Stop are off by default; the screen then says "Press Cycle Start at the machine". | `test_remote_control_disabled_by_default` |
+
+Also enforced: **unknown machine limits never count as capable**, **real-world data is never
+invented**, and **every write to a machine goes through one function** (check → log → act → log).
+
+---
+
+## 7. Milestones
+
+| # | Milestone | What was built |
+|:-:|---|---|
+| M1 | Repo and dev setup | Server, web and bridge skeleton; one-command setup and test scripts |
+| M2 | Users, roles and audit log | Login, 4 roles, Allowed to press Start list, append-only log with database triggers |
+| M3 | Machine register | Machines, limits and turret tools; unknown values stay empty |
+| M4 | Raw material register | Search, add and edit, CSV/Excel import with column mapping |
+| M5 | Simulated FANUC 0i-TF | A machine that behaves like the real control, for testing without the lathe |
+| M6 | FOCAS2 driver | Real-machine driver, tested against a fake library until the machine is available |
+| M7 | FOCAS probe tool | Step-by-step checks for the first day at the machine |
+| M8 | Bridge service | Outbound link, live status every second, signed commands |
+| M9 | Programs and validator | Import, versions, approval tied to the exact text, FANUC lathe rule checks |
+| M10 | Tool path simulation | Every move of a program drawn and steppable |
+| M11 | Run screen | Material, checklist, send, start, live status, first piece |
+| M12 | Feature table | Part values with engineer confirmation |
+| M13 | Capability check | Which machines can make the part, with reasons |
+
+Also added on top of the plan, from the design document: the run log, material length checks, a
+shift-long status watch, the machining simulation, the redesigned shop-floor UI, accessibility
+settings and the production deployment.
+
+---
+
+## 8. Getting started
+
+**You need:** Python 3.11+, Node.js 20+ (22 recommended), and Docker Desktop (Windows) or Docker
+Engine with the Compose plugin (Linux) for the full stack.
+
+### Option A: full stack in Docker (server + PostgreSQL + web)
 
 ```bash
 cp .env.example .env          # Windows PowerShell: Copy-Item .env.example .env
 docker compose up --build
 ```
 
-- Web UI: http://localhost:5173
-- API health: http://localhost:8000/api/health
-- API docs: http://localhost:8000/docs
+| What | Address |
+|---|---|
+| Web app | http://localhost:5173 |
+| API health | http://localhost:8000/api/health |
+| API docs | http://localhost:8000/docs |
 
-The server runs `alembic upgrade head` automatically on start.
+The server applies database migrations automatically on start.
 
-## Option B: Local dev without Docker (SQLite)
+### Option B: local development without Docker (SQLite)
 
-**Windows (PowerShell)**
+<details>
+<summary><b>Windows (PowerShell)</b></summary>
+
 ```powershell
-.\scripts\setup.ps1                       # creates .venv, installs Python + npm deps, copies .env
+.\scripts\setup.ps1                                  # creates .venv, installs Python + npm deps, copies .env
 cd server; ..\.venv\Scripts\alembic upgrade head
 ..\.venv\Scripts\uvicorn app.main:app --reload       # http://localhost:8000
 # second terminal:
 cd web; npm run dev                                  # http://localhost:5173
 ```
 If PowerShell blocks scripts: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+</details>
 
-**Linux / macOS**
+<details>
+<summary><b>Linux / macOS</b></summary>
+
 ```bash
 ./scripts/setup.sh
 cd server && ../.venv/bin/alembic upgrade head
@@ -62,28 +357,12 @@ cd server && ../.venv/bin/alembic upgrade head
 # second terminal:
 cd web && npm run dev
 ```
+</details>
 
-## Using the web app
+### First login
 
-- **Left sidebar**: every page, grouped by job (Production, Engineering, Admin). Admin pages only
-  appear for admins. Collapse it with the button at the bottom; on a phone it opens from the menu
-  button.
-- **Ctrl + K** (or the search box at the top): type where you want to go - "run", "approve",
-  "materials" - and press Enter.
-- **Home**: live counts, big buttons for what your role does, machines right now, the 11-step
-  drawing-to-part flow (shows which steps are live and which wait for inputs), latest runs.
-- **Accessibility menu** (person icon in the top bar), saved on each computer:
-  text size Normal / Large / Larger (the whole app scales), **High contrast** (darker text and
-  borders, underlined links), **Reduce motion** (no animations). Animations also switch off when
-  the computer's own "reduce motion" setting is on.
-- Keyboard: Tab moves through everything, "Skip to content" is the first Tab stop, Esc closes
-  dialogs and menus. Each page sets the browser tab title; run status changes are announced to
-  screen readers. Status is always written in words, never shown by colour alone.
-
-## Logging in
-
-By default the database holds **only real data**: the machine **LMW Lathe 1** (every unknown value
-empty) and the 5 trusted programs O0001–O0004, O0009. No users exist until you create one:
+By default the database holds **only real data**: LMW Lathe 1 (unknown values empty) and the 5
+trusted programs. No users exist until you create the first admin:
 
 ```bash
 docker compose exec server python -m app.cli create-user YOURNAME --role admin --full-name "Your Name"
@@ -92,285 +371,168 @@ docker compose exec server python -m app.cli check
 
 Add everyone else on the **Users** page.
 
-### Demo mode (optional, dev only)
-
-`MANUFAI_SEED_DEV_DATA=true docker compose --profile demo up --build` also creates the simulated
-bridge, a **SIM Lathe**, the demo program O9000, the DEMO-SIM-001 feature table, sample materials
-(marked SAMPLE DATA) and one user per role. **These passwords are public.** Seeding is refused
-when `MANUFAI_ENV=production`.
-
-| Username     | Password              | Roles      | Allowed to press Start |
-|--------------|-----------------------|------------|------------------------|
-| `admin`      | `qwerty`              | admin      | no                     |
-| `engineer`   | `qwerty`              | engineer   | no                     |
-| `programmer` | `qwerty`              | programmer | no                     |
-| `operator`   | `qwerty`              | operator   | yes                    |
-
-- **Users** page (admin): tick roles per user (a user can have several), and the separate
-  **Allowed to press Start** list.
-- **Audit log** page (admin): every action, newest first, filter by action. Entries cannot be edited
-  or deleted: there is no API for it, the app blocks it, and database triggers block it too.
-
-Without Docker, seed manually: `cd server; ..\.venv\Scripts\python -m app.seed` (set
-`MANUFAI_SEED_DEV_DATA=true` in `.env` first).
-
-## Machines (Milestone 3)
-
-**Machines** page (any user) lists the machine register. The seed always creates
-**LMW Lathe 1 – FANUC 0i-TF** with every unknown value left empty (model, IP, all limits).
-
-Open a machine to:
-- edit details and limits (admin). Empty limits show "Not entered – from nameplate" and stay
-  `null` — they are never guessed, and unknown limits never count as "capable";
-- add, edit and remove turret tools (admin or programmer): station, `T0101`-style tool/offset,
-  description, insert, nose radius, type;
-- turn remote control on/off (admin, with confirmation). It is off by default, and the bridge config
-  must also enable it.
-
-All changes are written to the audit log (`machine_update`, `tool_add`, `remote_control_changed`…).
-
-## Raw materials (Milestone 4)
-
-**Materials** page: search by grade/notes (`en8` finds `EN8`) or diameter range. Admin and
-engineer can add/edit/delete rows and import the company register:
-
-1. **Import CSV / XLSX** → choose the file. The server reads the header row and suggests which
-   column is grade, bar diameter, length, quantity, notes.
-2. Change any mapping in the drop-downs (your column names can be anything).
-3. Choose what happens when a grade + diameter already exists: **skip** (keep existing) or **update**.
-   Grades match ignoring case and spaces (`en 8` = `EN8`). Repeated rows inside the same file are
-   reported and ignored.
-4. **Check (dry run)** shows the result without saving; **Import** saves and writes an audit entry.
-
-Numbers like `Ø25`, `25 mm` and `25,5` are understood. A sample file is in
-`samples/materials/raw-material-register.sample.csv` (every row marked SAMPLE DATA); the dev seed
-loads it into an empty table so the page is not empty.
-
-## Simulated FANUC 0i-TF (Milestone 5)
-
-Until the real machine is connected, everything runs against a simulated FANUC 0i-TF
-(`bridge/bridge/drivers/simulated.py`). Watch it run a program:
+### Demo mode (development only)
 
 ```bash
-.venv/Scripts/python bridge/tools/sim_demo.py                    # Windows (Git Bash) / use .venv\Scripts\python in PowerShell
-.venv/bin/python bridge/tools/sim_demo.py --program samples/programs/O0001 --block-time 0.05
+MANUFAI_SEED_DEV_DATA=true docker compose --profile demo up --build
 ```
 
-It prints mode, run state, program, sequence number, spindle speed and part count as they change.
-`samples/demo/O9000` is a synthetic demo program for the simulator only (**not for machine use**).
+This adds the simulated bridge, a fictional **SIM Lathe**, the demo program O9000, the DEMO-SIM-001
+feature table, sample materials and the [demo accounts](#demo-accounts). It is refused when
+`MANUFAI_ENV=production`. Without Docker: set `MANUFAI_SEED_DEV_DATA=true` in `.env`, then run
+`cd server; ..\.venv\Scripts\python -m app.seed`.
 
-## First day at the machine (Milestone 7)
+**Try a full run:**
+1. Log in as **operator**.
+2. Go to **Run → SIM Lathe (dev - simulated) → O9000 → Start a run**.
+3. Choose the material, tick the checklist, **Send program**, then **Start**.
+4. Wait for *completed* and record the first piece.
+
+To send a trusted LMW program (for example O0001, part 3773480M01), an **engineer** first creates and
+confirms its feature table on the **Parts** page.
+
+### Production
+
+Use **`docker-compose.prod.yml`** (PostgreSQL, server and web with automatic HTTPS) and follow
+**[docs/deployment.md](docs/deployment.md)**. It covers installation, the first admin, the bridge,
+health checks (`/api/health`, `/api/ready`), backups, upgrades and the security checklist. The server
+refuses unsafe production settings at start-up.
+
+---
+
+## 9. Connecting the real machine
+
+### First day at the machine (probe tool)
 
 Goal: prove the factory PC can talk to the FANUC 0i-TF over FOCAS2 **before** connecting ManufAI.
-Bring: the factory PC with this repo + `.venv`, the FANUC FOCAS library (`Fwlib64.dll` and its
-companion DLLs, from FANUC / the machine supplier), an Ethernet cable, and someone allowed to change
+
+**Bring:** the factory PC with this repo and `.venv`, the FANUC FOCAS library (`Fwlib64.dll` and its
+companion DLLs, from FANUC or the machine supplier), an Ethernet cable, and someone allowed to change
 CNC settings.
 
-1. **At the CNC**: check Embedded Ethernet is enabled, note the IP address, subnet and FOCAS port
-   (default 8193). Put the PC on the same subnet. Note the machine is idle and has no alarm.
+1. **At the CNC:** check Embedded Ethernet is enabled; note the IP address, subnet and FOCAS port
+   (default 8193). Put the PC on the same subnet. Make sure the machine is idle with no alarm.
 2. **Read-only probe** (changes nothing on the machine):
    ```powershell
-   .venv\Scripts\python bridge	oolsocas_probe.py --ip 192.168.x.x --port 8193 --lib C:\manufaiwlib\Fwlib64.dll
+   .venv\Scripts\python bridge\tools\focas_probe.py --ip 192.168.x.x --port 8193 --lib C:\manufai\fwlib\Fwlib64.dll
    ```
-   Expect PASS for: TCP connect, Open FOCAS handle, Read status, Program/sequence number,
-   List programs. Write down the program list.
+   Expect PASS for: TCP connect, open FOCAS handle, read status, program and sequence number, list
+   programs. Write down the program list.
 3. **Save a program** from the CNC and compare it with `samples/programs/O0001`:
    ```powershell
-   .venv\Scripts\python bridge	oolsocas_probe.py --ip ... --lib ... --upload O0001 --out O0001_from_cnc.nc
+   .venv\Scripts\python bridge\tools\focas_probe.py --ip ... --lib ... --upload O0001 --out O0001_from_cnc.nc
    ```
-4. **Write test** (only with the programmer's OK, machine idle, no alarm, program-protect key off).
-   Pick a number that is **not** used on the CNC (e.g. O9001). The tool refuses existing numbers,
-   asks you to type `WRITE O9001`, then sends, reads back, compares and deletes it 20 times:
+4. **Write test** (only with the programmer's OK, the machine idle, no alarm, and the program-protect
+   key off). Pick a number that is **not** used on the CNC (for example O9001). The tool refuses
+   existing numbers and asks you to type `WRITE O9001`. It then sends, reads back, compares and
+   deletes the program 20 times:
    ```powershell
-   .venv\Scripts\python bridge	oolsocas_probe.py --ip ... --lib ... --roundtrip samples\demo\O9000 --number O9001
+   .venv\Scripts\python bridge\tools\focas_probe.py --ip ... --lib ... --roundtrip samples\demo\O9000 --number O9001
    ```
-5. Work through the `VERIFY ON MACHINE` list in `docs/focas-notes.md` and record the answers.
+5. Work through the `VERIFY ON MACHINE` list in [docs/focas-notes.md](docs/focas-notes.md) and record
+   the answers.
 
-Practice without a machine: `--simulate` (simulated 0i-TF preloaded with the 5 trusted programs).
-If step 1 fails: power, cable, IP/subnet, port, PC firewall. If step 2 fails with "FOCAS library not
-found": wrong `--lib` path, or a 32-bit DLL with 64-bit Python.
+To practise without a machine, add `--simulate` (a simulated 0i-TF with the 5 trusted programs).
+**If step 1 fails**, check power, cable, IP/subnet, port and the PC firewall. **If step 2 says "FOCAS
+library not found"**, the `--lib` path is wrong, or a 32-bit DLL is being used with 64-bit Python.
 
-## Programs, approval and validator (Milestone 9)
-
-**Programs** page lists the latest version of every program. On first start the server imports
-the 5 trusted O-files from `samples/programs/` as **approved + proven** programs for LMW Lathe 1
-(source "trusted, supplied by company"), byte-for-byte, with their SHA-256.
-
-Open a program to see: the exact hash, version history, validator results (click a line number to
-jump to it in the text) and whether it can be sent. A programmer can:
-- **Upload program** (saved as draft; part number taken from the header comment if not given),
-- **Approve** (only the latest version, only with no validation errors),
-- **Reject** (with a reason) or **Retire**,
-- **Edit (new version)**: the text is never changed in place. A new draft version is created and the
-  previously approved version is retired, so approval is always tied to one exact text hash.
-
-The **validator** is fixed rules, no AI. Errors (block approval and sending): `%` start/end, O-number
-header, brackets, unreadable characters, unknown 0i-TF G codes, program must end with M30/M99,
-spindle speed above the machine limit (only when limits are entered), tools not in the machine's tool
-list (only when the list is filled in), missing `M99 P` targets. Warnings: M00 stops, multiple
-operations, `M99 Pn` skip lines, machine-specific M codes, empty tool list, the same T code used for
-different tools, code after M30, coordinates without a decimal point, G96 without a G50 clamp.
-The 5 trusted programs have **no errors**; their expected warnings are pinned in
-`server/tests/test_validator.py`.
-
-## Tool path simulation (Milestone 10)
-
-Every program page shows a **Tool path** drawing (`server/app/gcode/backplot.py`, fixed code):
-Z horizontal, X as radius vertical, rapid moves dashed, feed moves solid, one colour per tool.
-Drag the **block slider** (or click a segment, or a line in the program text) to step through the
-program; the current block is highlighted in both. Enter a **Bar Ø** to draw the stock outline.
-
-Supported: G0/G1/G2/G3 (R and I/K), X/Z and U/W, `A` angle moves, G28/G30, G70/G71/G72 (rough passes
-from the P..Q profile), G74/G83 peck drilling (Q in microns), G76 thread passes, G90/G92/G94.
-Anything that cannot be drawn is listed as a warning and its finish profile is drawn instead.
-Limitations: the programmed path is drawn (no nose-radius compensation, corner R drawn sharp), and
-both operations of a two-operation program are drawn in the same coordinates. Visual checks of the
-5 trusted programs: `docs/images/backplot-check-*.png`.
-
-## Run screen (Milestone 11)
-
-**Run** page (operator): choose a machine (live badge shown), choose one of its **approved**
-programs, **Start a run**. The run screen shows:
-
-1. **Live status** (Online / Stale / Offline, alarms, program, block, spindle, override).
-2. **Raw material**: required grade + bar size from the part's confirmed feature table, pick the bar
-   from the materials register or type it in.
-3. **Safety checklist** (6 items, empty for every new run): correct raw material loaded, tools and
-   offsets match the program, chuck clamped, door closed, no alarm on machine, operator at machine.
-4. **Send program** (confirmation dialog). Locked until: checklist complete, program approved for
-   this exact machine + version + hash, part's feature table confirmed by an engineer, machine
-   online + idle + no alarm + no emergency stop. Every reason is listed under the button.
-5. **Start** (confirmation dialog), **Feed hold**, **Stop** — only when the machine has remote control
-   enabled. Start is locked until everything above holds, the verified program is selected on the
-   machine, and you are on the *allowed to press Start* list. With remote control off (LMW Lathe 1)
-   the screen says **"Program sent. Press Cycle Start at the machine."** and follows the run from
-   live status.
-6. **First piece result** after the machine finishes: measurements, pass/fail, notes. A pass marks
-   the program **proven** for that part number. When the part has a confirmed feature table, the
-   form is **pre-filled** with every dimension to measure (overall length, each feature's sizes,
-   threads to check with a gauge). The feature's tolerance applies to its main dimension (e.g. an
-   OD's diameter): limits are nominal + the signed tolerances, values outside are marked **OUT**.
-   The operator still chooses Pass or Fail.
-
-**Made for the shop floor:** the screen always shows one "do this now" card with large buttons and
-a plain list of what is still missing; Feed hold / Stop appear only once the program is on the
-machine; the material picker lists matching bars first (✓) and warns when the chosen bar is not the
-grade or size the part needs; **Full screen** hides the browser for a tablet at the machine; after a
-run, **Run this program again** starts the next one. The Run page and Home show **Continue run #N**
-for any open run, and the Run page shows each machine's live state.
-
-Every step is in the audit log (`run_create`, `checklist_tick`, `send_program`, `start`,
-`run_started`, `run_completed`, `first_piece_result`, `program_proven`).
-
-**Try it (docker):** log in as `programmer`, open **Programs -> O9000** (SIM Lathe, demo) and
-**Approve**. Log in as `operator`, **Run -> SIM Lathe (dev - simulated) -> O9000 -> Start a run**,
-tick the checklist, **Send program**, **Start**, wait for *completed*, record the first piece.
-LMW Lathe 1's trusted programs show "No feature table for part ..." until an engineer confirms one
-(Milestone 12, **Parts** page); after sending, the simulated operator presses Cycle Start 5 s later.
-
-## Parts / feature tables (Milestone 12)
-
-**Parts** page (engineer edits, everyone reads): a turned part as a table of values - part number,
-material grade, bar diameter, overall length, and an ordered list of features (OD, ID/bore, face,
-chamfer, radius, groove, thread, drill), each with its tolerance fields.
-
-Every value has an **AI value** column (suggestions from the drawing reader - empty for now, the
-reader is a stub) and a **Confirmed value** with a tick box. Changing a value clears its tick.
-**Confirm table** is possible only when every value is entered and ticked and the table is saved; it
-records who confirmed and when. Any later change clears the confirmation, and programs for that part
-cannot be sent again until it is re-confirmed.
-
-To send a trusted LMW program (e.g. O0001, part 3773480M01): log in as `engineer`, **Parts -> New
-feature table** with that part number, enter + tick every value from the drawing, **Save**,
-**Confirm table**. The run screen's "No feature table" lock then clears.
-
-`DrawingReader` (`server/app/ai/drawing_reader.py`) and `ProgramGenerator`
-(`server/app/gcode/generator.py`) are interfaces only. The AI package is tested to never import
-program, G-code or run-control code.
-
-## Machining simulation
-
-Every program page has a **Machining simulation** above the tool-path drawing: press **Play** and
-watch the bar being cut, shown as a hatched lathe cross-section with the spindle axis in the middle.
-Controls: Play / Pause, previous / next block, restart, speed 1x 2x 5x 10x, and a progress slider.
-The readout shows the block, tool (name from the program comments), X/Z position and rapid / feed.
-
-- Each operation (1st, 2nd …) is shown on its own, because the part is re-clamped in between.
-- Tools are recognised from their names: drills open a hole of the diameter in the name
-  ("32.0 UDRILL"), boring / ID tools cut from the inside, parting / grooving tools only cut their
-  width ("3MM PARTING"), everything else turns from the outside. Unnamed tools are judged by where
-  the tip is. Rapid moves never cut.
-- Enter the real **Bar Ø** for the right stock size (otherwise it is estimated from the cuts).
-- It is a visual aid (`web/src/sim/machining.ts`, fixed rules): it does not prove a program is safe
-  and does not replace the programmer's approval.
-
-## Capability check (Milestone 13)
-
-Open a **confirmed** part on the **Parts** page: the *Machines for this part* section lists machines
-that are **capable, online and idle**, and every other machine with the reason it is not offered.
-Rules (`server/app/services/capability_check.py`, no AI): machine in service; bar diameter <= max bar
-diameter; largest diameter <= max turning diameter; overall length <= max turning length; the tool
-list has a tool for every feature (turning tool for OD/face/chamfer/radius, boring bar + drill for a
-bore, drill, grooving, threading). **Unknown limits or an empty tool list give "Unknown – machine
-limits not entered" - never "capable".**
-
-In dev: LMW Lathe 1 shows *Unknown* (its limits are not entered); the fictional SIM Lathe is capable
-for DEMO-SIM-001 and listed as available while the bridge is running.
-
-## Check before go live (from the design document)
+### Go-live checks (from the design document)
 
 | Check | How |
-|-------|-----|
-| WiFi signal measured at the machine position with the machine running | Maintenance/IT, with a WiFi survey tool (hardware, not software) |
-| The bridge PC can reach the CNC's address | `focas_probe.py --ip <cnc ip> --lib <Fwlib>` steps 1-2 |
-| A test program sends and returns intact 20 times in a row | `focas_probe.py ... --roundtrip FILE --number O9001` (default 20 times) |
-| Status reads stay steady during a full shift | `focas_probe.py ... --watch 480` (read-only, PASS = no failed read) |
+|---|---|
+| WiFi signal at the machine, with the machine running | Maintenance/IT with a WiFi survey tool |
+| The bridge PC can reach the CNC | `focas_probe.py --ip <cnc ip> --lib <Fwlib>` (steps 1–2) |
+| A test program sends and returns intact 20 times in a row | `focas_probe.py ... --roundtrip FILE --number O9001` |
+| Status reads stay steady for a full shift | `focas_probe.py ... --watch 480` (read-only; PASS means no failed read) |
 
-The **Run log** (Run page) shows who ran which program, on which machine, when, how it was started
-and the first piece result.
+### Installing the bridge on the factory PC
 
-## Run all tests and linters (one command)
+1. Copy `bridge/config.example.yaml` to `config.yaml`.
+2. Fill in the server URL, the token and signing key (from **Admin → Bridges**), the machines and
+   `focas_library_path`.
+3. Check it: `manufai-bridge --config config.yaml --check`.
+4. Run it as a service: on Windows with NSSM
+   ([bridge/deploy/install-windows-service.md](bridge/deploy/install-windows-service.md)), on Linux
+   with systemd (`bridge/deploy/manufai-bridge.service`). The PC clock must be NTP-synced.
 
-```powershell
-.\scripts\test.ps1        # Windows
-```
+The bridge pushes status every second and a heartbeat every 2 seconds. It rejects commands that are
+unsigned, older than 10 seconds, replayed, for an unknown machine, or for a program whose fingerprint
+doesn't match. If the link drops, it takes no machine action and reconnects by itself.
+
+In demo mode you can watch this: `docker compose stop bridge` turns the machine badge **Offline**
+within a second, and `docker compose start bridge` brings it back. A status older than 5 seconds
+shows **Stale**.
+
+---
+
+## 10. Tests and proof
+
+One command runs every linter and test suite:
+
 ```bash
 ./scripts/test.sh         # Linux / macOS / Git Bash
+.\scripts\test.ps1        # Windows PowerShell
 ```
 
-This runs ruff, black, mypy and pytest for `server/` and `bridge/`, then eslint, tsc and vitest for `web/`.
+Latest full run (11 Nov 2026): **All checks passed.**
 
-## Bridge and live machine status (Milestone 8)
+| Part | Checks | Result |
+|---|---|---|
+| Server | ruff · black · mypy · pytest | ✅ 280 passed, 6 skipped* |
+| Bridge | ruff · black · mypy · pytest | ✅ 97 passed |
+| Web app | eslint · TypeScript · vitest · production build | ✅ 95 passed, build OK |
 
-The bridge runs on the factory PC, connects **out** to the server over one WebSocket
-(`/api/bridge/ws`), and never opens a listening port. Every 1 s it reads each machine and pushes the
-status; every 2 s it sends a heartbeat. It acts only on **signed** commands (`send_program`, `start`,
-`feed_hold`, `stop`, `read_status`) and rejects anything else, anything older than 10 s, replays,
-unknown machines and program-hash mismatches. If the link drops it takes no machine action and
-reconnects with backoff.
+<sub>*The skipped tests are the role check on public pages (login, health), which have no role by design.</sub>
 
-**See it (demo mode, see "Logging in"):** with `docker compose --profile demo up`, the `bridge` container drives two **simulated** machines:
-LMW Lathe 1 (remote control off) and a fictional "SIM Lathe (dev - simulated)" (remote control on).
-Open **Machines -> LMW Lathe 1**: the *Live status* panel shows mode, run state, alarms, program,
-block, spindle, override and part count with an **Online** badge and a **SIMULATED** tag. Then:
+Tool-path drawings of the 5 trusted programs were checked by eye against the programs:
+`docs/images/backplot-check-*.png`.
 
-```bash
-docker compose stop bridge     # badge turns Offline within a second ("bridge not connected")
-docker compose start bridge    # back to Online after it reconnects
+---
+
+## 11. What is still waiting on factory data
+
+The software side is complete. These inputs, listed in full in
+[docs/open-items.md](docs/open-items.md), are needed before real production use:
+
+| Needed | Items | From |
+|---|---|---|
+| **Machine connection** | FOCAS library file, machine IP, Ethernet/FOCAS enabled on the control, program folder layout on the CNC | Maintenance, controller supplier |
+| **Factory network and PCs** | Always-on bridge PC, machine-only WiFi/VLAN with fixed IPs, signal survey, time sync, a server PC | IT, maintenance |
+| **Machine data** | Nameplate limits, model number, turret tool layout and offsets, LMW-specific M codes, parameter 3401 | Shop floor, programmer |
+| **Part data** | Drawings of 5 simple parts, the first test part, bar or cut blanks, the real material register file | Programmer, production |
+| **Programming data** | Cutting speeds and feeds per material, programmer templates, turret setup per operation | CNC programmer |
+| **Sign-off** | Checklist wording, names allowed to press Start, PMC address for remote Start (may never be possible) | Production head |
+
+**Next steps, in order:**
+1. Collect the controller nameplate photo, the tool list and one part drawing.
+2. First day at the machine: run the probe tool and verify the FOCAS driver.
+3. Install on an always-on factory server, with real users and passwords.
+4. Enter the limits and tools, then run the first real part with Cycle Start at the machine.
+
+---
+
+## 12. Repository layout and documents
+
+```text
+├── server/              FastAPI server: API, database, approvals, run control, audit log, G-code validator and backplot
+├── web/                 React web app: every screen
+├── bridge/              Factory-PC bridge: FOCAS2 driver, simulated 0i-TF, probe tool, service files
+├── samples/
+│   ├── programs/        The 5 trusted FANUC programs supplied by the company
+│   ├── demo/            O9000, a synthetic demo program for the simulator only
+│   └── materials/       Sample material register (SAMPLE DATA)
+├── docs/                Build plan, safety rules, architecture, deployment, FOCAS notes, open items, report
+├── scripts/             Setup and test scripts (Windows and Linux)
+├── docker-compose.yml        Development stack
+└── docker-compose.prod.yml   Production stack with HTTPS
 ```
 
-A status older than 5 s shows **Stale** with a warning.
-
-**Admin -> Bridges** lists bridges and creates new ones (token + signing key shown once).
-Assign a machine to a bridge with the machine's *Bridge id* field.
-
-**Factory PC install:** copy `bridge/config.example.yaml` to `config.yaml`, fill in server URL,
-token, signing key, machines and `focas_library_path`, then
-`manufai-bridge --config config.yaml --check`. Run it as a service:
-Windows -> `bridge/deploy/install-windows-service.md` (NSSM); Linux ->
-`bridge/deploy/manufai-bridge.service` (systemd). The PC clock must be NTP-synced.
-
-## Status
-
-Milestones 1-13 are built (tags `m1`..`m13`). See [docs/build-plan.md](docs/build-plan.md)
-for the plan and [docs/open-items.md](docs/open-items.md) for everything waiting on real-world data.
+| Document | About |
+|---|---|
+| [docs/build-plan.md](docs/build-plan.md) | The plan and its 13 milestones (source of truth) |
+| [docs/safety-rules.md](docs/safety-rules.md) | Each safety rule, where it is enforced and its tests |
+| [docs/architecture.md](docs/architecture.md) | How the server, web app and bridge fit together |
+| [docs/deployment.md](docs/deployment.md) | Production installation and operation |
+| [docs/focas-notes.md](docs/focas-notes.md) | FANUC FOCAS2 details to verify on the real machine |
+| [docs/open-items.md](docs/open-items.md) | Every input still needed from the factory |
+| [docs/ManufAI_Progress_Report.pdf](docs/ManufAI_Progress_Report.pdf) | 7-page progress report with screenshots |
