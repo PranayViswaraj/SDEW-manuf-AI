@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { ProgramStatusBadge, ProvenBadge } from '../components/ProgramStatusBadge';
 import MachiningView from '../components/MachiningView';
 import ToolpathView from '../components/ToolpathView';
+import UsbDownload from '../components/UsbDownload';
 import { ErrorBox, PageLoading, Notice } from '../components/ui';
 
 const SEV_CLS: Record<Issue['severity'], string> = {
@@ -110,6 +111,11 @@ export default function ProgramDetail() {
             {p.sendable_problem ? <span className="text-red-800">No — {p.sendable_problem}</span> : 'Yes'}
           </div>
         </div>
+        {!p.sendable_problem && (
+          <div className="sm:col-span-2">
+            <UsbDownload programId={p.id} programName={`O${String(p.program_number).padStart(4, '0')}`} />
+          </div>
+        )}
         {p.proven_note && (
           <div className="sm:col-span-2">
             <div className="text-xs text-gray-500">Proven</div>

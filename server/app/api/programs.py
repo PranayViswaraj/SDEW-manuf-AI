@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -177,6 +177,40 @@ def get_program(
     program_id: int, db: Session = Depends(get_db), _: User = Depends(any_user)
 ) -> ProgramDetail:
     return _detail(db, _get(db, program_id))
+
+
+@router.get("/{program_id}/file")
+def download_for_usb(
+    program_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(any_user),
+    audit: AuditLogger = Depends(get_audit),
+) -> Response:
+    """The approved program as a file for a USB stick (FANUC 0i-TF panel USB port).
+
+    Same rule as sending over the network (safety rule 3): only the approved, latest, unchanged
+    version that still passes validation for its machine. The file is the program text exactly as
+    approved, with CR LF line ends; its hash is in the audit log.
+    """
+    p = _get(db, program_id)
+    if problem := approval_problem(db, p, p.machine):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Cannot download for the machine: {problem}")
+    name = f"O{p.program_number:04d}.NC"
+    try:
+        body = p.text.replace("\r\n", "\n").replace("\n", "\r\n").encode("ascii")
+    except UnicodeEncodeError as e:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "The program has characters the CNC cannot read."
+        ) from e
+    _audit(audit, "program_download", user, p, file=name, via="usb")
+    return Response(
+        body,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "X-Program-SHA256": p.sha256,
+        },
+    )
 
 
 @router.get("/{program_id}/toolpath")

@@ -20,6 +20,7 @@ import type {
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import CapablePanel from '../components/CapablePanel';
+import UsbDownload from '../components/UsbDownload';
 import { MachineLiveBadge } from '../components/StatusBadge';
 import { useLiveStatus } from '../hooks/useLiveStatus';
 import ToolpathView from '../components/ToolpathView';
@@ -390,7 +391,9 @@ function FeatureEditor({
           <li
             key={i}
             className={
-              f.type === 'flip' ? 'rounded-lg border-2 border-amber-400 bg-amber-50 p-3' : 'rounded-lg border p-3'
+              f.type === 'flip'
+                ? 'rounded-lg border-2 border-amber-400 bg-amber-50 p-3'
+                : 'rounded-lg border p-3'
             }
             aria-label={`Feature ${i + 1}`}
           >
@@ -1864,6 +1867,11 @@ export default function DrawingToProgram() {
                     <li key={x}>{x}</li>
                   ))}
                 </ul>
+              )}
+              {program && (
+                <div className="border-t pt-3">
+                  <UsbDownload programId={program.id} programName={program.name} />
+                </div>
               )}
             </Step>
           )}

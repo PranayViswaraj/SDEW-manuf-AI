@@ -182,3 +182,32 @@ def test_only_programmers_upload_and_approve(
     body = {"machine_id": seeded.id, "text": GOOD}
     for who in ("admin", "engineer", "operator"):
         assert client.post("/api/programs", headers=role_headers[who], json=body).status_code == 403
+
+
+def test_usb_download_only_for_the_approved_version(
+    client: TestClient, role_headers: H, seeded: Machine, db: Session
+) -> None:
+    """USB stick to the FANUC panel: the same approval rule as a network send."""
+    p = upload(client, role_headers, seeded.id).json()
+    r = client.get(f"/api/programs/{p['id']}/file", headers=role_headers["operator"])
+    assert r.status_code == 409 and "not approved" in r.json()["detail"]
+
+    assert client.post(
+        f"/api/programs/{p['id']}/approve", headers=role_headers["programmer"]
+    ).is_success
+    r = client.get(f"/api/programs/{p['id']}/file", headers=role_headers["operator"])
+    assert r.status_code == 200
+    assert r.headers["content-disposition"] == 'attachment; filename="O1234.NC"'
+    assert r.content == GOOD.replace("\n", "\r\n").encode()
+    row = db.scalars(select(AuditLog).where(AuditLog.action == "program_download")).one()
+    assert row.payload["file"] == "O1234.NC" and row.program_hash == r.headers["x-program-sha256"]
+
+    # a new version replaces the approval: the old file can no longer be taken to the machine
+    r = client.put(
+        f"/api/programs/{p['id']}/text",
+        json={"text": GOOD.replace("S1000", "S1100")},
+        headers=role_headers["programmer"],
+    )
+    assert r.is_success, r.text
+    r = client.get(f"/api/programs/{p['id']}/file", headers=role_headers["operator"])
+    assert r.status_code == 409
