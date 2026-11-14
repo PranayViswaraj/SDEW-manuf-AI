@@ -1,5 +1,12 @@
 # Open items – waiting on real-world data
 
+**Status 14 Nov 2026.** Done since the table below was written: drawings for the five lathe parts
+(5, 21 partly), machine model and serial numbers from the nameplates (8), IP of 55-04927 (9, one
+machine), deterministic generator built from the proven programs incl. the second clamping (22),
+bar stock vs cut blank per part read from the proven programs (23). **Still blocking the network
+send: 1 (FOCAS library), 13 (bridge PC) and 14 (bridge token).** Until then programs go to the
+machine by USB stick (`docs/go-live.md`).
+
 Every `TODO(REAL-DATA):` in the code is listed here. Search the repo for `TODO(REAL-DATA)` to find them.
 
 | # | Item | Needed for | Where in code | Added |

@@ -1694,7 +1694,7 @@ export default function DrawingToProgram() {
                   >
                     use {library[0].name} instead
                   </button>{' '}
-                  (it includes the second clamping for the back-end chamfers).
+                  (the proven program, byte for byte). Both include the second clamping.
                 </Notice>
               )}
               {plan.geometry_problems.length > 0 && (
