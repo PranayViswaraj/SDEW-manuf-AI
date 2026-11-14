@@ -1237,11 +1237,47 @@ export default function DrawingToProgram() {
     setGeneratedKey(null);
   }, [tableId, machineId]);
 
+  // Editing the generated text on screen: checked live, saved as a new version on accept.
+  const [editText, setEditText] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editCheck, setEditCheck] = useState<{
+    validation: GenPreview['validation'];
+    toolpath: GenPreview['toolpath'];
+  } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const isEdited = editText !== null && !!preview?.text && editText !== preview.text;
+  const debouncedEdit = useDebounced(editText, 600);
+  useEffect(() => {
+    if (!isEdited || debouncedEdit === null || !machineId) {
+      setEditCheck(null);
+      return;
+    }
+    let live = true;
+    setChecking(true);
+    const bar = Number(data?.header?.bar_diameter?.value);
+    api
+      .post<{ validation: GenPreview['validation']; toolpath: GenPreview['toolpath'] }>('/generator/check', {
+        machine_id: machineId,
+        text: debouncedEdit,
+        bar_diameter: bar > 0 ? bar : null,
+      })
+      .then((r) => live && setEditCheck(r))
+      .catch((e: Error) => live && setError(e.message))
+      .finally(() => live && setChecking(false));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedEdit, isEdited, machineId]);
+
   async function generateLive() {
     if (!body) return;
     setGenerating(true);
     try {
       const p = await api.post<GenPreview>('/generator/preview', body);
+      setEditText(null);
+      setEditing(false);
+      setEditCheck(null);
       setPreview(p);
       setGeneratedKey(bodyKey);
       setProgram(null);
@@ -1275,6 +1311,11 @@ export default function DrawingToProgram() {
       if (!id) {
         const r = await api.post<{ program_id: number }>('/generator/programs', body);
         id = r.program_id;
+      }
+      if (isEdited && editText !== null) {
+        // the edit is kept as its own version on top of the generated one (who changed what)
+        const v2 = await api.put<ProgramDetail>(`/programs/${id}/text`, { text: editText });
+        id = v2.id;
       }
       const p = await api.post<ProgramDetail>(`/programs/${id}/approve`);
       setProgram(p);
@@ -1350,7 +1391,7 @@ export default function DrawingToProgram() {
           ...(data.features.length === 0 ? ['at least one feature'] : []),
         ]
       : [];
-  const v = preview?.validation;
+  const v = isEdited ? editCheck?.validation : preview?.validation;
   const accepted = program?.status === 'approved';
   const machineControlOk = !!machine && (machine.controller ?? '').toUpperCase().startsWith('FANUC');
   const acceptBlockers: string[] = [];
@@ -1360,6 +1401,7 @@ export default function DrawingToProgram() {
     acceptBlockers.push(`Enter the control of ${machine.name} under "Machine setup" in step 3.`);
   if (!preview?.ok) acceptBlockers.push('Generate the program in step 4 first.');
   else if (stale) acceptBlockers.push('You changed something: press "Generate live program" again.');
+  else if (isEdited && (checking || !editCheck)) acceptBlockers.push('Checking your edit…');
   else if (v && !v.ok) acceptBlockers.push('The program has validation errors (see step 4).');
   const sendBlockers: string[] = [];
   if (!accepted) sendBlockers.push('The program must be accepted in step 5 first.');
@@ -1970,11 +2012,39 @@ export default function DrawingToProgram() {
                         ))}
                       </ul>
                     )}
-                    {preview.text && <GcodeView text={preview.text} />}
-                    {preview.toolpath && <ToolpathView preview={preview.toolpath} />}
-                    {preview.toolpath && library.length > 0 && (
-                      <CompareView generated={preview.toolpath} provenName={library[0].name} />
+                    {isEdited && (
+                      <Notice tone="warn">
+                        You edited the generated program{checking ? ' (checking…)' : ''}. The check, the tool
+                        path and the comparison below are for your edited text. On accept it is saved as a new
+                        version on top of the generated one, with your name.
+                      </Notice>
                     )}
+                    {preview.text &&
+                      (isEngineer || isProgrammer ? (
+                        <GcodeView
+                          text={editText ?? preview.text}
+                          original={preview.text}
+                          editing={editing}
+                          onEditingChange={setEditing}
+                          onChange={(t) => {
+                            setEditText(t === preview.text ? null : t);
+                            setProgram(null);
+                          }}
+                        />
+                      ) : (
+                        <GcodeView text={preview.text} />
+                      ))}
+                    {(() => {
+                      const path = isEdited ? editCheck?.toolpath : preview.toolpath;
+                      return path ? (
+                        <>
+                          <ToolpathView key={isEdited ? 'edit' : 'gen'} preview={path} />
+                          {library.length > 0 && (
+                            <CompareView generated={path} provenName={library[0].name} />
+                          )}
+                        </>
+                      ) : null;
+                    })()}
                   </>
                 )}
               </Step>

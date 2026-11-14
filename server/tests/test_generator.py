@@ -941,3 +941,39 @@ def test_proven_program_tool_path_for_comparison(
     segs = r.json()["segments"]
     assert {s["op"] for s in segs} == {1, 2}  # both clampings, as the generated program
     assert client.get("/api/generator/library/O9999/toolpath", headers=h).status_code == 404
+
+
+def test_edited_program_is_checked_then_saved_as_a_new_version(
+    client: TestClient, db: Session, lmw: Machine, make_user: UserFactory
+) -> None:
+    """Editing on screen: live check (nothing saved), then accept saves v2 on top of v1."""
+    eng = headers_for(make_user(Role.ENGINEER))
+    ft = _table(db)
+    body = {
+        "feature_table_id": ft.id,
+        "machine_id": lmw.id,
+        "program_number": 1003,
+        "setup": setup(),
+    }
+    text = client.post("/api/generator/preview", json=body, headers=eng).json()["text"]
+    edited = text.replace("M30", "M30", 1).replace("G97S", "G97 S", 1)
+    r = client.post(
+        "/api/generator/check", json={"machine_id": lmw.id, "text": edited}, headers=eng
+    )
+    assert r.status_code == 200
+    assert r.json()["validation"]["errors"] == [] and r.json()["toolpath"]["segments"]
+    bad = client.post(
+        "/api/generator/check", json={"machine_id": lmw.id, "text": text + "G13Z1.0\n"}, headers=eng
+    ).json()
+    assert bad["validation"]["errors"]  # an unknown G code is caught before anything is saved
+    assert db.scalar(select(Program).where(Program.program_number == 1003)) is None
+
+    v1 = client.post("/api/generator/programs", json=body, headers=eng).json()["program_id"]
+    r = client.put(f"/api/programs/{v1}/text", json={"text": edited}, headers=eng)
+    assert r.status_code == 200, r.text
+    v2 = r.json()
+    assert v2["version"] == 2 and "edited from v1 by" in v2["source_note"]
+    assert client.post(f"/api/programs/{v2['id']}/approve", headers=eng).status_code == 200
+    op = headers_for(make_user(Role.OPERATOR))
+    r = client.post("/api/generator/check", json={"machine_id": lmw.id, "text": text}, headers=op)
+    assert r.status_code == 403  # operators run programs, they do not edit them

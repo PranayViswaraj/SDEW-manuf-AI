@@ -465,6 +465,29 @@ def preview(
     return out
 
 
+class CheckBody(BaseModel):
+    machine_id: int
+    text: str = Field(min_length=1, max_length=200_000)
+    bar_diameter: float | None = Field(default=None, gt=0, le=1000)
+
+
+@router.post("/check")
+def check_text(
+    body: CheckBody,
+    db: Session = Depends(get_db),
+    _: User = Depends(programmers),
+) -> dict[str, Any]:
+    """Validate and draw a program edited on screen, without saving it (saving = new version)."""
+    machine = db.get(Machine, body.machine_id)
+    if machine is None:
+        raise HTTPException(404, "Machine not found.")
+    plot = backplot(body.text)
+    return {
+        "validation": validate_for_machine(body.text, machine).to_dict(),
+        "toolpath": plot.to_dict(stock=stock_outline(body.bar_diameter, plot)),
+    }
+
+
 @router.post("/programs", status_code=201)
 def save_program(
     body: GenerateBody,

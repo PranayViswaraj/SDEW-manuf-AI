@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import GcodeView from '../src/components/GcodeView';
 import { ToastProvider, useToast } from '../src/components/Toast';
@@ -57,5 +58,39 @@ describe('login in production', () => {
   it('keeps the role tiles on a dev or test install', async () => {
     renderApp('/login', null);
     expect(await screen.findByText('Sign in as')).toBeInTheDocument();
+  });
+});
+
+function EditableView({ original }: { original: string }) {
+  const [text, setText] = useState(original);
+  const [editing, setEditing] = useState(false);
+  return (
+    <GcodeView
+      text={text}
+      original={original}
+      editing={editing}
+      onEditingChange={setEditing}
+      onChange={setText}
+    />
+  );
+}
+
+describe('editing the program on screen', () => {
+  it('edits in capitals, counts changed lines and resets to the generated text', () => {
+    render(<EditableView original={PROGRAM} />);
+    fireEvent.click(screen.getByRole('button', { name: /Edit/ }));
+    const area = screen.getByLabelText('Edit program text') as HTMLTextAreaElement;
+    fireEvent.change(area, { target: { value: PROGRAM.replace('G74Z-31.0', 'g74z-30.0') } });
+    expect(area.value).toContain('G74Z-30.0');
+    expect(screen.getByText('Edited · 1 line changed')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Reset to generated/ }));
+    expect((screen.getByLabelText('Edit program text') as HTMLTextAreaElement).value).toBe(PROGRAM);
+    fireEvent.click(screen.getByRole('button', { name: /Done/ }));
+    expect(screen.getByLabelText('Generated program text')).toBeInTheDocument();
+  });
+
+  it('is read-only without an edit handler (operators)', () => {
+    render(<GcodeView text={PROGRAM} />);
+    expect(screen.queryByRole('button', { name: /Edit/ })).not.toBeInTheDocument();
   });
 });

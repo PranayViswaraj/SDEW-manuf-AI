@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { ProgramStatusBadge, ProvenBadge } from '../components/ProgramStatusBadge';
 import MachiningView from '../components/MachiningView';
 import ToolpathView from '../components/ToolpathView';
+import GcodeEditor from '../components/GcodeEditor';
 import UsbDownload from '../components/UsbDownload';
 import { ErrorBox, PageLoading, Notice } from '../components/ui';
 
@@ -20,6 +21,8 @@ export default function ProgramDetail() {
   const navigate = useNavigate();
   const { hasRole } = useAuth();
   const isProgrammer = hasRole('programmer');
+  // accepting and correcting a program: engineer or programmer (shop decision, 13 Nov 2026)
+  const canEdit = hasRole('programmer', 'engineer');
   const [p, setP] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [highlight, setHighlight] = useState<number | null>(null);
@@ -124,7 +127,7 @@ export default function ProgramDetail() {
         )}
       </div>
 
-      {isProgrammer && (
+      {canEdit && (
         <div className="flex flex-wrap gap-2">
           {p.is_latest && (p.status === 'draft' || p.status === 'rejected') && (
             <button
@@ -142,7 +145,7 @@ export default function ProgramDetail() {
               Approve
             </button>
           )}
-          {p.status !== 'retired' && p.status !== 'rejected' && (
+          {isProgrammer && p.status !== 'retired' && p.status !== 'rejected' && (
             <button
               className="btn"
               onClick={() => {
@@ -153,7 +156,7 @@ export default function ProgramDetail() {
               Reject
             </button>
           )}
-          {p.status !== 'retired' && (
+          {isProgrammer && p.status !== 'retired' && (
             <button
               className="btn"
               onClick={() => void act('retire', undefined, `Retire ${p.name} v${p.version}?`)}
@@ -181,13 +184,20 @@ export default function ProgramDetail() {
             Saving creates version {p.version + 1} as a draft. Approval of this program is cleared until the
             new version is approved.
           </Notice>
-          <textarea
-            className="input font-mono text-xs"
-            rows={16}
-            aria-label="Edit program text"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-          />
+          <div className="overflow-hidden rounded-xl ring-1 ring-slate-900/10">
+            <GcodeEditor
+              value={draft}
+              onChange={setDraft}
+              changed={
+                new Set(
+                  draft
+                    .split('\n')
+                    .map((l, i) => (l !== p.lines[i] ? i + 1 : 0))
+                    .filter(Boolean),
+                )
+              }
+            />
+          </div>
           <div className="flex gap-2">
             <button className="btn-primary" onClick={() => void saveVersion()}>
               Save as new version

@@ -259,7 +259,7 @@ def change_text(
     program_id: int,
     body: ProgramTextUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(programmers),
+    user: User = Depends(approvers),  # whoever may accept a program may also correct it
     audit: AuditLogger = Depends(get_audit),
 ) -> ProgramDetail:
     """Never edits in place: creates a NEW draft version and clears approval of the family."""
