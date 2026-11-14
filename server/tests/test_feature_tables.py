@@ -157,10 +157,24 @@ def test_only_engineers_edit_and_confirm(client: TestClient, role_headers: H) ->
 def test_schema_lists_all_feature_types(client: TestClient, role_headers: H) -> None:
     s = client.get("/api/feature-tables/schema", headers=role_headers["operator"]).json()
     types = {t["type"] for t in s["feature_types"]}
-    assert types == {"od", "bore", "face", "chamfer", "radius", "groove", "thread", "drill"}
+    assert types == {
+        "od",
+        "bore",
+        "face",
+        "chamfer",
+        "radius",
+        "groove",
+        "thread",
+        "drill",
+        "cone",
+        "flip",
+    }
     assert [h["key"] for h in s["header"]] == ["material_grade", "bar_diameter", "overall_length"]
     for t in s["feature_types"]:
         keys = {f["key"] for f in t["fields"]}
+        if t["type"] == "flip":
+            assert keys == set()  # only marks where the second clamping starts
+            continue
         assert ("tol_plus" in keys and "tol_minus" in keys) or "tol_class" in keys
 
 

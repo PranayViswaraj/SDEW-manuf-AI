@@ -20,6 +20,7 @@ REQUIRED_TOOLS: dict[str, list[set[str]]] = {
     "face": [TURNING],
     "chamfer": [TURNING | {"bore"}],
     "radius": [TURNING | {"bore"}],
+    "cone": [TURNING | {"bore"}],
     "bore": [{"bore"}, {"drill"}],  # a bore needs a hole first
     "drill": [{"drill"}],
     "groove": [{"groove"}],

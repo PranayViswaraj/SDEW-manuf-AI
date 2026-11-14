@@ -172,8 +172,8 @@ def _fallback(ctx: PartContext | None) -> Fallback | None:
     )
 
 
-def _ref_edge(ctx: PartContext, length: Any) -> dict[str, Any] | None:
-    """Which blade edge the part-off Z is set on, worked out from the proven program:
+def _part_off_fit(ctx: PartContext, length: Any) -> tuple[str, float, str] | None:
+    """(blade edge, stock left for facing the back, note) from the proven part-off:
     part-off Z, blade width and the drawing length must agree (op 2 faces at most 1 mm)."""
     if not isinstance(length, int | float):
         return None
@@ -190,15 +190,45 @@ def _ref_edge(ctx: PartContext, length: Any) -> dict[str, Any] | None:
     w = float(width["value"])
     for edge, extra in (("left", z - w - length), ("right", z - length)):
         if 0 <= extra <= 1.0:
-            return {
-                "value": edge,
-                "source": "proven program for this part",
-                "note": (
-                    f"{ctx.program} parts off at Z-{z:g} with a {w:g} mm blade; with length "
-                    f"{length:g} that only fits the {edge} edge ({extra:g} mm left for facing)"
-                ),
-            }
+            extra = round(extra, 3)
+            return (
+                edge,
+                extra,
+                f"{ctx.program} parts off at Z-{z:g} with a {w:g} mm blade; with length "
+                f"{length:g} that only fits the {edge} edge ({extra:g} mm left for facing)",
+            )
     return None
+
+
+def _ref_edge(ctx: PartContext, length: Any) -> dict[str, Any] | None:
+    fit = _part_off_fit(ctx, length)
+    if fit is None:
+        return None
+    return {"value": fit[0], "source": "proven program for this part", "note": fit[2]}
+
+
+def _back_stock(ctx: PartContext, length: Any) -> dict[str, Any] | None:
+    """Stock on the back face: what the proven part-off leaves, else what its 2nd side faces."""
+    src = "proven program for this part"
+    if ctx.part_off:
+        fit = _part_off_fit(ctx, length)
+        return {"value": fit[1], "source": src, "note": fit[2]} if fit else None
+    if ctx.back_face_stock is not None:
+        return {"value": ctx.back_face_stock, "source": src, "note": ctx.back_face_source}
+    return None
+
+
+def _company_back_stock(request: Request) -> dict[str, Any] | None:
+    """The largest back-face stock any proven program leaves (never too deep a cut)."""
+    best: tuple[float, str] | None = None
+    for k in _known_list(request):
+        ctx = None if k.not_lathe else _part_ctx(request, k.part_number)
+        found = _back_stock(ctx, k.header.get("overall_length")) if ctx else None
+        if found and (best is None or found["value"] > best[0]):
+            best = (float(found["value"]), found["note"])
+    if best is None:
+        return None
+    return {"value": best[0], "source": "proven program", "note": best[1] + " (largest)"}
 
 
 def _rpm_max(machine: Machine) -> int | None:
@@ -231,10 +261,17 @@ def plan(
     lib_face_stock = company_face_stock(
         [(x.name, x.text) for x in load_library(_library_dir(request))]
     )
-    saved: dict[str, Any] = machine.generator_defaults or {}
+    defaults: dict[str, Any] = machine.generator_defaults or {}
+    mine: dict[str, Any] = (defaults.get("parts") or {}).get(ft.part_number) or {}
+    # another part's setup on this machine: only general cutting values carry over
+    saved: dict[str, Any] = {} if ctx is not None and not machine.tools else defaults
     saved_note = (
         f"last saved for {machine.name} with {saved.get('_program', '?')} by "
         f"{saved.get('_saved_by', '?')}"
+    )
+    mine_note = (
+        f"last saved for part {ft.part_number} on {machine.name} with "
+        f"{mine.get('_program', '?')} by {mine.get('_saved_by', '?')}"
     )
     proven_general = {
         "clearance": clearance(proven.blocks),
@@ -243,6 +280,7 @@ def plan(
     ops_out = []
     for spec in OPS:
         last = saved.get(spec.key, {}) if isinstance(saved.get(spec.key), dict) else {}
+        own = mine.get(spec.key, {}) if isinstance(mine.get(spec.key), dict) else {}
         tools = [
             {"tool_code": t.tool_code, "description": t.description, "tool_type": t.tool_type}
             for t in tool_pool
@@ -252,7 +290,9 @@ def plan(
         tools.sort(key=lambda t: spec.tool_types.index(t["tool_type"]))
         tool_sug: dict[str, Any] | None = None
         if spec.tool_types:
-            if last.get("tool_code") in {t["tool_code"] for t in tools}:
+            if own.get("tool_code") in {t["tool_code"] for t in tools}:
+                tool_sug = {"value": own["tool_code"], "source": "last saved", "note": mine_note}
+            elif last.get("tool_code") in {t["tool_code"] for t in tools}:
                 tool_sug = {"value": last["tool_code"], "source": "last saved", "note": saved_note}
             elif tools:
                 tool_sug = {
@@ -270,16 +310,21 @@ def plan(
         params = []
         for prm in spec.params:
             sug: dict[str, Any] | None = None
-            if last.get(prm.key) not in (None, ""):
-                sug = {"value": last[prm.key], "source": "last saved", "note": saved_note}
+            part_fact = (spec.key, prm.key) in PART_FACTS
+            if own.get(prm.key) not in (None, ""):
+                sug = {"value": own[prm.key], "source": "last saved", "note": mine_note}
             elif ctx and (
-                own := _from_part(ctx, spec.key, prm.key, spec.proven_kinds, length, ft.data)
+                from_part := _from_part(ctx, spec.key, prm.key, spec.proven_kinds, length, ft.data)
             ):
-                sug = own
+                sug = from_part
+            elif not part_fact and last.get(prm.key) not in (None, ""):
+                sug = {"value": last[prm.key], "source": "last saved", "note": saved_note}
             elif prm.key == "ref_edge" and (edge := _company_edge(request, spec.key)):
                 sug = edge
             elif spec.key == "rough" and prm.key == "face_stock" and (fs := lib_face_stock):
                 sug = fs
+            elif spec.key == "back" and (bs := _company_back_stock(request)):
+                sug = bs
             elif spec.key == "general" and (found := proven_general.get(prm.key)):
                 sug = {"value": found.value, "source": "proven program", "note": found.source}
             elif spec.proven_kinds:
@@ -328,6 +373,14 @@ def plan(
 
 
 BORE_FROM_ROUGH = {"depth_of_cut", "retract", "finish_allow_x", "finish_allow_z"}
+# Facts about one part, never carried over from another part's saved setup.
+PART_FACTS = {
+    ("general", "part_off"),
+    ("rough", "face_stock"),
+    ("back", "face_stock"),
+    ("part", "ref_edge"),
+    ("groove", "ref_edge"),
+}
 
 
 def _from_part(
@@ -351,6 +404,8 @@ def _from_part(
         }
     if op == "rough" and key == "face_stock" and ctx.face_stock is not None:
         return {"value": ctx.face_stock, "source": src, "note": ctx.face_source}
+    if op == "back" and key == "face_stock":
+        return _back_stock(ctx, length)
     if op == "part" and key == "ref_edge":
         return _ref_edge(ctx, length)
     if op == "groove" and key == "ref_edge":
@@ -455,7 +510,7 @@ def save_program(
     except ProgramError as e:
         db.rollback()
         raise HTTPException(422, str(e)) from e
-    used = {op["key"] for op in res.operations} | {"general"}
+    used = {op["key"] for op in res.operations} | {"general", "back"}
     defaults: dict[str, Any] = {k: v for k, v in body.setup.items() if k in used}
     defaults.update(
         {
@@ -464,7 +519,11 @@ def save_program(
             "_saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
         }
     )
-    machine.generator_defaults = {**(machine.generator_defaults or {}), **defaults}
+    # kept per part (offered first next time for this part) and as the machine's latest setup
+    old = dict(machine.generator_defaults or {})
+    parts = dict(old.get("parts") or {})
+    parts[ft.part_number] = defaults
+    machine.generator_defaults = {**old, **defaults, "parts": parts}
     db.commit()
     audit.record(
         "program_generate",

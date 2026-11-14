@@ -387,10 +387,22 @@ function FeatureEditor({
       </div>
       <ol className="space-y-2">
         {data.features.map((f, i) => (
-          <li key={i} className="rounded-lg border p-3" aria-label={`Feature ${i + 1}`}>
-            <div className="mb-2 flex items-center justify-between gap-2">
+          <li
+            key={i}
+            className={
+              f.type === 'flip' ? 'rounded-lg border-2 border-amber-400 bg-amber-50 p-3' : 'rounded-lg border p-3'
+            }
+            aria-label={`Feature ${i + 1}`}
+          >
+            <div className={`flex items-center justify-between gap-2 ${f.type === 'flip' ? '' : 'mb-2'}`}>
               <span className="text-sm font-medium">
                 {i + 1}. {typeDefs[f.type]?.label ?? f.type}
+                {f.type === 'flip' && (
+                  <span className="mt-0.5 block text-xs font-normal text-amber-900">
+                    The rows below are cut after turning the part around, measured from the back face (Z0 =
+                    finished back face).
+                  </span>
+                )}
               </span>
               {!readOnly && (
                 <span className="flex gap-1">
@@ -1505,6 +1517,12 @@ export default function DrawingToProgram() {
                         Bar diameter is not on the drawing: enter the bar size you load on the machine.
                       </p>
                     )
+                  )}
+                  {knownInfo.back_note && (
+                    <p className="mt-1">
+                      <b>Second clamping</b> (rows after "Turn part around", measured from the back face):{' '}
+                      {knownInfo.back_note}
+                    </p>
                   )}
                   {knownInfo.not_in_table.length > 0 && (
                     <>

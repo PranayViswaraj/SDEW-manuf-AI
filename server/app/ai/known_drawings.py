@@ -26,6 +26,8 @@ class KnownDrawing:
     not_lathe: str = ""  # set when the drawing is not a lathe part (assembly, plate, ...)
     # The bar size is never on a drawing: estimated from the part's proven program, with the reason.
     bar_estimate: dict[str, Any] | None = None
+    # Where the second clamping's values come from (drawing, or a proven-program line).
+    back_note: str = ""
 
     def names(self) -> set[str]:
         return {_norm(self.part_number), *(_norm(a) for a in self.aliases)}
@@ -70,6 +72,7 @@ def load_known(path: str | Path) -> list[KnownDrawing]:
             aliases=tuple(d.get("aliases", [])),
             not_lathe=d.get("not_lathe", ""),
             bar_estimate=d.get("bar_estimate"),
+            back_note=d.get("back_note", ""),
         )
         for d in raw.get("drawings", [])
     ]

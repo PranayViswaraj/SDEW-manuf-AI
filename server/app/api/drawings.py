@@ -102,6 +102,7 @@ def _known_out(k: KnownDrawing) -> dict[str, Any]:
         "aliases": list(k.aliases),
         "not_lathe": k.not_lathe,
         "bar_estimate": k.bar_estimate,
+        "back_note": k.back_note,
     }
 
 

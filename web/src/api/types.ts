@@ -367,6 +367,7 @@ export interface KnownDrawingInfo {
   aliases?: string[];
   not_lathe?: string;
   bar_estimate?: { value: number; note: string } | null;
+  back_note?: string;
 }
 
 export interface Suggestion {

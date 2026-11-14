@@ -388,6 +388,21 @@ def test_preview_save_approve_flow(
     general = next(o for o in plan["operations"] if o["key"] == "general")
     part_off = next(x for x in general["params"] if x["key"] == "part_off")["suggestion"]
     assert part_off["value"] == "yes" and part_off["source"] == "last saved"
+    assert part_off["note"].startswith("last saved for part TEST-1")
+    assert lmw.generator_defaults["parts"]["TEST-1"]["general"]["part_off"] == "yes"
+
+    # another part on the same machine: cutting values carry over, facts about TEST-1 do not
+    other = FeatureTable(part_number="TEST-2", data=ft.data, status="draft")
+    db.add(other)
+    db.commit()
+    plan = client.get(
+        f"/api/generator/plan?feature_table_id={other.id}&machine_id={lmw.id}", headers=prog
+    ).json()
+    ops = {o["key"]: o for o in plan["operations"]}
+    sug = {p["key"]: p["suggestion"] for p in ops["general"]["params"]}
+    assert sug["part_off"] is None  # bar or cut blank is a fact about the part, never carried
+    finish = {p["key"]: p["suggestion"] for p in ops["finish"]["params"]}
+    assert finish["rpm"]["value"] == 2500 and finish["rpm"]["source"] == "last saved"
 
     r = client.post(f"/api/programs/{p.id}/approve", headers=prog)
     assert r.status_code == 200 and r.json()["status"] == "approved"
@@ -563,7 +578,10 @@ def test_known_part_is_filled_but_not_confirmed(client: TestClient, make_user: U
     cells = [c for f in t["data"]["features"] for c in f["fields"].values()]
     assert not any(c["confirmed"] for c in cells)  # the engineer still ticks every value
     info = client.get("/api/drawings/known?part_number=3773480m01", headers=eng).json()
-    assert any("BACK end" in x for x in info["not_in_table"])
+    # the back end is now in the table, after "Turn part around"
+    types = [f["type"] for f in t["data"]["features"]]
+    assert "flip" in types and types.index("flip") < len(types) - 1
+    assert "2 x 15 deg" in info["back_note"] and "O0001 N6" in info["back_note"]
 
 
 def test_autofill_never_overwrites_entered_values(
@@ -656,7 +674,14 @@ def test_3773480m01_generates_with_no_questions_on_a_real_machine(
     text = r["text"]
     assert "T0101" in text and "G74Z-31.0Q5000F0.05" in text  # O0001's U-drill
     assert "G1X44.4Z-2.0" in text  # drawing OD 44.45 0/-0.1, cut at its middle 44.40
-    assert "G0Z-26.0" in text  # 23 long, 3 mm blade set on its left edge
+    # 23 long + 0.5 left for facing the back, 3 mm blade on its left edge: O0001's own Z-26.5
+    assert "G0Z-26.5" in text
+    first, second = text.split("(2ND OPN - PART TURNED AROUND, Z0 = FINISHED BACK FACE)")
+    assert "SEARCH N6" in first and first.rstrip().endswith("M30")
+    # back end: 2 x 15 deg chamfers on OD and bore, one finishing pass each (as O0001 N6/N7)
+    assert "G1X44.4Z-2.0\nG1Z-4.0" in second and "G1X34.87Z-2.0\nG1Z-5.0" in second
+    assert "G71" not in second  # nothing to rough: the first clamping finished both diameters
+    assert second.rstrip().endswith("M30\n%")
     assert "BAR D48.0" in text  # bar size worked out from O0001
     assert r["controller_problem"] is None  # FANUC 0i-TF, confirmed for all lathes
 
@@ -780,3 +805,128 @@ def test_not_lathe_drawings_say_so(client: TestClient, make_user: UserFactory) -
         headers=eng,
     )
     assert r.status_code == 200 and "not made on a lathe" in r.json()["not_lathe"]
+
+
+# ---------------------------------------------------------------- second clamping (turn around)
+
+SECOND_SIDE = {
+    # part: (part-off line in the 1st clamping or None for a cut blank, lines in the 2nd)
+    "3773480M01": ("G0Z-26.5", ["G1X44.4Z-2.0", "G1Z-4.0", "G1X34.87Z-2.0", "G1Z-5.0"]),
+    # O0002 parts off at Z-23.2; flare D28.7, 33 deg, blended R2.4 into the bore
+    "1816C01001": ("G0Z-23.2", ["N700G0X28.7", "G1X26.324Z-1.829", "G2X25.55Z-3.136R2.4"]),
+    # O0003 parts off at Z-32.4 (2 mm blade); 33 deg cone from D29.5 into the 25.0 bore
+    "1627C00501": ("G0Z-32.4", ["N700G0X29.5", "G1X25.0Z-3.465", "G1Z-10.0"]),
+    # cut blanks: back OD and bore lengths as in O0004 N6 and O0009 N2/N4
+    "832100172": (None, ["G1X34.6Z-1.0", "G1Z-9.0"]),
+    "3216C11701": (None, ["G1Z-20.0", "G1X19.0Z-0.5", "G1Z-36.5"]),
+}
+
+
+@pytest.mark.parametrize("part", sorted(SECOND_SIDE))
+def test_second_clamping_matches_the_drawing_and_the_proven_program(
+    client: TestClient, settings: Settings, db: Session, make_user: UserFactory, part: str
+) -> None:
+    from app.seed import run_seed
+
+    run_seed(settings, db)
+    m = db.scalar(select(Machine).where(Machine.key == "lmw-smarturn-55-04927"))
+    assert m is not None
+    _, r = _plan_and_preview(client, db, headers_for(make_user(Role.PROGRAMMER)), part, m)
+    assert r["ok"], r["problems"]
+    assert r["validation"]["errors"] == []
+    first, second = r["text"].split("(2ND OPN - PART TURNED AROUND, Z0 = FINISHED BACK FACE)")
+    part_off, back_lines = SECOND_SIDE[part]
+    if part_off:
+        assert part_off in first.splitlines()
+    lines = second.splitlines()
+    for want in back_lines:
+        assert want in lines, (want, second)
+    # the operator restarts at the second clamping's first block by sequence search
+    n = first.split("SEARCH N")[1].split(")")[0]
+    assert lines[1].startswith(f"N{n}(")
+    assert first.rstrip().endswith("M30") and second.rstrip().endswith("%")
+    plot = backplot(r["text"])
+    assert {s.op for s in plot.segments} == {1, 2}  # drawn as two operations
+
+
+def _side_table(*features: dict[str, Any]) -> dict[str, Any]:
+    def cell(v: Any) -> dict[str, Any]:
+        return {"ai": None, "value": v, "confirmed": True}
+
+    return {
+        "header": {
+            "material_grade": cell("EN8"),
+            "bar_diameter": cell(40.0),
+            "overall_length": cell(20.0),
+        },
+        "features": [
+            {"type": f["type"], "fields": {k: cell(v) for k, v in f.items() if k != "type"}}
+            for f in features
+        ],
+    }
+
+
+def test_cone_geometry_blends_tangentially() -> None:
+    from app.gcode.generator import Corner
+
+    # O0002 N7: D28.7, 33 deg, R2.4 tangent into D24.0 -> X24.774 Z-3.022, then X24.0 Z-4.33
+    x1, z1, x2, z2 = Corner(cone=(28.7, 33.0, 2.4)).cone_points(24.0, 0.0)
+    assert (round(x1, 3), round(z1, 3), x2, round(z2, 2)) == (24.774, -3.022, 24.0, -4.33)
+
+
+@pytest.mark.parametrize(
+    ("features", "problem"),
+    [
+        ([{"type": "flip"}, {"type": "flip"}], "only be used once"),
+        (
+            [{"type": "flip"}, {"type": "groove", "diameter": 30.0, "width": 3.0, "position": 2.0}],
+            "only made in the first clamping",
+        ),
+        (
+            [
+                {"type": "drill", "diameter": 20.0, "depth": 20.0},
+                {"type": "flip"},
+                {"type": "bore", "diameter": 18.0, "depth": 5.0},
+            ],
+            "smaller than the hole",
+        ),
+        (
+            [{"type": "flip"}, {"type": "bore", "diameter": 25.0, "depth": 5.0}],
+            "needs a hole to start from",
+        ),
+        (
+            [
+                {"type": "drill", "diameter": 20.0, "depth": 20.0},
+                {"type": "flip"},
+                {"type": "cone", "diameter": 22.0, "angle": 30.0, "radius": 0.0},
+                {"type": "bore", "diameter": 24.0, "depth": 5.0},
+            ],
+            "mouth must be bigger",
+        ),
+        (
+            [
+                {"type": "drill", "diameter": 20.0, "depth": 20.0},
+                {"type": "flip"},
+                {"type": "cone", "diameter": 30.0, "angle": 33.0, "radius": 20.0},
+                {"type": "bore", "diameter": 24.0, "depth": 5.0},
+            ],
+            "blend radius R20 is too big",
+        ),
+        (
+            [{"type": "flip"}, {"type": "od", "diameter": 30.0, "length": 25.0}],
+            "back OD lengths add up",
+        ),
+    ],
+)
+def test_bad_second_clamping_is_refused(features: list[dict[str, Any]], problem: str) -> None:
+    geo, problems = read_geometry(_side_table(*features))
+    assert geo is None and any(problem in p for p in problems), problems
+
+
+def test_back_side_without_features_faces_to_length() -> None:
+    geo, problems = read_geometry(
+        _side_table({"type": "drill", "diameter": 20.0, "depth": 25.0}, {"type": "flip"})
+    )
+    assert problems == [] and geo is not None and geo.back is not None
+    assert "back" in geo.needed_ops(True)
+    assert any("faced to length only" in n for n in geo.notes)

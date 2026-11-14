@@ -56,6 +56,16 @@ FEATURE_TYPES: dict[str, tuple[str, list[tuple[str, str, Kind]]]] = {
         ],
     ),
     "drill": ("Drill", [("diameter", "Diameter", "mm"), ("depth", "Depth", "mm"), *_TOL]),
+    "cone": (
+        "Cone / countersink",
+        [
+            ("diameter", "Mouth diameter", "mm"),
+            ("angle", "Angle from axis", "deg"),
+            ("radius", "Blend radius (0 = none)", "mm"),
+            *_TOL,
+        ],
+    ),
+    "flip": ("Turn part around (2nd clamping)", []),
 }
 
 CellValue = float | str | None

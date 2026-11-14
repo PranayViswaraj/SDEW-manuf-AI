@@ -13,7 +13,6 @@
         "bar_diameter"
       ],
       "not_in_table": [
-        "Chamfers at the BACK end (OD 2 x 15 deg, bore 2 x 15 deg): both ends per drawing (second clamping, as in O0001 N6/N7)",
         "Perpendicularity 0.05 to A, both faces",
         "Concentricity 0.025 of bore to A",
         "Surface finish N6 on OD, N8 elsewhere",
@@ -68,12 +67,61 @@
             "tol_plus": 0.04,
             "tol_minus": 0.0
           }
+        },
+        {
+          "type": "flip",
+          "fields": {}
+        },
+        {
+          "type": "face",
+          "fields": {
+            "position": 0.0,
+            "tol_plus": 0.25,
+            "tol_minus": -0.25
+          }
+        },
+        {
+          "type": "chamfer",
+          "fields": {
+            "size": 2.0,
+            "angle": 15.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "od",
+          "fields": {
+            "diameter": 44.45,
+            "length": 4.0,
+            "tol_plus": 0.0,
+            "tol_minus": -0.1
+          }
+        },
+        {
+          "type": "chamfer",
+          "fields": {
+            "size": 2.0,
+            "angle": 15.0,
+            "tol_plus": 0.5,
+            "tol_minus": 0.0
+          }
+        },
+        {
+          "type": "bore",
+          "fields": {
+            "diameter": 34.85,
+            "depth": 5.0,
+            "tol_plus": 0.04,
+            "tol_minus": 0.0
+          }
         }
       ],
       "bar_estimate": {
         "value": 48.0,
         "note": "O0001 rapids at X50 beside the bar (line 34) and cuts it to 45.2 in one pass (lines 41-42): bar between 45.2 and 50, standard size 48."
-      }
+      },
+      "back_note": "Back end (drawing: 2 x 15 deg chamfers BOTH ENDS on OD and bore). How far the 2nd clamping re-turns the OD (4.0) and bore (5.0) is not on the drawing: taken from O0001 N6 (Z-4.0) and N7 (Z-5.0)."
     },
     {
       "part_number": "1816C01001",
@@ -89,10 +137,10 @@
         "bar_diameter"
       ],
       "not_in_table": [
-        "Flange-end flare: diameter 28.7 +-0.13 with R2.4 and 33 deg (second clamping, as in O0002 N6/N7)",
         "Chamfer 45 deg x 0.25",
-        "1 deg taper (optional)",
-        "Bore 25.55 has no tolerance on the drawing: general tolerance +-0.5 used"
+        "1 deg taper on the flange OD (optional)",
+        "Bore 25.55 has no tolerance on the drawing: general tolerance +-0.5 used",
+        "CHECK WITH THE PROGRAMMER: O0002 bores 24.0 for the last 4.5 mm and blends R2.4 into 24.0; the drawing shows bore 25.55 right through, so the generated program blends R2.4 into 25.55"
       ],
       "header": {
         "material_grade": "070M20 (EN3A)/220M07 (EN1A) BS970",
@@ -134,12 +182,44 @@
             "tol_plus": 0.5,
             "tol_minus": -0.5
           }
+        },
+        {
+          "type": "flip",
+          "fields": {}
+        },
+        {
+          "type": "face",
+          "fields": {
+            "position": 0.0,
+            "tol_plus": 0.5,
+            "tol_minus": -0.5
+          }
+        },
+        {
+          "type": "cone",
+          "fields": {
+            "diameter": 28.7,
+            "angle": 33.0,
+            "radius": 2.4,
+            "tol_plus": 0.13,
+            "tol_minus": -0.13
+          }
+        },
+        {
+          "type": "bore",
+          "fields": {
+            "diameter": 25.55,
+            "depth": 6.0,
+            "tol_plus": 0.5,
+            "tol_minus": -0.5
+          }
         }
       ],
       "bar_estimate": {
         "value": 36.0,
         "note": "O0002 rapids at X38 beside the bar (line 28) and makes its first cut at 33 (lines 32-33): bar between 33 and 38, largest standard size 36."
-      }
+      },
+      "back_note": "Flange end (drawing: flare D28.7 +-0.13, 33 deg, R2.4). How deep the 2nd clamping bores (6.0) is not on the drawing: taken from O0002 N7 (Z-6.0)."
     },
     {
       "part_number": "1627C00501",
@@ -155,9 +235,9 @@
         "bar_diameter"
       ],
       "not_in_table": [
-        "33 deg +-0.5 deg chamfer on the flange",
-        "Detail B, end flare: diameter 28.7 +-0.13 with R2.4, 0.25 x 45 deg, 1 deg optional (second clamping, as in O0003 N7/N8)",
-        "Bore 25.0 has no tolerance on the drawing: general tolerance +-0.5 used"
+        "Detail B (D28.7 +-0.13, R2.4, 0.25 x 45 deg, 1 deg optional): O0003 skips its N7 for this part (M99P8), so it is not machined here",
+        "Bore 25.0 has no tolerance on the drawing: general tolerance +-0.5 used",
+        "CHECK WITH THE PROGRAMMER: O0003 N8 adds an R5.8 into the 33 deg cone; the drawing shows no radius, so the cone is sharp"
       ],
       "header": {
         "material_grade": "070M20 (EN3A)/220M07 (EN1A) BS970",
@@ -208,12 +288,44 @@
             "tol_plus": 0.5,
             "tol_minus": -0.5
           }
+        },
+        {
+          "type": "flip",
+          "fields": {}
+        },
+        {
+          "type": "face",
+          "fields": {
+            "position": 0.0,
+            "tol_plus": 0.5,
+            "tol_minus": -0.5
+          }
+        },
+        {
+          "type": "cone",
+          "fields": {
+            "diameter": 29.5,
+            "angle": 33.0,
+            "radius": 0.0,
+            "tol_plus": 0.0,
+            "tol_minus": 0.0
+          }
+        },
+        {
+          "type": "bore",
+          "fields": {
+            "diameter": 25.0,
+            "depth": 10.0,
+            "tol_plus": 0.5,
+            "tol_minus": -0.5
+          }
         }
       ],
       "bar_estimate": {
         "value": 30.0,
         "note": "O0003 never turns the 30 (0/-0.08) flange; its chamfer ends at X30.5 (line 65): the flange is the bar itself, bright bar 30."
-      }
+      },
+      "back_note": "Flange end (drawing: 33 deg +-1/2 deg cone into bore 25.0 x 10). The cone's mouth diameter is not on the drawing: D29.5 taken from O0003 N8."
     },
     {
       "part_number": "3216C11701",
@@ -229,9 +341,9 @@
       "not_in_table": [
         "Saddle cut R15.5 at one end (not lathe work)",
         "Cross holes diameter 16.5 and 19.5 (+0.5/-0.2) at 36.5 +-0.8, 7 deg +-1 deg (not lathe work)",
-        "Internal chamfer 0.5 x 45 deg",
         "OD 25 and bore 19 have no tolerance on the drawing: general tolerance +-0.5 used",
-        "Drawing note: refer to the 3D model for any other dimension"
+        "Drawing note: refer to the 3D model for any other dimension",
+        "CHECK WITH THE PROGRAMMER: O0009 drills 19 only from the saddle end (37 deep); the drawing shows 19 through, so the generated program drills through in the 1st clamping"
       ],
       "header": {
         "material_grade": "EN3B",
@@ -273,12 +385,52 @@
             "tol_plus": 0.5,
             "tol_minus": -0.5
           }
+        },
+        {
+          "type": "flip",
+          "fields": {}
+        },
+        {
+          "type": "face",
+          "fields": {
+            "position": 0.0,
+            "tol_plus": 0.8,
+            "tol_minus": -0.8
+          }
+        },
+        {
+          "type": "od",
+          "fields": {
+            "diameter": 25.0,
+            "length": 20.0,
+            "tol_plus": 0.5,
+            "tol_minus": -0.5
+          }
+        },
+        {
+          "type": "chamfer",
+          "fields": {
+            "size": 0.5,
+            "angle": 45.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "bore",
+          "fields": {
+            "diameter": 19.0,
+            "depth": 36.5,
+            "tol_plus": 0.5,
+            "tol_minus": -0.5
+          }
         }
       ],
       "bar_estimate": {
         "value": 28.0,
-        "note": "O0009 rapids at X30 beside the bar (line 8) and turns the OD to 25 in one pass (lines 26-27): bar between 25 and 30, largest standard size below 30 is 28."
-      }
+        "note": "O0009 rapids at X30 beside the bar (line 8) and turns the OD to 25 in one pass (lines 26-27): bar between 25 and 30, largest standard size below 30 is 28. BUT O0009 turns only 23 mm from one end and 20 mm from the other, so 7 mm of the 50 mm part is never turned: the blank you load is probably already close to D25 there. Measure it."
+      },
+      "back_note": "Saddle end (drawing: CH 0.5 x 45 inside). How far the 2nd clamping turns the OD (20.0) and bores (36.5) is not on the drawing: taken from O0009 N2 (Z-20.0) and N4 (Z-36.5)."
     },
     {
       "part_number": "832100172",
@@ -294,9 +446,9 @@
         "bar_diameter"
       ],
       "not_in_table": [
-        "Back-end OD 34.6 +-0.2 over 9 mm (second clamping, as in O0004 N6/N7)",
         "O-ring groove width 3.2 +0.25/0 with corner radii R0.1-0.2 and R0.4 max (detail X)",
-        "Bore 30.0 and length 22.0 use the drawing's general tolerance +-0.2"
+        "Bore 30.0 and length 22.0 use the drawing's general tolerance +-0.2",
+        "All sharp edges and burrs removed (drawing note): O0004 also breaks the D39 shoulder and the bore edge"
       ],
       "header": {
         "material_grade": "EN3B/EN32B",
@@ -348,12 +500,43 @@
             "tol_plus": 0.2,
             "tol_minus": -0.2
           }
+        },
+        {
+          "type": "flip",
+          "fields": {}
+        },
+        {
+          "type": "face",
+          "fields": {
+            "position": 0.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "chamfer",
+          "fields": {
+            "size": 1.0,
+            "angle": 45.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "od",
+          "fields": {
+            "diameter": 34.6,
+            "length": 9.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
         }
       ],
       "bar_estimate": {
         "value": 42.0,
         "note": "O0004 starts its roughing cycle at X42 (line 29) and the part is 39: bar 42 (40 also possible)."
-      }
+      },
+      "back_note": "Back end (drawing: D34.60 +-0.2, C-1.0 x 45). Step length 9.0 = 22.0 - 13.0 (drawing)."
     },
     {
       "part_number": "3314A01701 (assembly)",

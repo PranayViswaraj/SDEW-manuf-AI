@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 _N_COMMENT = re.compile(r"^N\d+\s*\((.*?)\)")
+_N_ALONE = re.compile(r"^N\d+\s*$")  # a tool block with no comment, e.g. O0009 "N4"
 _OP_COMMENT = re.compile(r"^\((.*?)\)\s*$")
 _T = re.compile(r"T(\d{4})")
 _S97 = re.compile(r"G97\s*S(\d+)")
@@ -70,22 +71,35 @@ def split_blocks(program: str, text: str, program_id: int | None = None) -> list
     for no, raw in enumerate(text.replace("\r", "").split("\n"), start=1):
         line = raw.strip().upper()
         m = _N_COMMENT.match(line)
-        if m:
-            cur = ToolBlock(program, program_id, m.group(1).strip(), None, None, op=op)
+        if m or _N_ALONE.match(line):
+            comment = m.group(1).strip() if m else ""
+            cur = ToolBlock(program, program_id, comment, None, None, op=op)
             blocks.append(cur)
         elif _OP_COMMENT.match(line):
             if re.search(r"2ND|SECOND", line):
                 op = 2
             cur = None  # "(2ND OPN)" ends the previous tool block
             continue
-        if cur is None:
-            continue
+        if cur is None or not line:
+            continue  # blank lines (some exports have them between blocks) carry nothing
         cur.lines.append((no, line))
         if cur.tool_code is None and (t := _T.search(line)) and not t.group(1).endswith("00"):
             cur.tool_code = "T" + t.group(1)
+    drilled: float | None = None
     for b in blocks:
         b.kind = _kind(b.comment, "\n".join(t for _, t in b.lines))
+        if b.kind == "drill" and (m := re.match(r"\s*(\d+(?:\.\d+)?)", b.comment)):
+            drilled = float(m.group(1))
+        elif b.kind is None and not b.comment and drilled is not None and _bores_in(b, drilled):
+            b.kind = "bore"  # e.g. O0009 N4: no comment, cuts just outside the 19 drill
     return blocks
+
+
+def _bores_in(b: ToolBlock, hole: float) -> bool:
+    """Every cutting X sits just outside a hole drilled before, and it cuts along -Z."""
+    xs = [w["X"] for _, t in b.lines if t.startswith("G1") and "X" in (w := _words(t))]
+    deep = any(t.startswith("G1") and "Z" in (w := _words(t)) and w["Z"] < -1.0 for _, t in b.lines)
+    return bool(xs) and deep and all(hole <= x <= hole + 3.0 for x in xs)
 
 
 def _words(line: str) -> dict[str, float]:
@@ -259,6 +273,8 @@ class PartContext:
     part_off: bool
     part_off_end_x: float | None
     part_source: str
+    back_face_stock: float | None = None  # how far the 2nd side faces down (cut blanks)
+    back_face_source: str = ""
 
     def suggest(self, kinds: tuple[str, ...], key: str) -> dict[str, Any] | None:
         for b in self.blocks:
@@ -348,6 +364,7 @@ def part_context(name: str, text: str) -> PartContext:
     if part:
         xs = [_words(t)["X"] for _, t in part.lines if "X" in _words(t) and not t.startswith("G0")]
         end_x = min(xs) if xs else None
+    back_stock, back_src = _facing_stock([b for b in every if b.op != 1])
     return PartContext(
         program=name,
         blocks=blocks,
@@ -364,7 +381,30 @@ def part_context(name: str, text: str) -> PartContext:
         part_off=part is not None,
         part_off_end_x=end_x,
         part_source=part.where(part.lines[0][0]) if part else "",
+        back_face_stock=back_stock,
+        back_face_source=back_src,
     )
+
+
+def _facing_stock(blocks: list[ToolBlock]) -> tuple[float | None, str]:
+    """Highest Z an OD tool faces from (a lone Z move followed by a G1 X cut)."""
+    best: float | None = None
+    src = ""
+    for b in blocks:
+        if b.kind not in ("od_rough", "od_finish"):
+            continue
+        for i, (no, t) in enumerate(b.lines):
+            w = _words(t)
+            nxt = b.lines[i + 1][1] if i + 1 < len(b.lines) else ""
+            if (
+                set(w) == {"Z"}
+                and 0 < w["Z"] <= 2.5
+                and nxt.startswith("G1")
+                and "X" in _words(nxt)
+                and (best is None or w["Z"] > best)
+            ):
+                best, src = w["Z"], b.where(no)
+    return best, src
 
 
 def company_face_stock(programs: list[tuple[str, str]]) -> dict[str, Any] | None:
