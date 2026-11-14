@@ -3,7 +3,7 @@ import { configure } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
 
 // The full suite runs files in parallel; give async queries more than the 1 s default.
-configure({ asyncUtilTimeout: 3000 });
+configure({ asyncUtilTimeout: 8000 }); // generous: the whole suite runs in parallel on shop PCs
 
 // Animations off in tests (instant), and jsdom has no matchMedia.
 MotionGlobalConfig.skipAnimations = true;
