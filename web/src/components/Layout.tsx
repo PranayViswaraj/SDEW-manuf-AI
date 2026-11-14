@@ -97,8 +97,9 @@ function SidebarLinks({
 function Brand({ collapsed }: { collapsed: boolean }) {
   return (
     <div className={`flex items-center gap-2.5 px-3 ${collapsed ? 'justify-center' : ''}`}>
-      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600">
+      <span className="relative flex h-9 w-9 items-center justify-center rounded-lg bg-linear-to-br from-brand-500 to-brand-800 shadow-[0_6px_16px_-6px_rgb(44_87_156/0.7)] ring-1 ring-white/20 ring-inset">
         <Factory className="h-5 w-5 text-white" aria-hidden="true" />
+        <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white" />
       </span>
       {!collapsed && (
         <span className="leading-tight">
@@ -192,7 +193,10 @@ export default function Layout() {
   }, [current]);
 
   const initials = (user?.full_name || user?.username || '?')
+    .replace(/\(.*?\)/g, '')
+    .trim()
     .split(/\s+/)
+    .filter((w) => /[A-Za-z0-9]/.test(w[0] ?? ''))
     .map((w) => w[0])
     .join('')
     .slice(0, 2)
@@ -209,7 +213,7 @@ export default function Layout() {
 
       {/* Desktop sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-slate-200 bg-white py-5 transition-[width] duration-200 lg:flex ${
+        className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-slate-200/80 bg-white/90 py-5 backdrop-blur-md transition-[width] duration-200 lg:flex ${
           collapsed ? 'w-[76px]' : 'w-64'
         }`}
       >
@@ -269,7 +273,12 @@ export default function Layout() {
       </AnimatePresence>
 
       <div className={`transition-[padding] duration-300 ${collapsed ? 'lg:pl-[76px]' : 'lg:pl-64'}`}>
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-slate-200 bg-white px-4 sm:px-6">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-slate-200/80 bg-white/80 px-4 backdrop-blur-md backdrop-saturate-150 sm:px-6">
+          <span
+            key={location.pathname}
+            className="animate-route-bar pointer-events-none absolute inset-x-0 -bottom-px h-0.5 origin-left bg-linear-to-r from-brand-500 via-sky-400 to-emerald-400"
+            aria-hidden="true"
+          />
           <button
             className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
             onClick={() => setMobileOpen(true)}
@@ -304,7 +313,7 @@ export default function Layout() {
                 <div className="text-xs text-slate-600">({user.roles.join(', ') || 'no roles'})</div>
               </div>
               <span
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-700"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-linear-to-br from-slate-100 to-slate-300 text-xs font-bold text-slate-700 ring-2 ring-white shadow-[var(--shadow-card)]"
                 aria-hidden="true"
               >
                 {initials}

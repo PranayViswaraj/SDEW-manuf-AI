@@ -1,4 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowRight, Check } from 'lucide-react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, getToken } from '../api/client';
 import type {
@@ -20,6 +31,8 @@ import type {
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import CapablePanel from '../components/CapablePanel';
+import GcodeView from '../components/GcodeView';
+import { useToast } from '../components/Toast';
 import UsbDownload from '../components/UsbDownload';
 import { MachineLiveBadge } from '../components/StatusBadge';
 import { useLiveStatus } from '../hooks/useLiveStatus';
@@ -58,6 +71,9 @@ function useDebounced<T>(value: T, ms: number): T {
   return v;
 }
 
+/** The step number the user should work on now (from "Do this now"). */
+const ActiveStep = createContext<number | null>(null);
+
 function Step({
   n,
   title,
@@ -69,22 +85,61 @@ function Step({
   done?: boolean;
   children: ReactNode;
 }) {
+  const active = useContext(ActiveStep) === n && !done;
   return (
-    <section className="card space-y-3 p-4" aria-label={title}>
-      <h2 className="flex items-center gap-2 font-semibold">
-        <span
-          className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${
-            done ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
-          }`}
-          aria-hidden="true"
-        >
-          {done ? '✓' : n}
+    <motion.section
+      layout="position"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      className={`card relative space-y-3 overflow-hidden p-4 pl-5 ${
+        active ? 'shadow-[var(--shadow-glow)] ring-2 ring-brand-500/60' : ''
+      }`}
+      aria-label={title}
+    >
+      <span
+        className={`absolute inset-y-0 left-0 w-1 transition-colors duration-500 ${
+          done ? 'bg-emerald-500' : active ? 'bg-linear-to-b from-brand-500 to-sky-400' : 'bg-transparent'
+        }`}
+        aria-hidden="true"
+      />
+      <h2 className="flex items-center gap-2.5 font-semibold">
+        <span className="relative inline-flex h-7 w-7 items-center justify-center" aria-hidden="true">
+          {active && <span className="animate-pulse-ring absolute inset-0 rounded-full bg-brand-400" />}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={done ? 'done' : 'todo'}
+              initial={{ scale: 0.4, rotate: -90, opacity: 0 }}
+              animate={{ scale: 1, rotate: 0, opacity: 1 }}
+              exit={{ scale: 0.4, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 520, damping: 26 }}
+              className={`relative inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                done
+                  ? 'bg-emerald-500 text-white shadow-[0_4px_12px_-4px_rgb(16_185_129/0.8)]'
+                  : active
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'
+              }`}
+            >
+              {done ? <Check className="h-4 w-4" strokeWidth={3} /> : n}
+            </motion.span>
+          </AnimatePresence>
         </span>
-        {title}
+        <span className="flex-1">{title}</span>
+        {done && (
+          <span className="badge-green" aria-hidden="true">
+            Done
+          </span>
+        )}
+        {active && (
+          <span className="badge-blue" aria-hidden="true">
+            Now
+          </span>
+        )}
         {done && <span className="sr-only">(done)</span>}
       </h2>
       {children}
-    </section>
+    </motion.section>
   );
 }
 
@@ -579,27 +634,77 @@ interface LibraryProgram {
 
 function Progress({ steps }: { steps: { label: string; done: boolean }[] }) {
   const current = steps.findIndex((s) => !s.done);
+  const doneCount = steps.filter((s) => s.done).length;
+  const reached = current === -1 ? steps.length - 1 : current;
+  const fill = steps.length > 1 ? reached / (steps.length - 1) : 0;
   return (
-    <nav aria-label="Progress" className="card p-3">
-      <ol className="flex flex-wrap gap-2">
-        {steps.map((s, i) => (
-          <li
-            key={s.label}
-            aria-current={i === current ? 'step' : undefined}
-            className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ${
-              s.done
-                ? 'bg-emerald-50 text-emerald-900 ring-1 ring-emerald-600/30'
-                : i === current
-                  ? 'bg-brand-600 text-white'
-                  : 'bg-slate-100 text-slate-600'
-            }`}
-          >
-            <span aria-hidden="true">{s.done ? '✓' : i + 1}</span>
-            {s.label}
-            <span className="sr-only">{s.done ? '(done)' : i === current ? '(do this now)' : '(later)'}</span>
-          </li>
-        ))}
-      </ol>
+    <nav aria-label="Progress" className="card overflow-hidden p-4">
+      <div
+        className="mb-3 flex items-center justify-between text-xs font-medium text-slate-600"
+        aria-hidden="true"
+      >
+        <span>
+          {doneCount} of {steps.length} done
+        </span>
+        <span className="tabular-nums">{Math.round((doneCount / steps.length) * 100)}%</span>
+      </div>
+      <div className="relative">
+        <div
+          className="absolute top-[18px] h-1 rounded-full bg-slate-100"
+          style={{ left: '8%', right: '8%' }}
+          aria-hidden="true"
+        />
+        <motion.div
+          className="absolute top-[18px] h-1 rounded-full bg-linear-to-r from-emerald-500 via-emerald-400 to-brand-500"
+          style={{ left: '8%' }}
+          initial={false}
+          animate={{ width: `${fill * 84}%` }}
+          transition={{ type: 'spring', stiffness: 120, damping: 22 }}
+          aria-hidden="true"
+        />
+        <ol
+          className="relative grid gap-1"
+          style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}
+        >
+          {steps.map((s, i) => {
+            const now = i === current;
+            return (
+              <li
+                key={s.label}
+                aria-current={now ? 'step' : undefined}
+                className="flex flex-col items-center gap-1.5 text-center"
+              >
+                <motion.span
+                  initial={false}
+                  animate={{ scale: now ? 1.12 : 1 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+                  className={`relative z-[1] flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold ring-4 ring-white transition-colors duration-300 ${
+                    s.done
+                      ? 'bg-emerald-500 text-white'
+                      : now
+                        ? 'bg-brand-600 text-white shadow-[var(--shadow-glow)]'
+                        : 'bg-slate-100 text-slate-500'
+                  }`}
+                  aria-hidden="true"
+                >
+                  {now && <span className="animate-pulse-ring absolute inset-0 rounded-full bg-brand-400" />}
+                  <span className="relative">
+                    {s.done ? <Check className="h-4 w-4" strokeWidth={3} /> : i + 1}
+                  </span>
+                </motion.span>
+                <span
+                  className={`text-xs leading-tight font-medium sm:text-[13px] ${
+                    s.done ? 'text-emerald-800' : now ? 'text-brand-800' : 'text-slate-500'
+                  }`}
+                >
+                  {s.label}
+                </span>
+                <span className="sr-only">{s.done ? '(done)' : now ? '(do this now)' : '(later)'}</span>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
     </nav>
   );
 }
@@ -756,12 +861,30 @@ function DoThisNow({ action }: { action: NextAction }) {
       role="status"
       aria-live="polite"
       aria-label="Do this now"
-      className="rounded-2xl border-2 border-brand-600 bg-brand-50 p-4"
+      className="frame-flow relative overflow-hidden rounded-2xl p-4 shadow-[var(--shadow-lift)]"
     >
-      <p className="text-xs font-semibold tracking-wide text-brand-800 uppercase">
-        Do this now{action.step ? ` · step ${action.step}` : ''}
-      </p>
-      <div className="mt-1 text-base text-slate-900">{action.text}</div>
+      <div className="flex items-start gap-3">
+        <span className="relative mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white shadow-[var(--shadow-glow)]">
+          <ArrowRight className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold tracking-wide text-brand-800 uppercase">
+            Do this now{action.step ? ` · step ${action.step}` : ''}
+          </p>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={action.step}
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -12 }}
+              transition={{ duration: 0.22 }}
+              className="mt-1 text-base text-slate-900"
+            >
+              {action.text}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
     </section>
   );
 }
@@ -811,6 +934,13 @@ export default function DrawingToProgram() {
   const [preview, setPreview] = useState<GenPreview | null>(null);
   const [program, setProgram] = useState<ProgramDetail | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const toast = useToast();
+  useEffect(() => {
+    if (notice)
+      toast(notice.split('. ')[0].replace(/\.$/, ''), {
+        detail: notice.includes('. ') ? notice.slice(notice.indexOf('. ') + 2) : undefined,
+      });
+  }, [notice, toast]);
   const [tableReload, setTableReload] = useState(0);
   const [knownInfo, setKnownInfo] = useState<KnownDrawingInfo | null>(null);
 
@@ -1352,531 +1482,567 @@ export default function DrawingToProgram() {
   })();
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Drawing to program</h1>
-        <p className="text-base text-slate-700">
-          Upload the drawing, check its values, choose the machine, then approve and send. A part that already
-          has a proven program uses that program. Otherwise a program is written by fixed rules from the
-          drawing values: never by AI, never with invented numbers.
-        </p>
-      </div>
-      <Progress
-        steps={[
-          { label: 'Drawing', done: !!selectedDrawing },
-          { label: 'Values confirmed', done: confirmed },
-          { label: 'Machine', done: !!machine },
-          { label: 'Program generated', done: !!preview?.ok && !stale },
-          { label: 'Accepted by engineer', done: program?.status === 'approved' },
-          { label: 'Sent to machine', done: false },
-        ]}
-      />
-      <DoThisNow action={nextAction} />
-      <ErrorBox error={error} />
-      {notice && (
-        <div role="status" aria-live="polite">
-          <Notice tone="ok">{notice}</Notice>
+    <ActiveStep.Provider value={nextAction.step}>
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Drawing to program</h1>
+          <p className="text-base text-slate-700">
+            Upload the drawing, check its values, choose the machine, then approve and send. A part that
+            already has a proven program uses that program. Otherwise a program is written by fixed rules from
+            the drawing values: never by AI, never with invented numbers.
+          </p>
         </div>
-      )}
+        <Progress
+          steps={[
+            { label: 'Drawing', done: !!selectedDrawing },
+            { label: 'Values confirmed', done: confirmed },
+            { label: 'Machine', done: !!machine },
+            { label: 'Program generated', done: !!preview?.ok && !stale },
+            { label: 'Accepted by engineer', done: program?.status === 'approved' },
+            { label: 'Sent to machine', done: false },
+          ]}
+        />
+        <DoThisNow action={nextAction} />
+        <ErrorBox error={error} />
+        {notice && (
+          <div role="status" aria-live="polite">
+            <Notice tone="ok">{notice}</Notice>
+          </div>
+        )}
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        {/* ---------------- left: the drawing */}
-        <div className="space-y-2 xl:sticky xl:top-4 xl:self-start">
-          {ft && (
-            <div className="flex flex-wrap items-center gap-2">
-              {drawings.length > 1 && (
-                <select
-                  className="input w-auto"
-                  aria-label="Drawing"
-                  value={drawingId ?? ''}
-                  onChange={(e) => setDrawingId(Number(e.target.value))}
-                >
-                  {drawings.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.filename} ({d.uploaded_at.slice(0, 10)})
-                    </option>
-                  ))}
-                </select>
-              )}
-              {canUpload && drawings.length > 0 && (
-                <label className="btn cursor-pointer">
-                  Upload a new revision
-                  <input
-                    type="file"
-                    className="sr-only"
-                    accept={DRAWING_TYPES}
-                    aria-label="Upload drawing file"
-                    disabled={busy}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) void addDrawing(f);
-                      e.target.value = '';
-                    }}
-                  />
-                </label>
-              )}
-              {selectedDrawing && (
-                <span className="text-xs text-slate-500">
-                  {selectedDrawing.filename} · by {selectedDrawing.uploaded_by_name} · SHA-256{' '}
-                  {selectedDrawing.sha256.slice(0, 12)}
-                </span>
-              )}
-            </div>
-          )}
-          <DrawingViewer
-            drawing={selectedDrawing}
-            empty={
-              <DropZone
-                onFile={handleDrawingFile}
-                blocked={uploadBlocked}
-                busy={busy}
-                chosen={file?.name ?? null}
-              />
-            }
-          />
-        </div>
-
-        {/* ---------------- right: steps */}
-        <div className="space-y-4">
-          <Step n={1} title="Part and drawing" done={!!ft}>
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="flex flex-col text-sm">
-                Open a part
-                <select
-                  className="input w-64"
-                  aria-label="Part"
-                  value={tableId ?? ''}
-                  onChange={(e) => select('table', e.target.value ? Number(e.target.value) : null)}
-                >
-                  <option value="">Choose…</option>
-                  {tables.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.part_number} ({t.status})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {isEngineer && (
-                <>
-                  <span className="pb-2 text-sm text-slate-500">or new:</span>
-                  <input
-                    className="input w-44"
-                    placeholder="Part number"
-                    aria-label="New part number"
-                    value={newPart}
-                    onChange={(e) => setNewPart(e.target.value)}
-                  />
-                  <label className="btn cursor-pointer" title={file?.name}>
-                    {file ? `Drawing: ${file.name.slice(0, 24)}` : 'Choose drawing'}
+        <div className="grid gap-4 xl:grid-cols-2">
+          {/* ---------------- left: the drawing */}
+          <div className="space-y-2 xl:sticky xl:top-4 xl:self-start">
+            {ft && (
+              <div className="flex flex-wrap items-center gap-2">
+                {drawings.length > 1 && (
+                  <select
+                    className="input w-auto"
+                    aria-label="Drawing"
+                    value={drawingId ?? ''}
+                    onChange={(e) => setDrawingId(Number(e.target.value))}
+                  >
+                    {drawings.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.filename} ({d.uploaded_at.slice(0, 10)})
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {canUpload && drawings.length > 0 && (
+                  <label className="btn cursor-pointer">
+                    Upload a new revision
                     <input
                       type="file"
                       className="sr-only"
-                      aria-label="Drawing for the new part"
                       accept={DRAWING_TYPES}
+                      aria-label="Upload drawing file"
+                      disabled={busy}
                       onChange={(e) => {
-                        const f = e.target.files?.[0] ?? null;
+                        const f = e.target.files?.[0];
+                        if (f) void addDrawing(f);
                         e.target.value = '';
-                        if (f && !newPart.trim()) void identifyAndStart(f);
-                        else setFile(f);
                       }}
                     />
                   </label>
-                  <button
-                    className="btn-primary"
-                    disabled={!newPart.trim() || busy}
-                    onClick={() => void startPart()}
-                  >
-                    Start
-                  </button>
-                </>
-              )}
-            </div>
-            {!isEngineer && (
-              <p className="text-xs text-slate-500">
-                {canUpload
-                  ? 'Only an engineer can start a new part. Open an existing part to upload its drawing.'
-                  : 'Uploading drawings and starting parts needs the Engineer or Programmer role. Log out and tap Engineer.'}
-              </p>
-            )}
-          </Step>
-
-          {ft && data && schema && (
-            <Step n={2} title="Values from the drawing" done={confirmed}>
-              {knownInfo && (
-                <Notice tone="info">
-                  <p className="font-medium">
-                    Known drawing {knownInfo.part_number}: the values below were filled for you. Check each
-                    against the drawing, tick it, then press Confirm table.
-                  </p>
-                  {knownInfo.bar_estimate ? (
-                    <p className="mt-1">
-                      Bar diameter <b>Ø{knownInfo.bar_estimate.value}</b> is not on the drawing; it is worked
-                      out from the proven program: {knownInfo.bar_estimate.note} Check it against the bar on
-                      the rack.
-                    </p>
-                  ) : (
-                    knownInfo.not_on_drawing.includes('bar_diameter') && (
-                      <p className="mt-1">
-                        Bar diameter is not on the drawing: enter the bar size you load on the machine.
-                      </p>
-                    )
-                  )}
-                  {knownInfo.back_note && (
-                    <p className="mt-1">
-                      <b>Second clamping</b> (rows after "Turn part around", measured from the back face):{' '}
-                      {knownInfo.back_note}
-                    </p>
-                  )}
-                  {knownInfo.not_in_table.length > 0 && (
-                    <>
-                      <p className="mt-1">On the drawing but not in this table (check them on the part):</p>
-                      <ul className="list-disc pl-5">
-                        {knownInfo.not_in_table.map((x) => (
-                          <li key={x}>{x}</li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                </Notice>
-              )}
-              <details className="text-xs text-slate-600">
-                <summary className="cursor-pointer font-medium">How to enter the values</summary>
-                <ul className="mt-1 list-disc space-y-0.5 pl-5">
-                  <li>Z0 is the finished front face. All diameters are diameters, not radii.</li>
-                  <li>
-                    List OD steps from the front face; each length is that step&apos;s own length. They must
-                    get bigger towards the chuck.
-                  </li>
-                  <li>
-                    List bores largest first; each depth is measured from the front face. A bore needs a
-                    drill.
-                  </li>
-                  <li>
-                    A chamfer or radius applies to the front corner of the OD or bore right after it. Chamfer
-                    angle is measured from the axis.
-                  </li>
-                  <li>
-                    Groove: diameter = groove bottom, position = front face to the groove&apos;s front wall.
-                  </li>
-                  <li>
-                    Thread: metric (e.g. M24) on the OD step with the same diameter, from its front edge.
-                  </li>
-                  <li>Tick each value once you have checked it against the drawing.</li>
-                </ul>
-              </details>
-              <FeatureEditor
-                schema={schema}
-                data={data}
-                readOnly={!isEngineer}
-                onChange={(d) => {
-                  setData(d);
-                  setDirty(true);
-                  setProgram(null);
-                }}
-              />
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                {ft.status === 'confirmed' && !dirty ? (
-                  <span className="badge-green">Confirmed by {ft.confirmed_by_name}</span>
-                ) : (
-                  <span className="badge-amber">Not confirmed</span>
                 )}
-                <span className="text-xs text-slate-500" aria-live="polite">
-                  {saveState === 'saving'
-                    ? 'Saving…'
-                    : saveState === 'saved'
-                      ? 'Saved'
-                      : dirty
-                        ? 'Unsaved changes'
-                        : ''}
-                </span>
-                {isEngineer && ft.status !== 'confirmed' && stillNeeded.length > 0 && (
-                  <p
-                    role="status"
-                    className="order-last basis-full rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900"
-                  >
-                    To confirm, fill in and tick: <strong>{stillNeeded.slice(0, 6).join(', ')}</strong>
-                    {stillNeeded.length > 6 && ` and ${stillNeeded.length - 6} more`}.
-                  </p>
-                )}
-                <span className="flex-1" />
-                {isEngineer ? (
-                  <button
-                    className="btn-primary"
-                    disabled={dirty || !allTicked || ft.status === 'confirmed'}
-                    title={allTicked ? '' : 'Every value must be entered and ticked'}
-                    onClick={() => void confirmTable()}
-                  >
-                    Confirm table
-                  </button>
-                ) : (
+                {selectedDrawing && (
                   <span className="text-xs text-slate-500">
-                    An engineer enters and confirms these values.
+                    {selectedDrawing.filename} · by {selectedDrawing.uploaded_by_name} · SHA-256{' '}
+                    {selectedDrawing.sha256.slice(0, 12)}
                   </span>
                 )}
               </div>
-            </Step>
-          )}
+            )}
+            <DrawingViewer
+              drawing={selectedDrawing}
+              empty={
+                <DropZone
+                  onFile={handleDrawingFile}
+                  blocked={uploadBlocked}
+                  busy={busy}
+                  chosen={file?.name ?? null}
+                />
+              }
+            />
+          </div>
 
-          {ft && (
-            <Step n={3} title="Choose the machine" done={!!machine}>
-              {!anyReady && (
-                <Notice tone="warn">
-                  No machine can receive a program yet. Each card lists what is still missing. Enter it on the{' '}
-                  <Link className="underline" to="/machines">
-                    Machines page
-                  </Link>{' '}
-                  after checking at the machine.
-                </Notice>
-              )}
-              <div className="grid gap-2 sm:grid-cols-2">
-                {sortedMachines.map(({ m, gaps }) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    aria-pressed={m.id === machineId}
-                    onClick={() => {
-                      select('machine', m.id);
-                      setProgram(null);
-                      setProgramNumber('');
-                    }}
-                    className={`rounded-xl border p-3 text-left transition ${
-                      m.id === machineId ? 'border-brand-600 ring-2 ring-brand-200' : 'hover:border-slate-400'
-                    }`}
+          {/* ---------------- right: steps */}
+          <div className="space-y-4">
+            <Step n={1} title="Part and drawing" done={!!ft}>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="flex flex-col text-sm">
+                  Open a part
+                  <select
+                    className="input w-64"
+                    aria-label="Part"
+                    value={tableId ?? ''}
+                    onChange={(e) => select('table', e.target.value ? Number(e.target.value) : null)}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-base font-semibold">{m.name}</span>
-                      {gaps.length === 0 ? (
-                        <span className="badge-green">Recommended</span>
-                      ) : (
-                        <span className="badge-amber">{gaps.length} to fill in</span>
-                      )}
-                    </div>
-                    <div className="mt-1">
-                      <MachineLiveBadge machineId={m.id} />
-                    </div>
-                    <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 text-sm text-slate-700">
-                      <dt className="text-slate-500">Control</dt>
-                      <dd>{m.controller || 'not confirmed'}</dd>
-                      <dt className="text-slate-500">Ethernet</dt>
-                      <dd>{m.ip_address ? `${m.ip_address}:${m.focas_port}` : 'IP not entered'}</dd>
-                    </dl>
-                    {gaps.length > 0 && (
-                      <ul className="mt-1 list-disc pl-5 text-xs text-amber-900">
-                        {gaps.map((g) => (
-                          <li key={g}>{g}</li>
-                        ))}
-                      </ul>
+                    <option value="">Choose…</option>
+                    {tables.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.part_number} ({t.status})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {isEngineer && (
+                  <>
+                    <span className="pb-2 text-sm text-slate-500">or new:</span>
+                    <input
+                      className="input w-44"
+                      placeholder="Part number"
+                      aria-label="New part number"
+                      value={newPart}
+                      onChange={(e) => setNewPart(e.target.value)}
+                    />
+                    <label className="btn cursor-pointer" title={file?.name}>
+                      {file ? `Drawing: ${file.name.slice(0, 24)}` : 'Choose drawing'}
+                      <input
+                        type="file"
+                        className="sr-only"
+                        aria-label="Drawing for the new part"
+                        accept={DRAWING_TYPES}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0] ?? null;
+                          e.target.value = '';
+                          if (f && !newPart.trim()) void identifyAndStart(f);
+                          else setFile(f);
+                        }}
+                      />
+                    </label>
+                    <button
+                      className="btn-primary"
+                      disabled={!newPart.trim() || busy}
+                      onClick={() => void startPart()}
+                    >
+                      Start
+                    </button>
+                  </>
+                )}
+              </div>
+              {!isEngineer && (
+                <p className="text-xs text-slate-500">
+                  {canUpload
+                    ? 'Only an engineer can start a new part. Open an existing part to upload its drawing.'
+                    : 'Uploading drawings and starting parts needs the Engineer or Programmer role. Log out and tap Engineer.'}
+                </p>
+              )}
+            </Step>
+
+            {ft && data && schema && (
+              <Step n={2} title="Values from the drawing" done={confirmed}>
+                {knownInfo && (
+                  <Notice tone="info">
+                    <p className="font-medium">
+                      Known drawing {knownInfo.part_number}: the values below were filled for you. Check each
+                      against the drawing, tick it, then press Confirm table.
+                    </p>
+                    {knownInfo.bar_estimate ? (
+                      <p className="mt-1">
+                        Bar diameter <b>Ø{knownInfo.bar_estimate.value}</b> is not on the drawing; it is
+                        worked out from the proven program: {knownInfo.bar_estimate.note} Check it against the
+                        bar on the rack.
+                      </p>
+                    ) : (
+                      knownInfo.not_on_drawing.includes('bar_diameter') && (
+                        <p className="mt-1">
+                          Bar diameter is not on the drawing: enter the bar size you load on the machine.
+                        </p>
+                      )
                     )}
-                    {optionalChecks(m).length > 0 && (
-                      <p className="mt-1 text-xs text-slate-500">
-                        Optional checks not set up: {optionalChecks(m).join(', ')}
+                    {knownInfo.back_note && (
+                      <p className="mt-1">
+                        <b>Second clamping</b> (rows after "Turn part around", measured from the back face):{' '}
+                        {knownInfo.back_note}
                       </p>
                     )}
-                  </button>
-                ))}
-              </div>
-              {machine && <ConnectionPanel machine={machine} />}
-              {machine && hasRole('admin') && <MachineSetupForm machine={machine} onSaved={reloadMachines} />}
-              {confirmed && <CapablePanel featureTableId={ft.id} />}
-            </Step>
-          )}
-
-          {ft && machine && plan && (
-            <Step n={4} title="Generate the program" done={!!preview?.ok && !stale}>
-              {library.length > 0 && (
-                <Notice tone="info">
-                  Your shop already runs <strong className="font-mono">{library[0].name}</strong> for part{' '}
-                  {ft.part_number}. You can generate a new program from the drawing below, or{' '}
-                  <button
-                    className="underline"
-                    disabled={!!program || (!isEngineer && !isProgrammer)}
-                    onClick={() => void copyLibraryProgram(library[0])}
-                  >
-                    use {library[0].name} instead
-                  </button>{' '}
-                  (the proven program, byte for byte). Both include the second clamping.
-                </Notice>
-              )}
-              {plan.geometry_problems.length > 0 && (
-                <Notice tone="warn">
-                  <ul className="list-disc pl-4">
-                    {plan.geometry_problems.map((x) => (
-                      <li key={x}>{x}</li>
-                    ))}
+                    {knownInfo.not_in_table.length > 0 && (
+                      <>
+                        <p className="mt-1">On the drawing but not in this table (check them on the part):</p>
+                        <ul className="list-disc pl-5">
+                          {knownInfo.not_in_table.map((x) => (
+                            <li key={x}>{x}</li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </Notice>
+                )}
+                <details className="text-xs text-slate-600">
+                  <summary className="cursor-pointer font-medium">How to enter the values</summary>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                    <li>Z0 is the finished front face. All diameters are diameters, not radii.</li>
+                    <li>
+                      List OD steps from the front face; each length is that step&apos;s own length. They must
+                      get bigger towards the chuck.
+                    </li>
+                    <li>
+                      List bores largest first; each depth is measured from the front face. A bore needs a
+                      drill.
+                    </li>
+                    <li>
+                      A chamfer or radius applies to the front corner of the OD or bore right after it.
+                      Chamfer angle is measured from the axis.
+                    </li>
+                    <li>
+                      Groove: diameter = groove bottom, position = front face to the groove&apos;s front wall.
+                    </li>
+                    <li>
+                      Thread: metric (e.g. M24) on the OD step with the same diameter, from its front edge.
+                    </li>
+                    <li>Tick each value once you have checked it against the drawing.</li>
                   </ul>
-                </Notice>
-              )}
-              <div className="flex flex-wrap items-end gap-3">
-                <button
-                  className="btn-primary min-h-12 px-6 text-base"
-                  disabled={generating || !body}
-                  onClick={() => void generateLive()}
-                >
-                  {generating
-                    ? 'Generating…'
-                    : preview
-                      ? 'Generate live program again'
-                      : 'Generate live program'}
-                </button>
-                <label className="flex flex-col text-xs">
-                  Program number (O)
-                  <input
-                    className="input w-28 font-mono"
-                    aria-label="Program number"
-                    inputMode="numeric"
-                    value={programNumber}
-                    onChange={(e) => {
-                      setProgramNumber(e.target.value.replace(/\D/g, '').slice(0, 4));
-                      setProgram(null);
-                    }}
-                  />
-                </label>
-                {stale && <span className="badge-amber">Changed since generated</span>}
-              </div>
-              <details open={setupMissing > 0}>
-                <summary className="cursor-pointer text-sm font-medium">
-                  Tools, speeds and feeds{' '}
-                  {setupMissing === 0
-                    ? '(all filled from your data)'
-                    : `(${setupMissing} not found in your data: fill them in)`}
-                </summary>
-                <div className="mt-2">
-                  <SetupEditor
-                    ops={visibleOps}
-                    setup={setup}
-                    onChange={changeSetup}
-                    readOnly={!isProgrammer && !isEngineer}
-                  />
-                </div>
-              </details>
-              {preview && !preview.ok && (
-                <Notice tone="warn">
-                  <p className="font-medium">Could not generate yet. Still needed:</p>
-                  <ul className="list-disc pl-4">
-                    {preview.problems.map((x) => (
-                      <li key={x}>{x}</li>
-                    ))}
-                  </ul>
-                </Notice>
-              )}
-              {preview?.ok && (
-                <>
-                  {preview.notes.length > 0 && (
-                    <Notice tone="info">
-                      <p className="font-medium">Taken from your data (not on the drawing):</p>
-                      <ul className="list-disc pl-5">
-                        {preview.notes.map((x) => (
-                          <li key={x}>{x}</li>
-                        ))}
-                      </ul>
-                    </Notice>
+                </details>
+                <FeatureEditor
+                  schema={schema}
+                  data={data}
+                  readOnly={!isEngineer}
+                  onChange={(d) => {
+                    setData(d);
+                    setDirty(true);
+                    setProgram(null);
+                  }}
+                />
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  {ft.status === 'confirmed' && !dirty ? (
+                    <span className="badge-green">Confirmed by {ft.confirmed_by_name}</span>
+                  ) : (
+                    <span className="badge-amber">Not confirmed</span>
                   )}
-                  <ul className="text-sm">
-                    {preview.operations.map((o) => (
-                      <li key={o.key}>
-                        <span className="font-medium">{o.label}</span>
-                        {o.tool_code && ` · ${o.tool_code}`}
-                        {o.rpm && ` · ${o.rpm} rpm`} · {o.summary}
-                      </li>
-                    ))}
-                  </ul>
-                  {v && (
-                    <p className={`text-sm ${v.ok ? 'text-emerald-800' : 'text-rose-800'}`}>
-                      Program check: {v.errors.length} errors · {v.warnings.length} warnings
+                  <span className="text-xs text-slate-500" aria-live="polite">
+                    {saveState === 'saving'
+                      ? 'Saving…'
+                      : saveState === 'saved'
+                        ? 'Saved'
+                        : dirty
+                          ? 'Unsaved changes'
+                          : ''}
+                  </span>
+                  {isEngineer && ft.status !== 'confirmed' && stillNeeded.length > 0 && (
+                    <p
+                      role="status"
+                      className="order-last basis-full rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900"
+                    >
+                      To confirm, fill in and tick: <strong>{stillNeeded.slice(0, 6).join(', ')}</strong>
+                      {stillNeeded.length > 6 && ` and ${stillNeeded.length - 6} more`}.
                     </p>
                   )}
-                  {v && [...v.errors, ...v.warnings].length > 0 && (
-                    <ul className="text-xs">
-                      {[...v.errors, ...v.warnings].map((i, k) => (
-                        <li key={k} className={i.severity === 'error' ? 'text-rose-800' : 'text-amber-800'}>
-                          {i.line ? `line ${i.line}: ` : ''}
-                          {i.message}
-                        </li>
-                      ))}
-                    </ul>
+                  <span className="flex-1" />
+                  {isEngineer ? (
+                    <button
+                      className="btn-primary"
+                      disabled={dirty || !allTicked || ft.status === 'confirmed'}
+                      title={allTicked ? '' : 'Every value must be entered and ticked'}
+                      onClick={() => void confirmTable()}
+                    >
+                      Confirm table
+                    </button>
+                  ) : (
+                    <span className="text-xs text-slate-500">
+                      An engineer enters and confirms these values.
+                    </span>
                   )}
-                  <pre
-                    className="max-h-96 overflow-auto rounded-lg bg-slate-900 p-3 font-mono text-xs leading-5 text-slate-100"
-                    aria-label="Generated program text"
-                  >
-                    {preview.text
-                      ?.trimEnd()
-                      .split('\n')
-                      .map((l, i) => `${String(i + 1).padStart(3, ' ')}  ${l}`)
-                      .join('\n')}
-                  </pre>
-                  {preview.toolpath && <ToolpathView preview={preview.toolpath} />}
-                </>
-              )}
-            </Step>
-          )}
+                </div>
+              </Step>
+            )}
 
-          {ft && machine && (preview?.ok || program) && (
-            <Step n={5} title="Engineer accepts the program" done={accepted}>
-              {accepted ? (
-                <p className="text-base">
-                  <span className="badge-green">Accepted</span>{' '}
-                  <Link className="text-blue-700 underline" to={`/programs/${program!.id}`}>
-                    {program!.name} v{program!.version}
-                  </Link>{' '}
-                  by {program!.approved_by_name} for {program!.machine_name}. The acceptance is tied to this
-                  exact text: any change makes a new version that must be accepted again.
-                </p>
-              ) : (
-                <>
-                  <p className="text-sm text-slate-700">
-                    The engineer reads the program and plays the tool path in step 4, then accepts it.
-                    Accepting saves the program for {machine.name} and approves it in one step.
-                  </p>
-                  <button
-                    className="btn-primary min-h-12 px-6 text-base"
-                    disabled={acceptBlockers.length > 0}
-                    onClick={() => void acceptProgram()}
-                  >
-                    Accept program
-                  </button>
-                  {acceptBlockers.length > 0 && (
-                    <ul className="list-disc pl-5 text-sm text-amber-900">
-                      {acceptBlockers.map((x) => (
+            {ft && (
+              <Step n={3} title="Choose the machine" done={!!machine}>
+                {!anyReady && (
+                  <Notice tone="warn">
+                    No machine can receive a program yet. Each card lists what is still missing. Enter it on
+                    the{' '}
+                    <Link className="underline" to="/machines">
+                      Machines page
+                    </Link>{' '}
+                    after checking at the machine.
+                  </Notice>
+                )}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {sortedMachines.map(({ m, gaps }) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      aria-pressed={m.id === machineId}
+                      onClick={() => {
+                        select('machine', m.id);
+                        setProgram(null);
+                        setProgramNumber('');
+                      }}
+                      className={`rounded-xl border p-3 text-left transition ${
+                        m.id === machineId
+                          ? 'border-brand-600 ring-2 ring-brand-200'
+                          : 'hover:border-slate-400'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-base font-semibold">{m.name}</span>
+                        {gaps.length === 0 ? (
+                          <span className="badge-green">Recommended</span>
+                        ) : (
+                          <span className="badge-amber">{gaps.length} to fill in</span>
+                        )}
+                      </div>
+                      <div className="mt-1">
+                        <MachineLiveBadge machineId={m.id} />
+                      </div>
+                      <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 text-sm text-slate-700">
+                        <dt className="text-slate-500">Control</dt>
+                        <dd>{m.controller || 'not confirmed'}</dd>
+                        <dt className="text-slate-500">Ethernet</dt>
+                        <dd>{m.ip_address ? `${m.ip_address}:${m.focas_port}` : 'IP not entered'}</dd>
+                      </dl>
+                      {gaps.length > 0 && (
+                        <ul className="mt-1 list-disc pl-5 text-xs text-amber-900">
+                          {gaps.map((g) => (
+                            <li key={g}>{g}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {optionalChecks(m).length > 0 && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Optional checks not set up: {optionalChecks(m).join(', ')}
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {machine && <ConnectionPanel machine={machine} />}
+                {machine && hasRole('admin') && (
+                  <MachineSetupForm machine={machine} onSaved={reloadMachines} />
+                )}
+                {confirmed && <CapablePanel featureTableId={ft.id} />}
+              </Step>
+            )}
+
+            {ft && machine && plan && (
+              <Step n={4} title="Generate the program" done={!!preview?.ok && !stale}>
+                {library.length > 0 && (
+                  <Notice tone="info">
+                    Your shop already runs <strong className="font-mono">{library[0].name}</strong> for part{' '}
+                    {ft.part_number}. You can generate a new program from the drawing below, or{' '}
+                    <button
+                      className="underline"
+                      disabled={!!program || (!isEngineer && !isProgrammer)}
+                      onClick={() => void copyLibraryProgram(library[0])}
+                    >
+                      use {library[0].name} instead
+                    </button>{' '}
+                    (the proven program, byte for byte). Both include the second clamping.
+                  </Notice>
+                )}
+                {plan.geometry_problems.length > 0 && (
+                  <Notice tone="warn">
+                    <ul className="list-disc pl-4">
+                      {plan.geometry_problems.map((x) => (
                         <li key={x}>{x}</li>
                       ))}
                     </ul>
-                  )}
-                </>
-              )}
-            </Step>
-          )}
-
-          {ft && machine && accepted && (
-            <Step n={6} title={`Send to ${machine.name}`} done={false}>
-              <p className="text-sm text-slate-700">
-                Opens the run screen for {machine.name}. There you pick the bar and tick the 6 safety checks;
-                then <strong>Send program</strong> transfers it over Ethernet through the bridge PC. Start is
-                pressed at the machine (Cycle Start).
-              </p>
-              <button
-                className="btn-primary min-h-12 px-6 text-base"
-                disabled={sendBlockers.length > 0}
-                onClick={() => void sendToMachine()}
-              >
-                Send to {machine.name}
-              </button>
-              {sendBlockers.length > 0 && (
-                <ul className="list-disc pl-5 text-sm text-amber-900">
-                  {sendBlockers.map((x) => (
-                    <li key={x}>{x}</li>
-                  ))}
-                </ul>
-              )}
-              {program && (
-                <div className="border-t pt-3">
-                  <UsbDownload programId={program.id} programName={program.name} />
+                  </Notice>
+                )}
+                <div className="flex flex-wrap items-end gap-3">
+                  <button
+                    className="btn-primary min-h-12 px-6 text-base"
+                    disabled={generating || !body}
+                    onClick={() => void generateLive()}
+                  >
+                    {generating
+                      ? 'Generating…'
+                      : preview
+                        ? 'Generate live program again'
+                        : 'Generate live program'}
+                  </button>
+                  <label className="flex flex-col text-xs">
+                    Program number (O)
+                    <input
+                      className="input w-28 font-mono"
+                      aria-label="Program number"
+                      inputMode="numeric"
+                      value={programNumber}
+                      onChange={(e) => {
+                        setProgramNumber(e.target.value.replace(/\D/g, '').slice(0, 4));
+                        setProgram(null);
+                      }}
+                    />
+                  </label>
+                  {stale && <span className="badge-amber">Changed since generated</span>}
                 </div>
-              )}
-            </Step>
-          )}
+                <details open={setupMissing > 0}>
+                  <summary className="cursor-pointer text-sm font-medium">
+                    Tools, speeds and feeds{' '}
+                    {setupMissing === 0
+                      ? '(all filled from your data)'
+                      : `(${setupMissing} not found in your data: fill them in)`}
+                  </summary>
+                  <div className="mt-2">
+                    <SetupEditor
+                      ops={visibleOps}
+                      setup={setup}
+                      onChange={changeSetup}
+                      readOnly={!isProgrammer && !isEngineer}
+                    />
+                  </div>
+                </details>
+                {preview && !preview.ok && (
+                  <Notice tone="warn">
+                    <p className="font-medium">Could not generate yet. Still needed:</p>
+                    <ul className="list-disc pl-4">
+                      {preview.problems.map((x) => (
+                        <li key={x}>{x}</li>
+                      ))}
+                    </ul>
+                  </Notice>
+                )}
+                {preview?.ok && (
+                  <>
+                    {preview.notes.length > 0 && (
+                      <Notice tone="info">
+                        <p className="font-medium">Taken from your data (not on the drawing):</p>
+                        <ul className="list-disc pl-5">
+                          {preview.notes.map((x) => (
+                            <li key={x}>{x}</li>
+                          ))}
+                        </ul>
+                      </Notice>
+                    )}
+                    <ol className="space-y-1.5" aria-label="Operations">
+                      {preview.operations.map((o, k) => {
+                        const second = o.summary.startsWith('2nd side');
+                        return (
+                          <motion.li
+                            key={k}
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: k * 0.04, duration: 0.25 }}
+                            className={`flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-3 py-2 text-sm ${
+                              second ? 'border-amber-200 bg-amber-50/60' : 'border-slate-200 bg-white'
+                            }`}
+                          >
+                            <span
+                              className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-bold ${
+                                second ? 'bg-amber-500 text-white' : 'bg-brand-600 text-white'
+                              }`}
+                              aria-hidden="true"
+                            >
+                              {k + 1}
+                            </span>
+                            <span className="font-medium">{o.label}</span>
+                            {o.tool_code && <span className="badge-gray font-mono">{o.tool_code}</span>}
+                            {o.rpm && <span className="badge-blue">{o.rpm} rpm</span>}
+                            <span className="basis-full pl-7 text-xs text-slate-600 sm:basis-auto sm:pl-0">
+                              · {o.summary}
+                            </span>
+                          </motion.li>
+                        );
+                      })}
+                    </ol>
+                    {v && (
+                      <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                        <span className={v.ok ? 'text-emerald-800' : 'text-rose-800'}>
+                          Program check: {v.errors.length} errors · {v.warnings.length} warnings
+                        </span>
+                        <span className={v.errors.length ? 'badge-red' : 'badge-green'} aria-hidden="true">
+                          {v.errors.length ? 'Fix errors' : 'No errors'}
+                        </span>
+                      </p>
+                    )}
+                    {v && [...v.errors, ...v.warnings].length > 0 && (
+                      <ul className="space-y-1.5 text-xs">
+                        {[...v.errors, ...v.warnings].map((i, k) => (
+                          <li
+                            key={k}
+                            className={`flex gap-2 rounded-lg border px-2.5 py-1.5 ${
+                              i.severity === 'error'
+                                ? 'border-rose-200 bg-rose-50 text-rose-900'
+                                : 'border-amber-200 bg-amber-50 text-amber-900'
+                            }`}
+                          >
+                            {i.line ? (
+                              <span className="shrink-0 rounded bg-white/70 px-1.5 font-mono font-semibold">
+                                line {i.line}
+                              </span>
+                            ) : null}
+                            <span>{i.message}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {preview.text && <GcodeView text={preview.text} />}
+                    {preview.toolpath && <ToolpathView preview={preview.toolpath} />}
+                  </>
+                )}
+              </Step>
+            )}
+
+            {ft && machine && (preview?.ok || program) && (
+              <Step n={5} title="Engineer accepts the program" done={accepted}>
+                {accepted ? (
+                  <p className="text-base">
+                    <span className="badge-green">Accepted</span>{' '}
+                    <Link className="text-blue-700 underline" to={`/programs/${program!.id}`}>
+                      {program!.name} v{program!.version}
+                    </Link>{' '}
+                    by {program!.approved_by_name} for {program!.machine_name}. The acceptance is tied to this
+                    exact text: any change makes a new version that must be accepted again.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-sm text-slate-700">
+                      The engineer reads the program and plays the tool path in step 4, then accepts it.
+                      Accepting saves the program for {machine.name} and approves it in one step.
+                    </p>
+                    <button
+                      className="btn-primary min-h-12 px-6 text-base"
+                      disabled={acceptBlockers.length > 0}
+                      onClick={() => void acceptProgram()}
+                    >
+                      Accept program
+                    </button>
+                    {acceptBlockers.length > 0 && (
+                      <ul className="list-disc pl-5 text-sm text-amber-900">
+                        {acceptBlockers.map((x) => (
+                          <li key={x}>{x}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                )}
+              </Step>
+            )}
+
+            {ft && machine && accepted && (
+              <Step n={6} title={`Send to ${machine.name}`} done={false}>
+                <p className="text-sm text-slate-700">
+                  Opens the run screen for {machine.name}. There you pick the bar and tick the 6 safety
+                  checks; then <strong>Send program</strong> transfers it over Ethernet through the bridge PC.
+                  Start is pressed at the machine (Cycle Start).
+                </p>
+                <button
+                  className="btn-primary min-h-12 px-6 text-base"
+                  disabled={sendBlockers.length > 0}
+                  onClick={() => void sendToMachine()}
+                >
+                  Send to {machine.name}
+                </button>
+                {sendBlockers.length > 0 && (
+                  <ul className="list-disc pl-5 text-sm text-amber-900">
+                    {sendBlockers.map((x) => (
+                      <li key={x}>{x}</li>
+                    ))}
+                  </ul>
+                )}
+                {program && (
+                  <div className="border-t pt-3">
+                    <UsbDownload programId={program.id} programName={program.name} />
+                  </div>
+                )}
+              </Step>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </ActiveStep.Provider>
   );
 }

@@ -134,14 +134,15 @@ function StatCard({
 }) {
   return (
     <StaggerItem>
-      <Link
-        to={to}
-        className="card group flex items-start gap-4 p-5 transition hover:border-slate-300 hover:shadow-[var(--shadow-lift)]"
-      >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+      <Link to={to} className="card card-hover group relative flex items-start gap-4 overflow-hidden p-5">
+        <span
+          className="absolute -top-10 -right-10 h-28 w-28 rounded-full bg-brand-100/60 blur-2xl transition-opacity duration-300 group-hover:opacity-100 sm:opacity-0"
+          aria-hidden="true"
+        />
+        <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-brand-50 to-brand-100 text-brand-700 ring-1 ring-brand-200 transition-transform duration-300 group-hover:scale-110">
           <Icon className="h-5 w-5" aria-hidden="true" />
         </span>
-        <span className="min-w-0">
+        <span className="relative min-w-0">
           <span className="block text-xs font-semibold tracking-wide text-slate-600 uppercase">{label}</span>
           <span className="mt-0.5 block text-3xl font-bold tracking-tight text-slate-900 tabular-nums">
             {value === null ? <Skeleton className="mt-1 h-8 w-12" /> : <CountUp value={value} />}
@@ -184,22 +185,59 @@ export default function Home() {
 
   return (
     <div className="space-y-8">
-      <section className="card px-6 py-6 sm:px-8">
-        <p className="text-sm font-medium text-slate-600">{greeting}</p>
-        <h1 className="hero-title mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-          Welcome, {user?.full_name || user?.username}
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-700">
-          From a confirmed drawing to a machined part, one piece at a time. Use the buttons below, or press{' '}
-          <span className="kbd">Ctrl</span> <span className="kbd">K</span> to jump to any page.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {(user?.roles ?? []).map((r) => (
-            <span key={r} className="badge-gray capitalize">
-              {r}
-            </span>
-          ))}
-          {user?.can_start_machine && <span className="badge-green">allowed to press Start</span>}
+      <section className="relative overflow-hidden rounded-2xl bg-linear-to-br from-brand-900 via-brand-800 to-brand-600 px-6 py-7 text-white shadow-[var(--shadow-lift)] sm:px-8">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.08]"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgb(255 255 255) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255) 1px, transparent 1px)',
+            backgroundSize: '32px 32px',
+          }}
+          aria-hidden="true"
+        />
+        <motion.div
+          className="pointer-events-none absolute top-1/2 -right-16 hidden h-72 w-72 -translate-y-1/2 md:block"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 40, ease: 'linear', repeat: Infinity }}
+          aria-hidden="true"
+        >
+          <span className="absolute inset-0 rounded-full border-[14px] border-white/10" />
+          <span className="absolute inset-10 rounded-full border-[10px] border-dashed border-white/15" />
+          <span className="absolute inset-[5.5rem] rounded-full bg-white/10" />
+        </motion.div>
+        <div className="relative">
+          <p className="text-sm font-medium text-brand-100">{greeting}</p>
+          <h1 className="hero-title mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            Welcome, {user?.full_name || user?.username}
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-brand-100">
+            From a confirmed drawing to a machined part, one piece at a time. Use the buttons below, or press{' '}
+            <span className="kbd">Ctrl</span> <span className="kbd">K</span> to jump to any page.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {(user?.roles ?? []).map((r) => (
+              <span
+                key={r}
+                className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold text-white capitalize ring-1 ring-white/20"
+              >
+                {r}
+              </span>
+            ))}
+            {user?.can_start_machine && (
+              <span className="rounded-full bg-emerald-400/20 px-2.5 py-0.5 text-xs font-semibold text-emerald-100 ring-1 ring-emerald-300/40">
+                allowed to press Start
+              </span>
+            )}
+          </div>
+          {hasRole('engineer', 'programmer') && (
+            <Link
+              to="/make"
+              className="sheen mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-brand-800 shadow-[0_8px_24px_-8px_rgb(0_0_0/0.4)] transition hover:-translate-y-0.5 hover:bg-brand-50"
+            >
+              Start from a drawing
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          )}
         </div>
       </section>
 
@@ -267,7 +305,7 @@ export default function Home() {
               <StaggerItem key={t.to}>
                 <Link
                   to={t.to}
-                  className="card group relative flex h-full items-start gap-4 p-5 transition hover:border-brand-300 hover:shadow-[var(--shadow-lift)]"
+                  className="card card-hover group relative flex h-full items-start gap-4 p-5 hover:border-brand-300"
                 >
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 transition-colors group-hover:bg-brand-50 group-hover:text-brand-700">
                     <Icon className="h-5 w-5" aria-hidden="true" />

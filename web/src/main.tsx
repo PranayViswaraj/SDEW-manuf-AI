@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { A11yProvider } from './a11y/A11yContext';
 import App from './App';
 import { AuthProvider } from './auth/AuthContext';
+import { ToastProvider } from './components/Toast';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
@@ -11,7 +12,9 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <A11yProvider>
-          <App />
+          <ToastProvider>
+            <App />
+          </ToastProvider>
         </A11yProvider>
       </AuthProvider>
     </BrowserRouter>

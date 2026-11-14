@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { ApiError, getToken } from '../api/client';
+import { useToast } from './Toast';
 
 /** Approved program as O1234.NC for a USB stick (FANUC panel USB port). The server refuses
  *  anything that could not be sent over the network (not approved, not latest, changed). */
 export default function UsbDownload({ programId, programName }: { programId: number; programName: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   async function download() {
     setBusy(true);
@@ -32,6 +34,7 @@ export default function UsbDownload({ programId, programName }: { programId: num
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+      toast(`${programName}.NC downloaded`, { detail: 'Copy it to C:\\CNC (cable) or a USB stick.' });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
