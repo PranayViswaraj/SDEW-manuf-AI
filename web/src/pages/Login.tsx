@@ -12,8 +12,9 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
+import { getHealth } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 
 const POINTS = [
@@ -42,6 +43,18 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Production has personal accounts only: no shared role tiles.
+  const [production, setProduction] = useState(false);
+  useEffect(() => {
+    getHealth()
+      .then((h) => {
+        if (h.mode === 'production') {
+          setProduction(true);
+          setRole(OTHER);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   if (user) return <Navigate to="/" replace />;
 
@@ -61,29 +74,61 @@ export default function Login() {
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Brand panel */}
-      <div className="hidden border-r border-slate-200 bg-white p-12 lg:flex lg:flex-col lg:justify-between">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-600 text-white">
+      <div className="relative hidden overflow-hidden bg-linear-to-br from-brand-900 via-brand-800 to-brand-600 p-12 text-white lg:flex lg:flex-col lg:justify-between">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgb(255 255 255) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255) 1px, transparent 1px)',
+            backgroundSize: '36px 36px',
+          }}
+          aria-hidden="true"
+        />
+        <motion.div
+          className="pointer-events-none absolute -right-24 -bottom-24 h-[26rem] w-[26rem]"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 50, ease: 'linear', repeat: Infinity }}
+          aria-hidden="true"
+        >
+          <span className="absolute inset-0 rounded-full border-[18px] border-white/10" />
+          <span className="absolute inset-12 rounded-full border-[12px] border-dashed border-white/15" />
+          <span className="absolute inset-[8.5rem] rounded-full bg-white/10" />
+        </motion.div>
+        <div className="relative flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/25 backdrop-blur">
             <Factory className="h-5 w-5" aria-hidden="true" />
           </span>
-          <span className="text-xl font-bold tracking-tight text-slate-900">ManufAI</span>
+          <span className="text-xl font-bold tracking-tight">ManufAI</span>
         </div>
-        <div>
-          <h2 className="text-3xl leading-tight font-bold tracking-tight text-slate-900">
+        <div className="relative">
+          <motion.h2
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            className="text-4xl leading-tight font-bold tracking-tight"
+          >
             From drawing
             <br />
-            to machined part.
-          </h2>
+            <span className="bg-linear-to-r from-sky-200 to-emerald-200 bg-clip-text text-transparent">
+              to machined part.
+            </span>
+          </motion.h2>
           <ul className="mt-8 space-y-3">
-            {POINTS.map((p) => (
-              <li key={p} className="flex items-center gap-3 text-slate-700">
-                <ShieldCheck className="h-5 w-5 text-slate-500" aria-hidden="true" />
+            {POINTS.map((p, i) => (
+              <motion.li
+                key={p}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.25 + i * 0.12, duration: 0.35 }}
+                className="flex items-center gap-3 text-brand-50"
+              >
+                <ShieldCheck className="h-5 w-5 text-emerald-300" aria-hidden="true" />
                 {p}
-              </li>
+              </motion.li>
             ))}
           </ul>
         </div>
-        <p className="text-sm text-slate-600">
+        <p className="relative text-sm text-brand-100">
           The machine&apos;s red emergency stop is always the emergency stop.
         </p>
       </div>
@@ -101,54 +146,58 @@ export default function Login() {
             <h1 className="text-2xl font-bold tracking-tight">ManufAI</h1>
             <p className="mt-1 text-sm text-slate-600">Sign in to continue.</p>
           </div>
-          <fieldset>
-            <legend className="text-sm font-medium text-slate-700">Sign in as</legend>
-            <div className="mt-1.5 grid grid-cols-2 gap-2">
-              {ROLES.map((r) => {
-                const on = role === r.username;
-                const Icon = r.icon;
-                return (
-                  <label
-                    key={r.username}
-                    className={`${r.username === 'sample' ? 'col-span-2 ' : ''}flex cursor-pointer items-center gap-2.5 rounded-xl border-2 p-3 transition has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-brand-200 ${
-                      on ? 'border-brand-600 bg-brand-50' : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="role"
-                      className="sr-only"
-                      checked={on}
-                      onChange={() => setRole(r.username)}
-                    />
-                    <Icon
-                      className={`h-5 w-5 shrink-0 ${on ? 'text-brand-700' : 'text-slate-500'}`}
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-slate-900">{r.label}</span>
-                      <span className="block text-xs text-slate-600">{r.hint}</span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-            <label
-              className={`mt-2 flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1 text-sm has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-brand-200 ${
-                role === OTHER ? 'font-semibold text-brand-700' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <input
-                type="radio"
-                name="role"
-                className="sr-only"
-                checked={role === OTHER}
-                onChange={() => setRole(OTHER)}
-              />
-              <UserRound className="h-4 w-4" aria-hidden="true" />
-              Other user (type a username)
-            </label>
-          </fieldset>
+          {!production && (
+            <fieldset>
+              <legend className="text-sm font-medium text-slate-700">Sign in as</legend>
+              <div className="mt-1.5 grid grid-cols-2 gap-2">
+                {ROLES.map((r) => {
+                  const on = role === r.username;
+                  const Icon = r.icon;
+                  return (
+                    <label
+                      key={r.username}
+                      className={`${r.username === 'sample' ? 'col-span-2 ' : ''}flex cursor-pointer items-center gap-2.5 rounded-xl border-2 p-3 transition has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-brand-200 ${
+                        on
+                          ? 'border-brand-600 bg-brand-50'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="role"
+                        className="sr-only"
+                        checked={on}
+                        onChange={() => setRole(r.username)}
+                      />
+                      <Icon
+                        className={`h-5 w-5 shrink-0 ${on ? 'text-brand-700' : 'text-slate-500'}`}
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-slate-900">{r.label}</span>
+                        <span className="block text-xs text-slate-600">{r.hint}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              <label
+                className={`mt-2 flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1 text-sm has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-brand-200 ${
+                  role === OTHER ? 'font-semibold text-brand-700' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="role"
+                  className="sr-only"
+                  checked={role === OTHER}
+                  onChange={() => setRole(OTHER)}
+                />
+                <UserRound className="h-4 w-4" aria-hidden="true" />
+                Other user (type a username)
+              </label>
+            </fieldset>
+          )}
           {role === OTHER && (
             <label className="block">
               <span className="text-sm font-medium text-slate-700">Username</span>

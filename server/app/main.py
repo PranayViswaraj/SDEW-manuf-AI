@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app import __version__
 from app.api import (
@@ -32,6 +33,7 @@ from app.db.guards import install_audit_guards
 from app.db.session import make_engine, make_session_factory
 from app.observability import RequestContextMiddleware, install_error_handlers, setup_logging
 from app.services.bridge_hub import BridgeHub
+from app.web import install_web
 
 log = logging.getLogger("manufai")
 
@@ -127,6 +129,10 @@ def create_app(settings: Settings | None = None, configure_logging: bool = False
         bridge_ws,
     ):
         app.include_router(module.router, prefix="/api")
+    if settings.web_dir:
+        # one-port install has no Caddy in front: compress pages and API answers here
+        app.add_middleware(GZipMiddleware, minimum_size=1024)
+        install_web(app, settings.web_dir)  # last: it answers every path the API does not
     return app
 
 

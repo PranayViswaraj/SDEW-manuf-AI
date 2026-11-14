@@ -17,33 +17,28 @@ is not accepted; Cycle Start is pressed at the machine by the operator.
 
 ## A. Before the day (IT, about 1 hour)
 
-1. One always-on office PC with Docker Desktop (Windows) or Docker (Linux), on the office network.
-2. Copy the `manufai` folder to it, then in that folder:
+**Option 1 - one Windows PC (recommended to start).** The laptop or office PC that runs ManufAI;
+other laptops and tablets open it in a browser over Wi-Fi or the office network.
 
-   ```bash
-   cp .env.prod.example .env.prod
-   python -c "import secrets; print(secrets.token_urlsafe(48))"   # -> MANUFAI_JWT_SECRET
-   python -c "import secrets; print(secrets.token_urlsafe(24))"   # -> POSTGRES_PASSWORD
-   ```
+1. Once: `.\scripts\setup.ps1` (installs what the app needs).
+2. Start: `.\scripts\start-production.ps1`. The first time it builds the app, makes a secret key,
+   creates the database outside OneDrive (`%LOCALAPPDATA%\ManufAI`), adds the six machines and
+   asks for the first admin (name + password of 10+ characters). It prints the address to open,
+   e.g. `http://192.168.1.25:8080`. Run it once "as administrator" so the firewall lets other
+   laptops in.
+3. Start with Windows and back up every evening at 20:00: `.\scripts\install-autostart.ps1`.
+   Copy one file from `%LOCALAPPDATA%\ManufAIackups` to a pen drive every week.
+4. Log in as the admin and add everyone on the **Users** page (personal accounts; the shared
+   `qwerty` test accounts do not exist here). Only people on the production head's list get
+   **Allowed to press Start**.
+5. After updating the code: `.\scripts\start-production.ps1 -Rebuild`.
 
-   In `.env.prod` on a private network without a domain name: `MANUFAI_DOMAIN=:80`,
-   `MANUFAI_CORS_ORIGINS=http://<PC IP address>`, `MANUFAI_HSTS=false`.
-3. Start it: `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`
-4. People (real names, passwords of 10+ characters; the `qwerty` test accounts do not exist in
-   production):
+**Option 2 - server with Docker (later, for several sites).** `docker compose -f
+docker-compose.prod.yml --env-file .env.prod up -d --build` with PostgreSQL and HTTPS; see
+`docs/deployment.md`.
 
-   ```bash
-   alias mcli='docker compose -f docker-compose.prod.yml --env-file .env.prod exec server python -m app.cli'
-   mcli create-user <admin name> --role admin
-   mcli create-user <engineer name> --role engineer
-   mcli create-user <programmer name> --role programmer
-   mcli create-user <operator name> --role operator --can-start
-   mcli check          # must end with: RESULT: OK (it also checks proven programs and known drawings)
-   ```
-
-5. Open `http://<PC IP address>` from the engineer's computer and log in.
-6. Backups: run `./scripts/backup.sh` every evening (Task Scheduler or cron) and copy the file off
-   the PC once a week.
+The installed app: in Chrome or Edge, open the address and choose **Install ManufAI** (address
+bar icon). It then opens from the Start menu or taskbar in its own window, like a program.
 
 ## B. The first part (engineer + programmer, 20 minutes)
 
@@ -55,8 +50,8 @@ Use **3773480M01 (Sleeve 4WD)**: its proven program O0001 matches the generated 
    lengths (Z-4.0 / Z-5.0) are not on the drawing and say where they come from. Measure the bar on
    the rack. Press **Confirm table**.
 3. Choose **LMW SMARTURN · 55-04927** → **Generate live program**.
-4. Compare with the proven program O0001 (step 4 says "Your shop already runs O0001"; the
-   program text is in `samples/programs/O0001`). Same tools (T0101 drill, T0202 rough, T0303
+4. Compare with the proven program O0001: step 4 shows **Compare with proven program O0001**,
+   the generated cutting path (blue) over O0001 (amber) for each clamping. Same tools (T0101 drill, T0202 rough, T0303
    finish, T0707 bore, T0404 parting), part-off at Z-26.5, second side from N6. If anyone has a
    doubt, press **use O0001 instead**: the proven program, byte for byte, goes through the same
    accept step.

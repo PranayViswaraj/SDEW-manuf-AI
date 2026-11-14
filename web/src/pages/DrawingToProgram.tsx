@@ -31,6 +31,7 @@ import type {
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import CapablePanel from '../components/CapablePanel';
+import CompareView from '../components/CompareView';
 import GcodeView from '../components/GcodeView';
 import { useToast } from '../components/Toast';
 import UsbDownload from '../components/UsbDownload';
@@ -1971,6 +1972,9 @@ export default function DrawingToProgram() {
                     )}
                     {preview.text && <GcodeView text={preview.text} />}
                     {preview.toolpath && <ToolpathView preview={preview.toolpath} />}
+                    {preview.toolpath && library.length > 0 && (
+                      <CompareView generated={preview.toolpath} provenName={library[0].name} />
+                    )}
                   </>
                 )}
               </Step>

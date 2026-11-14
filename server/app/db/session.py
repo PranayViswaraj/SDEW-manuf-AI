@@ -28,6 +28,12 @@ def make_engine(
         def _sqlite_fk_on(dbapi_conn: Any, _record: Any) -> None:
             cur = dbapi_conn.cursor()
             cur.execute("PRAGMA foreign_keys=ON")
+            # Single-PC installs: readers never block the writer, and a busy database waits
+            # instead of failing. WAL keeps the file safe on a power cut.
+            cur.execute("PRAGMA busy_timeout=5000")
+            if ":memory:" not in database_url and database_url not in ("sqlite://", "sqlite:///"):
+                cur.execute("PRAGMA journal_mode=WAL")
+                cur.execute("PRAGMA synchronous=NORMAL")
             cur.close()
 
     return engine

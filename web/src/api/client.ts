@@ -94,6 +94,7 @@ export interface Health {
   version: string;
   database: 'ok' | 'error';
   time: string;
+  mode?: 'dev' | 'test' | 'production';
 }
 
 export const getHealth = (): Promise<Health> => api.get<Health>('/health');

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import GcodeView from '../src/components/GcodeView';
 import { ToastProvider, useToast } from '../src/components/Toast';
+import { renderApp } from './helpers';
 
 const PROGRAM =
   '%\nO1000(SLEEVE)\nN1(32.0 UDRILL)\nT0101\nG74Z-31.0Q5000F0.05\nM30\n(2ND OPN - PART TURNED AROUND)\nM30\n%\n';
@@ -41,5 +42,20 @@ describe('toasts', () => {
     expect(screen.getByText('Next: send it')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Dismiss'));
     await waitFor(() => expect(screen.queryByText('Program accepted')).not.toBeInTheDocument());
+  });
+});
+
+describe('login in production', () => {
+  it('hides the shared role tiles and asks for a personal user name', async () => {
+    renderApp('/login', null, {
+      'GET /health': { status: 'ok', version: '1', database: 'ok', time: '', mode: 'production' },
+    });
+    expect(await screen.findByLabelText('Username')).toBeInTheDocument();
+    expect(screen.queryByText('Sign in as')).not.toBeInTheDocument();
+  });
+
+  it('keeps the role tiles on a dev or test install', async () => {
+    renderApp('/login', null);
+    expect(await screen.findByText('Sign in as')).toBeInTheDocument();
   });
 });

@@ -11,7 +11,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { NAV, SECTIONS, type NavItem } from '../nav';
@@ -19,6 +19,7 @@ import CommandPalette, { type Command } from './CommandPalette';
 import AccessibilityMenu from './AccessibilityMenu';
 import HealthBadge from './HealthBadge';
 import { PageTransition } from './motion';
+import { PageLoading } from './ui';
 
 const COLLAPSE_KEY = 'manufai.sidebar.collapsed';
 
@@ -328,7 +329,9 @@ export default function Layout() {
 
         <main id="main" className="app-main mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <PageTransition id={location.pathname}>
-            <Outlet />
+            <Suspense fallback={<PageLoading />}>
+              <Outlet />
+            </Suspense>
           </PageTransition>
         </main>
       </div>

@@ -121,6 +121,38 @@ def cmd_check(settings: Settings, factory: sessionmaker[Session], out: Out) -> i
     return 0 if ok else 1
 
 
+def cmd_backup(settings: Settings, folder: str, keep_days: int, out: Out) -> int:
+    """Online copy of the SQLite database (safe while the server runs), plus clean-up."""
+    import sqlite3
+    import time
+    from datetime import datetime
+    from pathlib import Path
+
+    url = settings.database_url
+    if not url.startswith("sqlite:///"):
+        raise CliError("backup is for the single-PC SQLite install; use scripts/backup.sh.")
+    src = Path(url.removeprefix("sqlite:///"))
+    if not src.is_file():
+        raise CliError(f"Database not found: {src}")
+    dest_dir = Path(folder)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / f"manufai-{datetime.now():%Y%m%d-%H%M%S}.db"
+    with sqlite3.connect(src) as s, sqlite3.connect(dest) as d:
+        s.backup(d)
+    with sqlite3.connect(dest) as d:
+        if d.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise CliError(f"Backup {dest} failed its integrity check.")
+    cutoff = time.time() - keep_days * 86400
+    removed = 0
+    for old in dest_dir.glob("manufai-*.db"):
+        if old != dest and old.stat().st_mtime < cutoff:
+            old.unlink()
+            removed += 1
+    size_kb = dest.stat().st_size // 1024
+    out(f"Backup written: {dest} ({size_kb} KB). Old backups removed: {removed}.")
+    return 0
+
+
 def run(
     argv: Sequence[str] | None = None,
     settings: Settings | None = None,
@@ -144,6 +176,9 @@ def run(
     sub.add_parser("list-users", help="list users and roles")
     cb = sub.add_parser("create-bridge", help="create a bridge and print its secrets once")
     cb.add_argument("name")
+    bk = sub.add_parser("backup", help="copy the SQLite database safely (single-PC install)")
+    bk.add_argument("--to", required=True, help="backup folder")
+    bk.add_argument("--keep-days", type=int, default=30)
     args = p.parse_args(argv)
 
     settings = settings or get_settings()
@@ -154,6 +189,8 @@ def run(
     try:
         if args.cmd == "check":
             return cmd_check(settings, factory, out)
+        if args.cmd == "backup":
+            return cmd_backup(settings, args.to, args.keep_days, out)
         with factory() as db:
             if args.cmd == "create-user":
                 if db.scalar(select(User).where(User.username == args.username)):

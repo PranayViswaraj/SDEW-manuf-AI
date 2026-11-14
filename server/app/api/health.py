@@ -31,6 +31,8 @@ class HealthResponse(BaseModel):
     version: str
     database: Literal["ok", "error"]
     time: datetime
+    # production hides the shared test accounts on the login page
+    mode: Literal["dev", "test", "production"] = "dev"
 
 
 class ReadyResponse(BaseModel):
@@ -50,7 +52,7 @@ def head_revision() -> str | None:
 
 
 @router.get("/health", response_model=HealthResponse, summary="Liveness check")
-def health(db: Session = Depends(get_db)) -> HealthResponse:
+def health(request: Request, db: Session = Depends(get_db)) -> HealthResponse:
     db_state: Literal["ok", "error"]
     try:
         db.execute(text("SELECT 1"))
@@ -62,6 +64,7 @@ def health(db: Session = Depends(get_db)) -> HealthResponse:
         version=__version__,
         database=db_state,
         time=datetime.now(UTC),
+        mode=request.app.state.settings.env,
     )
 
 

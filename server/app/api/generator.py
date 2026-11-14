@@ -574,6 +574,19 @@ def library(
     ]
 
 
+@router.get("/library/{name}/toolpath")
+def library_toolpath(
+    name: str,
+    request: Request,
+    _: User = Depends(any_user),
+) -> dict[str, Any]:
+    """Tool path of a proven program, to compare with a generated one (drawn, never run)."""
+    prog = next((p for p in load_library(_library_dir(request)) if p.name == name), None)
+    if prog is None:
+        raise HTTPException(404, "Program not found.")
+    return backplot(prog.text).to_dict()
+
+
 @router.post("/library/{name}/use", status_code=201)
 def use_library_program(
     name: str,

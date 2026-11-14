@@ -930,3 +930,14 @@ def test_back_side_without_features_faces_to_length() -> None:
     assert problems == [] and geo is not None and geo.back is not None
     assert "back" in geo.needed_ops(True)
     assert any("faced to length only" in n for n in geo.notes)
+
+
+def test_proven_program_tool_path_for_comparison(
+    client: TestClient, make_user: UserFactory
+) -> None:
+    h = headers_for(make_user(Role.OPERATOR))
+    r = client.get("/api/generator/library/O0001/toolpath", headers=h)
+    assert r.status_code == 200
+    segs = r.json()["segments"]
+    assert {s["op"] for s in segs} == {1, 2}  # both clampings, as the generated program
+    assert client.get("/api/generator/library/O9999/toolpath", headers=h).status_code == 404

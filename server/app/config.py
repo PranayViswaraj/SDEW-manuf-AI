@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     samples_dir: str = "../samples/programs"
     # Sample raw-material CSV loaded by the dev seed (clearly marked SAMPLE DATA).
     sample_materials_csv: str = "../samples/materials/raw-material-register.sample.csv"
+    # One-PC install (scripts/start-production.ps1): SQLite is allowed, backed up nightly.
+    standalone: bool = False
+    # Built web app (web/dist). When set, the server also serves the pages: one port for all.
+    web_dir: str | None = None
 
     @model_validator(mode="after")
     def _production_safety(self) -> "Settings":
@@ -85,8 +89,13 @@ def production_problems(s: Settings) -> list[str]:
         out.append("Set MANUFAI_SEED_DEV_DATA=false (dev users have published passwords).")
     if "*" in s.cors_origin_list:
         out.append("MANUFAI_CORS_ORIGINS must list your site, not '*'.")
-    if s.database_url.startswith("sqlite"):
-        out.append("Use PostgreSQL (MANUFAI_DATABASE_URL), not SQLite.")
+    if s.database_url.startswith("sqlite") and not s.standalone:
+        out.append(
+            "Use PostgreSQL (MANUFAI_DATABASE_URL), not SQLite, or set MANUFAI_STANDALONE=true "
+            "for a single-PC install."
+        )
+    if s.standalone and s.database_url.startswith("sqlite") and "OneDrive" in s.database_url:
+        out.append("Keep the database outside OneDrive: syncing a live database can corrupt it.")
     return out
 
 

@@ -1,23 +1,25 @@
-import type { ReactNode } from 'react';
+import { lazy, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import type { Role } from './api/types';
 import { useAuth } from './auth/AuthContext';
 import Layout from './components/Layout';
-import Bridges from './pages/Bridges';
-import DrawingToProgram from './pages/DrawingToProgram';
 import Home from './pages/Home';
 import Login from './pages/Login';
-import Logs from './pages/Logs';
-import MachineDetail from './pages/MachineDetail';
 import Machines from './pages/Machines';
-import Materials from './pages/Materials';
-import PartDetail from './pages/PartDetail';
 import Parts from './pages/Parts';
-import ProgramDetail from './pages/ProgramDetail';
 import Programs from './pages/Programs';
 import Run from './pages/Run';
-import RunDetail from './pages/RunDetail';
-import Users from './pages/Users';
+
+// Bigger pages load when first opened (smaller first download on shop tablets).
+const Bridges = lazy(() => import('./pages/Bridges'));
+const DrawingToProgram = lazy(() => import('./pages/DrawingToProgram'));
+const Logs = lazy(() => import('./pages/Logs'));
+const MachineDetail = lazy(() => import('./pages/MachineDetail'));
+const Materials = lazy(() => import('./pages/Materials'));
+const PartDetail = lazy(() => import('./pages/PartDetail'));
+const ProgramDetail = lazy(() => import('./pages/ProgramDetail'));
+const RunDetail = lazy(() => import('./pages/RunDetail'));
+const Users = lazy(() => import('./pages/Users'));
 
 function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] }) {
   const { user, loading, hasRole } = useAuth();
