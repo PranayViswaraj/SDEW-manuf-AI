@@ -24,6 +24,8 @@ from app.services.program_store import (
 
 router = APIRouter(prefix="/programs", tags=["programs"])
 programmers = require_roles(Role.PROGRAMMER)
+# Accepting (approving) a program: the engineer or the programmer (shop decision, 13 Nov 2026).
+approvers = require_roles(Role.PROGRAMMER, Role.ENGINEER)
 retirers = require_roles(Role.PROGRAMMER, Role.ADMIN)
 
 
@@ -257,7 +259,7 @@ def change_text(
 def approve(
     program_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(programmers),
+    user: User = Depends(approvers),
     audit: AuditLogger = Depends(get_audit),
 ) -> ProgramDetail:
     p = _get(db, program_id)

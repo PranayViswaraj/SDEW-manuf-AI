@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.ai.drawing_reader import DrawingReader, StubDrawingReader
-from app.gcode.generator import ProgramGenerator
 from app.services.feature_tables import feature_table_problem
 
 H = dict[str, dict[str, str]]
@@ -218,11 +217,6 @@ def test_ai_package_cannot_touch_programs() -> None:
                 names = [node.module]
             for name in names:
                 assert not name.startswith(forbidden), f"{path.name} imports {name}"
-
-
-def test_program_generator_is_an_empty_interface() -> None:
-    with pytest.raises(TypeError):
-        ProgramGenerator()  # type: ignore[abstract]
 
 
 def test_dev_seed_demo_table_has_confirmation_time(settings: object, db: Session) -> None:

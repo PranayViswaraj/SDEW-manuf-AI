@@ -39,6 +39,8 @@ services:
       MANUFAI_SAMPLES_DIR: /samples/programs
     volumes:
       - ./samples/programs:/samples/programs:ro
+      # Values read from known drawings (autofill on upload). Same parent folder as programs.
+      - ./samples/drawings:/samples/drawings:ro
     depends_on:
       db:
         condition: service_healthy

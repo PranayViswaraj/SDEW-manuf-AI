@@ -76,7 +76,7 @@ describe('feature table screen', () => {
     const input = await screen.findByLabelText('Bar diameter value');
     fireEvent.change(input, { target: { value: '52' } });
     fireEvent.blur(input);
-    expect(screen.getByLabelText('Bar diameter confirmed')).not.toBeChecked();
+    await waitFor(() => expect(screen.getByLabelText('Bar diameter confirmed')).not.toBeChecked());
     fireEvent.click(screen.getByRole('button', { name: 'Add feature' }));
     expect(screen.getByText('1. OD (outside diameter)')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));

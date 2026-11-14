@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.db.models import Program
 from app.gcode.backplot import Backplot, backplot, stock_outline
-from app.seed import run_seed
+from app.seed import seed_demo_lmw
 from tests.conftest import REPO_DIR
 
 SAMPLES = REPO_DIR / "samples" / "programs"
@@ -144,7 +144,7 @@ def test_stock_outline() -> None:
 def test_toolpath_endpoint(
     client: TestClient, role_headers: dict[str, dict[str, str]], settings: Settings, db: Session
 ) -> None:
-    run_seed(settings, db)
+    seed_demo_lmw(db, settings)
     pid = db.scalars(select(Program.id).where(Program.program_number == 4)).one()
     r = client.get(
         f"/api/programs/{pid}/toolpath?bar_diameter=50", headers=role_headers["operator"]

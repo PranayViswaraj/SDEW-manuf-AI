@@ -4,7 +4,17 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Float,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -133,6 +143,9 @@ class Machine(Base):
     remote_control_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     limits: Mapped[dict[str, Any]] = mapped_column(JSON, default=empty_limits)
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Program generator setup last saved for this machine (tools, speeds, feeds), entered by a
+    # programmer. Re-offered next time so it is typed only once. Never filled with guesses.
+    generator_defaults: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
@@ -207,7 +220,7 @@ class ProgramSource(StrEnum):
     TRUSTED_IMPORT = "trusted_import"
     UPLOAD = "upload"
     DEMO = "demo"
-    GENERATOR = "generator"  # deterministic ProgramGenerator (future)
+    GENERATOR = "generator"  # deterministic app.gcode.generator (fixed code, not AI)
 
 
 class Program(Base):
@@ -321,3 +334,20 @@ class Run(Base):
 
     machine: Mapped[Machine] = relationship(lazy="joined")
     program: Mapped[Program] = relationship(lazy="joined")
+
+
+class Drawing(Base):
+    """A part drawing file as uploaded (PDF or image), kept byte for byte with its SHA-256."""
+
+    __tablename__ = "drawings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    part_number: Mapped[str] = mapped_column(String(64), index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(64))
+    size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    uploaded_by_name: Mapped[str] = mapped_column(String(128), default="")
+    uploaded_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

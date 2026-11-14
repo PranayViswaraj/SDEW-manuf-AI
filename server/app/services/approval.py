@@ -10,8 +10,22 @@ from app.db.models import Machine, Program, ProgramStatus
 from app.services.program_store import family, sha256_text, validate_for_machine
 
 
+def controller_problem(machine: Machine) -> str | None:
+    """Programs here are FANUC lathe code and are sent with FANUC FOCAS over Ethernet. A machine
+    whose control has not been confirmed as FANUC can never receive one."""
+    if not (machine.controller or "").strip().upper().startswith("FANUC"):
+        return (
+            f"The control of {machine.name} is not confirmed. Programs here are FANUC lathe code "
+            "and are sent with FANUC FOCAS over Ethernet. Check the control at the machine and "
+            "enter it on the Machines page."
+        )
+    return None
+
+
 def approval_problem(db: Session, program: Program, machine: Machine) -> str | None:
     name = f"O{program.program_number:04d} v{program.version}"
+    if problem := controller_problem(machine):
+        return problem
     if program.machine_id != machine.id:
         return f"{name} is approved for a different machine, not {machine.name}."
     if program.status != ProgramStatus.APPROVED.value:

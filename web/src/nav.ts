@@ -1,5 +1,16 @@
 import type { LucideIcon } from 'lucide-react';
-import { Boxes, Cpu, FileCode2, LayoutDashboard, Play, Radio, Ruler, ScrollText, Users } from 'lucide-react';
+import {
+  Boxes,
+  Cpu,
+  FileCode2,
+  LayoutDashboard,
+  Play,
+  Radio,
+  Ruler,
+  ScrollText,
+  Users,
+  Wand2,
+} from 'lucide-react';
 import type { Role } from './api/types';
 
 export type NavSection = 'Overview' | 'Production' | 'Engineering' | 'Admin';
@@ -34,6 +45,13 @@ export const NAV: NavItem[] = [
     description: 'Machine register, limits, tools and live status',
     icon: Cpu,
     section: 'Production',
+  },
+  {
+    to: '/make',
+    label: 'Drawing to program',
+    description: 'Upload a drawing, enter its values, generate and send the program',
+    icon: Wand2,
+    section: 'Engineering',
   },
   {
     to: '/parts',

@@ -177,6 +177,16 @@ def test_cli_check_reports_missing_admin(settings: Settings) -> None:
     assert any("no active admin" in line for line in out)
 
 
+def test_cli_check_reports_missing_drawing_data(settings: Settings, tmp_path: Path) -> None:
+    """Production once mounted only samples/programs: uploads then silently did not autofill."""
+    (tmp_path / "programs").mkdir()
+    out: list[str] = []
+    bare = settings.model_copy(update={"samples_dir": str(tmp_path / "programs")})
+    assert cli(["check"], settings=bare, out=out.append) == 1
+    assert any("no proven programs" in line for line in out)
+    assert any("known_drawings.json missing" in line for line in out)
+
+
 def test_cli_refuses_bad_passwords_and_duplicates(
     settings: Settings, make_user: UserFactory
 ) -> None:

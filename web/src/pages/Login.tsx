@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import {
   Factory,
   FileCode2,
+  Layers,
   Loader2,
   LogIn,
   Play,
@@ -29,6 +30,7 @@ const ROLES: { username: string; label: string; hint: string; icon: LucideIcon }
   { username: 'engineer', label: 'Engineer', hint: 'Confirm parts', icon: Ruler },
   { username: 'programmer', label: 'Programmer', hint: 'Approve programs', icon: FileCode2 },
   { username: 'admin', label: 'Admin', hint: 'Users & settings', icon: Users },
+  { username: 'sample', label: 'Sample', hint: 'All four roles in one account', icon: Layers },
 ];
 const OTHER = '';
 
@@ -108,7 +110,7 @@ export default function Login() {
                 return (
                   <label
                     key={r.username}
-                    className={`flex cursor-pointer items-center gap-2.5 rounded-xl border-2 p-3 transition has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-brand-200 ${
+                    className={`${r.username === 'sample' ? 'col-span-2 ' : ''}flex cursor-pointer items-center gap-2.5 rounded-xl border-2 p-3 transition has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-brand-200 ${
                       on ? 'border-brand-600 bg-brand-50' : 'border-slate-200 bg-white hover:border-slate-300'
                     }`}
                   >

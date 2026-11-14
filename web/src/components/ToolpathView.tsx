@@ -25,19 +25,24 @@ const toolColour = (tool: number | null): string =>
 
 export default function ToolpathView({
   programId,
+  preview,
   selectedLine,
   onSelectLine,
 }: {
-  programId: number;
+  programId?: number;
+  /** A tool path computed for an unsaved program (drawing-to-program preview). */
+  preview?: Toolpath;
   selectedLine?: number | null;
   onSelectLine?: (line: number) => void;
 }) {
-  const [data, setData] = useState<Toolpath | null>(null);
+  const [fetched, setData] = useState<Toolpath | null>(null);
+  const data = preview ?? fetched;
   const [error, setError] = useState<string | null>(null);
   const [bar, setBar] = useState('');
   const [step, setStep] = useState<number | null>(null);
 
   useEffect(() => {
+    if (programId === undefined) return;
     const qs = bar.trim() && Number(bar) > 0 ? `?bar_diameter=${Number(bar)}` : '';
     api
       .get<Toolpath>(`/programs/${programId}/toolpath${qs}`)
@@ -95,17 +100,19 @@ export default function ToolpathView({
             nose-radius compensation and corner R are not shown. A visual aid, not proof the program is safe.
           </p>
         </div>
-        <label className="text-sm">
-          Bar Ø (mm){' '}
-          <input
-            className="input inline-block w-24"
-            aria-label="Bar diameter"
-            placeholder="manual"
-            inputMode="decimal"
-            value={bar}
-            onChange={(e) => setBar(e.target.value)}
-          />
-        </label>
+        {!preview && (
+          <label className="text-sm">
+            Bar Ø (mm){' '}
+            <input
+              className="input inline-block w-24"
+              aria-label="Bar diameter"
+              placeholder="manual"
+              inputMode="decimal"
+              value={bar}
+              onChange={(e) => setBar(e.target.value)}
+            />
+          </label>
+        )}
       </div>
 
       <svg

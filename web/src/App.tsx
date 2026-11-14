@@ -4,6 +4,7 @@ import type { Role } from './api/types';
 import { useAuth } from './auth/AuthContext';
 import Layout from './components/Layout';
 import Bridges from './pages/Bridges';
+import DrawingToProgram from './pages/DrawingToProgram';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Logs from './pages/Logs';
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="/programs" element={<Programs />} />
         <Route path="/programs/:id" element={<ProgramDetail />} />
         <Route path="/run" element={<Run />} />
+        <Route path="/make" element={<DrawingToProgram />} />
         <Route path="/parts" element={<Parts />} />
         <Route path="/parts/:id" element={<PartDetail />} />
         <Route path="/runs/:id" element={<RunDetail />} />

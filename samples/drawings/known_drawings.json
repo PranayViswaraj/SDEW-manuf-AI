@@ -1,0 +1,383 @@
+{
+  "_about": "Drawings whose values have already been read and written down. When one of these is uploaded, the app fills its values; an engineer still checks, ticks and confirms them. Values are read from the drawing itself and cross-checked against the proven program for the same part. Never invent values. Tolerances not written on a drawing come from that drawing's own general tolerance table.",
+  "drawings": [
+    {
+      "part_number": "3773480M01",
+      "aliases": [],
+      "title": "SLEEVE - 4WD (TAFE), drawing issue 3",
+      "sha256": [
+        "3b704badaf6145b57617997d283734808618f86f29359f7641192de6639b8823"
+      ],
+      "read_by": "Read from drawing 3773480M01 issue 3 on 13 Nov 2026; matches proven program O0001",
+      "not_on_drawing": [
+        "bar_diameter"
+      ],
+      "not_in_table": [
+        "Chamfers at the BACK end (OD 2 x 15 deg, bore 2 x 15 deg): both ends per drawing (second clamping, as in O0001 N6/N7)",
+        "Perpendicularity 0.05 to A, both faces",
+        "Concentricity 0.025 of bore to A",
+        "Surface finish N6 on OD, N8 elsewhere",
+        "Heat treatment: nitrocarburise 3 h at 570 C, min compound layer 12.5 microns on OD (O0001 turns the OD to 44.7)"
+      ],
+      "header": {
+        "material_grade": "230M07/080M15/210M15 BS970",
+        "bar_diameter": null,
+        "overall_length": 23.0
+      },
+      "features": [
+        {
+          "type": "face",
+          "fields": {
+            "position": 0.0,
+            "tol_plus": 0.25,
+            "tol_minus": -0.25
+          }
+        },
+        {
+          "type": "chamfer",
+          "fields": {
+            "size": 2.0,
+            "angle": 15.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "od",
+          "fields": {
+            "diameter": 44.45,
+            "length": 23.0,
+            "tol_plus": 0.0,
+            "tol_minus": -0.1
+          }
+        },
+        {
+          "type": "chamfer",
+          "fields": {
+            "size": 2.0,
+            "angle": 15.0,
+            "tol_plus": 0.5,
+            "tol_minus": 0.0
+          }
+        },
+        {
+          "type": "bore",
+          "fields": {
+            "diameter": 34.85,
+            "depth": 23.0,
+            "tol_plus": 0.04,
+            "tol_minus": 0.0
+          }
+        }
+      ],
+      "bar_estimate": {
+        "value": 48.0,
+        "note": "O0001 rapids at X50 beside the bar (line 34) and cuts it to 45.2 in one pass (lines 41-42): bar between 45.2 and 50, standard size 48."
+      }
+    },
+    {
+      "part_number": "1816C01001",
+      "aliases": [
+        "1527A02301"
+      ],
+      "title": "SLEEVE - 1-5/16\" (TAFE), drawing issue 3",
+      "sha256": [
+        "43f080ea609330c4e898bccbd1b8556d0266458985f94a6185cc9d7bb8332045"
+      ],
+      "read_by": "Read from drawing 1816C01001 issue 3 on 13 Nov 2026; matches proven program O0002",
+      "not_on_drawing": [
+        "bar_diameter"
+      ],
+      "not_in_table": [
+        "Flange-end flare: diameter 28.7 +-0.13 with R2.4 and 33 deg (second clamping, as in O0002 N6/N7)",
+        "Chamfer 45 deg x 0.25",
+        "1 deg taper (optional)",
+        "Bore 25.55 has no tolerance on the drawing: general tolerance +-0.5 used"
+      ],
+      "header": {
+        "material_grade": "070M20 (EN3A)/220M07 (EN1A) BS970",
+        "bar_diameter": null,
+        "overall_length": 19.8
+      },
+      "features": [
+        {
+          "type": "face",
+          "fields": {
+            "position": 0.0,
+            "tol_plus": 0.5,
+            "tol_minus": -0.5
+          }
+        },
+        {
+          "type": "od",
+          "fields": {
+            "diameter": 27.5,
+            "length": 12.7,
+            "tol_plus": 0.0,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "od",
+          "fields": {
+            "diameter": 31.0,
+            "length": 7.1,
+            "tol_plus": 0.0,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "bore",
+          "fields": {
+            "diameter": 25.55,
+            "depth": 19.8,
+            "tol_plus": 0.5,
+            "tol_minus": -0.5
+          }
+        }
+      ],
+      "bar_estimate": {
+        "value": 36.0,
+        "note": "O0002 rapids at X38 beside the bar (line 28) and makes its first cut at 33 (lines 32-33): bar between 33 and 38, largest standard size 36."
+      }
+    },
+    {
+      "part_number": "1627C00501",
+      "aliases": [
+        "1627A00301"
+      ],
+      "title": "SLEEVE (TAFE), drawing issue 03",
+      "sha256": [
+        "bcbe247d1bfb112991d9e1d3e1e759bc6de09a3db6c144d3504d5cdad5adcb54"
+      ],
+      "read_by": "Read from drawing 1627C00501 issue 03 on 13 Nov 2026; matches proven program O0003",
+      "not_on_drawing": [
+        "bar_diameter"
+      ],
+      "not_in_table": [
+        "33 deg +-0.5 deg chamfer on the flange",
+        "Detail B, end flare: diameter 28.7 +-0.13 with R2.4, 0.25 x 45 deg, 1 deg optional (second clamping, as in O0003 N7/N8)",
+        "Bore 25.0 has no tolerance on the drawing: general tolerance +-0.5 used"
+      ],
+      "header": {
+        "material_grade": "070M20 (EN3A)/220M07 (EN1A) BS970",
+        "bar_diameter": null,
+        "overall_length": 30.0
+      },
+      "features": [
+        {
+          "type": "face",
+          "fields": {
+            "position": 0.0,
+            "tol_plus": 0.5,
+            "tol_minus": -0.5
+          }
+        },
+        {
+          "type": "od",
+          "fields": {
+            "diameter": 27.46,
+            "length": 20.0,
+            "tol_plus": 0.0,
+            "tol_minus": -0.08
+          }
+        },
+        {
+          "type": "od",
+          "fields": {
+            "diameter": 30.0,
+            "length": 10.0,
+            "tol_plus": 0.0,
+            "tol_minus": -0.08
+          }
+        },
+        {
+          "type": "bore",
+          "fields": {
+            "diameter": 25.55,
+            "depth": 20.0,
+            "tol_plus": 0.08,
+            "tol_minus": 0.0
+          }
+        },
+        {
+          "type": "bore",
+          "fields": {
+            "diameter": 25.0,
+            "depth": 30.0,
+            "tol_plus": 0.5,
+            "tol_minus": -0.5
+          }
+        }
+      ],
+      "bar_estimate": {
+        "value": 30.0,
+        "note": "O0003 never turns the 30 (0/-0.08) flange; its chamfer ends at X30.5 (line 65): the flange is the bar itself, bright bar 30."
+      }
+    },
+    {
+      "part_number": "3216C11701",
+      "aliases": [],
+      "title": "SLEEVE - SUCTION PIPELINE (TAFE), drawing issue 03",
+      "sha256": [
+        "a9db4b51cd1737be62ecdf7081819fd8f1f16fcaca6dd81ef0d837287ae0efc8"
+      ],
+      "read_by": "Read from drawing 3216C11701 issue 03 on 13 Nov 2026; matches proven program O0009",
+      "not_on_drawing": [
+        "bar_diameter"
+      ],
+      "not_in_table": [
+        "Saddle cut R15.5 at one end (not lathe work)",
+        "Cross holes diameter 16.5 and 19.5 (+0.5/-0.2) at 36.5 +-0.8, 7 deg +-1 deg (not lathe work)",
+        "Internal chamfer 0.5 x 45 deg",
+        "OD 25 and bore 19 have no tolerance on the drawing: general tolerance +-0.5 used",
+        "Drawing note: refer to the 3D model for any other dimension"
+      ],
+      "header": {
+        "material_grade": "EN3B",
+        "bar_diameter": null,
+        "overall_length": 50.0
+      },
+      "features": [
+        {
+          "type": "face",
+          "fields": {
+            "position": 0.0,
+            "tol_plus": 0.8,
+            "tol_minus": -0.8
+          }
+        },
+        {
+          "type": "chamfer",
+          "fields": {
+            "size": 1.0,
+            "angle": 45.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "od",
+          "fields": {
+            "diameter": 25.0,
+            "length": 50.0,
+            "tol_plus": 0.5,
+            "tol_minus": -0.5
+          }
+        },
+        {
+          "type": "drill",
+          "fields": {
+            "diameter": 19.0,
+            "depth": 50.0,
+            "tol_plus": 0.5,
+            "tol_minus": -0.5
+          }
+        }
+      ],
+      "bar_estimate": {
+        "value": 28.0,
+        "note": "O0009 rapids at X30 beside the bar (line 8) and turns the OD to 25 in one pass (lines 26-27): bar between 25 and 30, largest standard size below 30 is 28."
+      }
+    },
+    {
+      "part_number": "832100172",
+      "aliases": [
+        "3314A01701"
+      ],
+      "title": "SLEEVE (pipe), item 3 of propeller shaft cover 3314A01701",
+      "sha256": [
+        "13082c6107d680209d701f0977cff120017ba188b76329817561f194fe71e342"
+      ],
+      "read_by": "Read from drawing 832100172 issue 00 on 13 Nov 2026; matches proven program O0004",
+      "not_on_drawing": [
+        "bar_diameter"
+      ],
+      "not_in_table": [
+        "Back-end OD 34.6 +-0.2 over 9 mm (second clamping, as in O0004 N6/N7)",
+        "O-ring groove width 3.2 +0.25/0 with corner radii R0.1-0.2 and R0.4 max (detail X)",
+        "Bore 30.0 and length 22.0 use the drawing's general tolerance +-0.2"
+      ],
+      "header": {
+        "material_grade": "EN3B/EN32B",
+        "bar_diameter": null,
+        "overall_length": 22.0
+      },
+      "features": [
+        {
+          "type": "face",
+          "fields": {
+            "position": 0.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "chamfer",
+          "fields": {
+            "size": 1.0,
+            "angle": 45.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "od",
+          "fields": {
+            "diameter": 39.0,
+            "length": 13.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "groove",
+          "fields": {
+            "diameter": 35.5,
+            "width": 3.2,
+            "position": 5.0,
+            "tol_plus": 0.0,
+            "tol_minus": -0.08
+          }
+        },
+        {
+          "type": "bore",
+          "fields": {
+            "diameter": 30.0,
+            "depth": 22.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        }
+      ],
+      "bar_estimate": {
+        "value": 42.0,
+        "note": "O0004 starts its roughing cycle at X42 (line 29) and the part is 39: bar 42 (40 also possible)."
+      }
+    },
+    {
+      "part_number": "3314A01701 (assembly)",
+      "aliases": [],
+      "title": "PROPELLER SHAFT COVER 2 - welded tube assembly",
+      "sha256": [
+        "b16182436060508ae7862489c412a0a94840aa16a1f6c5e9ce0db5c9aa81f39a"
+      ],
+      "read_by": "Read on 13 Nov 2026",
+      "not_lathe": "This is the welded assembly drawing (propeller shaft cover 2). The lathe part in it is item 3, the sleeve on drawing 832100172 (program O0004). Open part 832100172 and upload '832100172 - Sleeve.pdf' there.",
+      "header": {},
+      "features": []
+    },
+    {
+      "part_number": "832100171",
+      "aliases": [],
+      "title": "PLATE, 2 mm sheet (item 2 of 3314A01701)",
+      "sha256": [
+        "437f918b66a1a58320e471c1d039e46a8cbddb82ad1b4362f9c5970949a0a991"
+      ],
+      "read_by": "Read on 13 Nov 2026",
+      "not_lathe": "This is a flat 2 mm plate (a press or laser-cut part). It is not made on a lathe, so there is no lathe program for it.",
+      "header": {},
+      "features": []
+    }
+  ]
+}

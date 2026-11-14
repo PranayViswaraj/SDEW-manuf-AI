@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.db.models import AuditLog, Machine, Program, ProgramSource, ProgramStatus
-from app.seed import run_seed
+from app.seed import seed_demo_lmw
 from app.services.approval import approval_problem
 from app.services.program_store import ProgramError, create_version
 from tests.conftest import REPO_DIR
@@ -27,7 +27,7 @@ GOOD = "%\nO1234(PART-77 BUSH)\nG28U0W0\nG97S1000M4\nT0101\nG0X20.0Z2.0\nG1Z-10.
 
 @pytest.fixture
 def seeded(settings: Settings, db: Session) -> Machine:
-    run_seed(settings, db)
+    seed_demo_lmw(db, settings)
     m = db.scalar(select(Machine).where(Machine.key == "lmw-lathe-1"))
     assert m is not None
     return m
@@ -75,7 +75,7 @@ def test_trusted_programs_imported_as_approved(
 
 
 def test_trusted_import_is_idempotent(settings: Settings, db: Session, seeded: Machine) -> None:
-    run_seed(settings, db)
+    seed_demo_lmw(db, settings)
     assert len(db.scalars(select(Program)).all()) == 5
 
 

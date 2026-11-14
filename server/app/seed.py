@@ -71,26 +71,87 @@ def seed_dev_users(db: Session) -> list[str]:
     return created
 
 
+# The company's machines, exactly as read from their nameplates (photos, 13 Nov 2026).
+# Nameplates give make, type, serial, date and supply only. Everything else (control, IP,
+# limits, tools) stays EMPTY until someone reads it from the machine. TODO(REAL-DATA).
+# Control: FANUC Series 0i-TF on all of them (CNC panel photo + shop confirmation, 13 Nov 2026).
+# (type, manufacturing number, nameplate date, load kVA)
+REAL_MACHINES: list[tuple[str, str, str, int]] = [
+    ("LX20TL3", "L110-00542", "29.04.2018", 17),
+    ("LX20TL3", "L110-00523", "09.04.2018", 17),
+    ("LX20TL3", "L110-01461", "18.08.2021", 17),
+    ("LX20TL3", "L110-01237", "19.01.2021", 17),
+    ("SMARTURN", "55-04927", "29.03.2018", 15),
+    ("SMARTURN", "55-05566", "26.09.2018", 15),
+]
+
+
+# CNC Ethernet addresses read on each control (SYSTEM > EMBED PORT > COMMON).
+# 55-04927: photo of the CNC screen, 13 Nov 2026 (mask 255.255.255.0, DHCP off, MAC 00E0E442B2CF).
+KNOWN_IPS: dict[str, str] = {"55-04927": "192.168.11.12"}
+
+
+def machine_key(model: str, serial: str) -> str:
+    return f"lmw-{model}-{serial}".lower()
+
+
 def seed_machines(db: Session) -> list[str]:
-    """The one known real machine. Every unknown value stays empty (never invented)."""
-    if db.scalar(select(Machine).where(Machine.key == "lmw-lathe-1")):
-        return []
-    db.add(
-        Machine(
+    """The six confirmed machines from their nameplates. Unknown values stay empty."""
+    log: list[str] = []
+    for model, serial, date, kva in REAL_MACHINES:
+        key = machine_key(model, serial)
+        if db.scalar(select(Machine).where(Machine.key == key)):
+            continue
+        db.add(
+            Machine(
+                key=key,
+                name=f"LMW {model} · {serial}",
+                make="LMW (Lakshmi Machine Works)",
+                model=model,
+                # Confirmed 13 Nov 2026: photo of the CNC panel ("FANUC Series 0i-TF"); the shop
+                # confirmed every lathe has the same control.
+                controller="FANUC 0i-TF",
+                ip_address=KNOWN_IPS.get(serial),  # TODO(REAL-DATA) for the others
+                focas_port=8193,
+                remote_control_enabled=False,  # safety rule 9
+                limits=empty_limits(),  # TODO(REAL-DATA): not on the nameplate
+                notes=(
+                    f"Nameplate: type {model}, Mfg. No. {serial}, date {date}, "
+                    f"3 phase 4 wire 415 V 50 Hz, load {kva} kVA. Control FANUC Series 0i-TF "
+                    "(confirmed). IP, limits and tools not entered yet."
+                ),
+            )
+        )
+        log.append(f"created machine LMW {model} {serial}")
+    db.commit()
+    return log
+
+
+def seed_demo_lmw(db: Session, settings: Settings) -> list[str]:
+    """DEV/TEST ONLY: the placeholder 'LMW Lathe 1' with the company programs attached.
+
+    Kept for the automated tests and demo mode. It is not one of the confirmed machines.
+    """
+    log: list[str] = []
+    lmw = db.scalar(select(Machine).where(Machine.key == "lmw-lathe-1"))
+    if lmw is None:
+        lmw = Machine(
             key="lmw-lathe-1",
             name="LMW Lathe 1",
             make="LMW",
-            model="",  # TODO(REAL-DATA): model from nameplate
+            model="",
             controller="FANUC 0i-TF",
-            ip_address=None,  # TODO(REAL-DATA): machine IP on the factory LAN
+            ip_address=None,
             focas_port=8193,
-            remote_control_enabled=False,  # safety rule 9
-            limits=empty_limits(),  # TODO(REAL-DATA): all limits from nameplate
-            notes="Limits, model, IP and tool layout not entered yet.",
+            remote_control_enabled=False,
+            limits=empty_limits(),
+            notes="DEMO placeholder (dev/test only).",
         )
-    )
-    db.commit()
-    return ["created machine LMW Lathe 1"]
+        db.add(lmw)
+        db.commit()
+        log.append("created machine LMW Lathe 1")
+    log += import_trusted_programs(db, lmw, Path(settings.samples_dir))
+    return log
 
 
 def seed_sample_materials(db: Session, csv_path: str) -> list[str]:
@@ -172,14 +233,6 @@ def seed_dev_bridge(db: Session, settings: Settings) -> list[str]:
     return log
 
 
-def seed_trusted_programs(db: Session, settings: Settings) -> list[str]:
-    """The company's trusted O-files -> approved programs for LMW Lathe 1 (always, not dev-only)."""
-    lmw = db.scalar(select(Machine).where(Machine.key == "lmw-lathe-1"))
-    if lmw is None:
-        return []
-    return import_trusted_programs(db, lmw, Path(settings.samples_dir))
-
-
 def seed_demo_program(db: Session, settings: Settings) -> list[str]:
     """DEV ONLY: synthetic O9000 as a DRAFT for the fictional SIM lathe (never for LMW)."""
     sim = db.scalar(select(Machine).where(Machine.key == SIM_MACHINE_KEY))
@@ -258,10 +311,10 @@ def run_seed(settings: Settings, db: Session) -> list[str]:
     """Run all seed steps that apply to these settings. Returns a log of what was done."""
     log: list[str] = []
     log += seed_machines(db)
-    log += seed_trusted_programs(db, settings)
     if settings.seed_dev_data:
         if settings.env == "production":
             raise SeedRefusedError("Refusing to seed dev users in production.")
+        log += seed_demo_lmw(db, settings)
         log += [f"created dev user {u}" for u in seed_dev_users(db)]
         log += seed_sample_materials(db, settings.sample_materials_csv)
         log += seed_dev_bridge(db, settings)

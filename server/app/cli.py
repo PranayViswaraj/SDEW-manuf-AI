@@ -57,6 +57,28 @@ def _get_user(db: Session, username: str) -> User:
     return user
 
 
+def _check_data_files(settings: Settings, out: Out) -> bool:
+    """The generator needs the proven programs and the known-drawing values on disk."""
+    from pathlib import Path
+
+    from app.ai.known_drawings import load_known
+    from app.services.program_library import load_library
+
+    programs = Path(settings.samples_dir)
+    known = programs.parent / "drawings" / "known_drawings.json"
+    count = len(load_library(str(programs))) if programs.is_dir() else 0
+    out(f"Proven programs: {count} in {programs}")
+    ok = count > 0
+    if not ok:
+        out("  ERROR: no proven programs; the program generator cannot run")
+    drawings = load_known(known) if known.is_file() else []
+    out(f"Known drawings: {len(drawings)} in {known}")
+    if not drawings:
+        out("  ERROR: known_drawings.json missing; uploads will not autofill")
+        ok = False
+    return ok
+
+
 def cmd_check(settings: Settings, factory: sessionmaker[Session], out: Out) -> int:
     ok = True
     out(f"Environment: {settings.env}")
@@ -94,6 +116,7 @@ def cmd_check(settings: Settings, factory: sessionmaker[Session], out: Out) -> i
     except SQLAlchemyError as e:
         out(f"Database: NOT reachable ({e.__class__.__name__})")
         ok = False
+    ok = _check_data_files(settings, out) and ok
     out("RESULT: " + ("OK" if ok else "PROBLEMS FOUND"))
     return 0 if ok else 1
 

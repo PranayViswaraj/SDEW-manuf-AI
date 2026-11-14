@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.db.models import LIMIT_KEYS, AuditLog, Machine
-from app.seed import run_seed
+from app.seed import REAL_MACHINES, machine_key, run_seed
 
 H = dict[str, dict[str, str]]
 
@@ -15,7 +15,7 @@ H = dict[str, dict[str, str]]
 @pytest.fixture
 def seeded(settings: Settings, db: Session) -> Machine:
     run_seed(settings, db)
-    m = db.scalar(select(Machine).where(Machine.key == "lmw-lathe-1"))
+    m = db.scalar(select(Machine).where(Machine.key == "lmw-lx20tl3-l110-00542"))
     assert m is not None
     return m
 
@@ -27,14 +27,25 @@ def _new_machine(client: TestClient, h: H, **extra: Any) -> dict[str, Any]:
     return dict(r.json())
 
 
-def test_seeded_lmw_lathe_has_unknown_limits(
+def test_real_seed_is_exactly_the_six_nameplate_machines(
+    client: TestClient, role_headers: H, seeded: Machine
+) -> None:
+    r = client.get("/api/machines", headers=role_headers["operator"])
+    keys = sorted(m["key"] for m in r.json())
+    assert keys == sorted(machine_key(t, s) for t, s, _, _ in REAL_MACHINES)
+    assert len(keys) == 6
+    assert not any("sim" in k or k == "lmw-lathe-1" for k in keys)  # no demo machines
+
+
+def test_seeded_machine_has_only_nameplate_data(
     client: TestClient, role_headers: H, seeded: Machine
 ) -> None:
     r = client.get(f"/api/machines/{seeded.id}", headers=role_headers["operator"])
     assert r.status_code == 200
     m = r.json()
-    assert m["name"] == "LMW Lathe 1"
-    assert m["controller"] == "FANUC 0i-TF"
+    assert m["model"] == "LX20TL3"
+    assert "L110-00542" in m["name"] and "29.04.2018" in m["notes"]
+    assert m["controller"] == "FANUC 0i-TF"  # confirmed from the CNC panel photo
     assert m["focas_port"] == 8193
     assert m["remote_control_enabled"] is False  # safety rule 9
     assert m["ip_address"] is None
@@ -44,7 +55,7 @@ def test_seeded_lmw_lathe_has_unknown_limits(
 
 def test_seed_is_idempotent(settings: Settings, db: Session, seeded: Machine) -> None:
     run_seed(settings, db)
-    assert len(db.scalars(select(Machine)).all()) == 1
+    assert len(db.scalars(select(Machine)).all()) == 6
 
 
 def test_new_machine_defaults_are_safe(client: TestClient, role_headers: H) -> None:
@@ -163,3 +174,9 @@ def test_delete_machine(client: TestClient, role_headers: H) -> None:
         client.delete(f"/api/machines/{m['id']}", headers=role_headers["admin"]).status_code == 204
     )
     assert client.get(f"/api/machines/{m['id']}", headers=role_headers["admin"]).status_code == 404
+
+
+def test_seeded_smarturn_04927_has_its_ip_from_the_cnc(settings: Settings, db: Session) -> None:
+    run_seed(settings, db)
+    m = db.scalar(select(Machine).where(Machine.key == "lmw-smarturn-55-04927"))
+    assert m is not None and m.ip_address == "192.168.11.12" and m.focas_port == 8193

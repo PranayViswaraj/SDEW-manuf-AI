@@ -344,3 +344,78 @@ export interface FeatureTableSummary {
   material_grade: string | null;
   bar_diameter: number | null;
 }
+
+// ---------------------------------------------------------------- drawing to program
+export interface Drawing {
+  id: number;
+  part_number: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  sha256: string;
+  uploaded_by_name: string;
+  uploaded_at: string;
+  autofill?: (KnownDrawingInfo & { filled: boolean; message: string }) | null;
+}
+
+export interface KnownDrawingInfo {
+  part_number: string;
+  title: string;
+  read_by: string;
+  not_on_drawing: string[];
+  not_in_table: string[];
+  aliases?: string[];
+  not_lathe?: string;
+  bar_estimate?: { value: number; note: string } | null;
+}
+
+export interface Suggestion {
+  value: number | string;
+  source: 'last saved' | 'proven program' | 'proven program for this part' | 'machine tool list';
+  note: string;
+}
+
+export interface GenParam {
+  key: string;
+  label: string;
+  unit: string;
+  kind: 'num' | 'int' | 'choice';
+  choices: string[];
+  hint: string;
+  suggestion: Suggestion | null;
+}
+
+export interface GenOperation {
+  key: string;
+  label: string;
+  tool_types: ToolType[];
+  needed: boolean;
+  tools: { tool_code: string; description: string; tool_type: ToolType }[];
+  tool_suggestion: Suggestion | null;
+  params: GenParam[];
+}
+
+export interface GenPlan {
+  feature_table_id: number;
+  part_number: string;
+  table_status: 'draft' | 'confirmed';
+  machine_id: number;
+  machine_name: string;
+  geometry_problems: string[];
+  operations: GenOperation[];
+  program_number: number;
+  proven_programs: string[];
+  controller_problem: string | null;
+}
+
+export interface GenPreview {
+  ok: boolean;
+  problems: string[];
+  operations: { key: string; label: string; tool_code: string | null; rpm: number | null; summary: string }[];
+  text: string | null;
+  validation: ProgramDetail['validation'] | null;
+  toolpath: import('../components/ToolpathView').Toolpath | null;
+  table_problem: string | null;
+  controller_problem: string | null;
+  notes: string[];
+}
