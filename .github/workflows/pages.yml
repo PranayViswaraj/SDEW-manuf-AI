@@ -1,6 +1,6 @@
 # Publishes the web app to GitHub Pages: https://pranayviswaraj.github.io/SDEW-manuf-AI/
 # The pages talk to the ManufAI server at the address in the repository variable API_BASE
-# (Settings > Secrets and variables > Actions > Variables), e.g. https://manufai-server.onrender.com
+# (Settings > Secrets and variables > Actions > Variables); default https://manufai-server.onrender.com
 name: Deploy web app to GitHub Pages
 
 on:
@@ -35,7 +35,7 @@ jobs:
       - run: npm run build
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
-          VITE_API_BASE: ${{ vars.API_BASE }}
+          VITE_API_BASE: ${{ vars.API_BASE || 'https://manufai-server.onrender.com' }}
       # Pages has no server-side routing: serve the app for every path (e.g. /programs/12).
       - run: cp dist/index.html dist/404.html
       - uses: actions/upload-pages-artifact@v3

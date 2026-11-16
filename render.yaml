@@ -1,4 +1,6 @@
-# Render Blueprint: the ManufAI server + PostgreSQL, so the GitHub Pages site has a server to talk to.
+# Render Blueprint: the ManufAI server, so the GitHub Pages site has a server to talk to.
+# Free setup: the database is a free Neon PostgreSQL (neon.tech, never expires); Render's own
+# free database is deleted after 30 days, so it is not used here.
 # Render dashboard > New > Blueprint > pick this repository. It asks for the values marked sync: false.
 services:
   - type: web
@@ -14,10 +16,9 @@ services:
         value: "8000"
       - key: MANUFAI_ENV
         value: production
+      # Neon connection string, e.g. postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require
       - key: MANUFAI_DATABASE_URL
-        fromDatabase:
-          name: manufai-db
-          property: connectionString
+        sync: false
       - key: MANUFAI_JWT_SECRET
         generateValue: true
       - key: MANUFAI_CORS_ORIGINS
@@ -41,8 +42,3 @@ services:
       - key: MANUFAI_INITIAL_ADMIN_PASSWORD
         sync: false
 
-databases:
-  - name: manufai-db
-    plan: free
-    databaseName: manufai
-    user: manufai
