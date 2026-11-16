@@ -115,7 +115,9 @@ class ODBST(C.Structure):
 class ODBPRO(C.Structure):
     """cnc_rdprgnum: data = running program, mdata = main program."""
 
-    _fields_ = [("dummy", C.c_short * 2), ("data", C.c_long), ("mdata", C.c_long)]
+    # Verified on the 0i-TF of 55-04927 (16 Nov 2026): data and mdata are 2-byte shorts. Read as
+    # longs, main program O9999 came out as 655294464 (= 9999 << 16).
+    _fields_ = [("dummy", C.c_short * 2), ("data", C.c_short), ("mdata", C.c_short)]
 
 
 class ODBSEQ(C.Structure):
