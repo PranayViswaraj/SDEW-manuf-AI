@@ -6,6 +6,10 @@ import App from './App';
 import { AuthProvider } from './auth/AuthContext';
 import { ToastProvider } from './components/Toast';
 import './index.css';
+import { installBrowserServer } from './browser-server/install';
+
+// GitHub Pages build: no separate server, the Python server runs in the browser.
+if (import.meta.env.VITE_BROWSER_SERVER === '1') installBrowserServer();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -242,6 +242,12 @@ export default function Login() {
             )}
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
+          {import.meta.env.VITE_BROWSER_SERVER === '1' && (
+            <p className="text-center text-xs text-slate-500">
+              Online demo: pick a role above, password <b>qwerty</b>. Your work is saved in this
+              browser only.
+            </p>
+          )}
         </motion.form>
       </div>
     </div>

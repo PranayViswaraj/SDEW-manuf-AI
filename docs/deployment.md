@@ -127,32 +127,28 @@ are most likely to change: `MANUFAI_LOG_LEVEL`, `MANUFAI_JWT_EXPIRE_MINUTES` (de
 `MANUFAI_LOGIN_MAX_FAILURES`, `MANUFAI_LOGIN_LOCKOUT_S`, `MANUFAI_DB_POOL_SIZE`,
 `MANUFAI_STATUS_STALE_SECONDS` (safety rule 8, default 5).
 
-## Hosted online for free: GitHub Pages + Render + Neon (any laptop, anywhere)
+## Hosted online for free: GitHub Pages
 
-| Part | Where | Cost |
-|------|-------|------|
-| Web app | GitHub Pages: **https://pranayviswaraj.github.io/SDEW-manuf-AI/** | free |
-| Server | Render free web service (`render.yaml`) | free |
-| Database | Neon free PostgreSQL | free, does not expire |
+**https://pranayviswaraj.github.io/SDEW-manuf-AI/** - open it on any laptop or phone, nothing to
+install, nothing to pay.
 
-`.github/workflows/pages.yml` publishes `web/` on every push to `main`. The pages call the server
-at the repository variable `API_BASE`, or `https://manufai-server.onrender.com` if it is not set.
+There is no server to host: the real ManufAI server (`server/app`) runs inside each visitor's
+browser with Pyodide (Python compiled to WebAssembly), see `web/browser-server/`. Every push to
+`main` that touches `web/`, `server/app/` or `samples/` rebuilds and republishes the site
+(`.github/workflows/pages.yml` → `gh-pages` branch).
 
-One-time setup:
+- **Log in:** pick a role on the login page, password `qwerty` (demo accounts).
+- **First visit** downloads about 15 MB and takes up to a minute; later visits start faster.
+- **Data is saved in that browser only** (IndexedDB). Another laptop starts with its own copy of
+  the demo data; clearing the browser's site data resets it.
+- **No live machines:** a browser cannot reach the factory bridge. Use **Download .NC for a USB
+  stick** to move approved programs to the lathe.
 
-1. **Pages:** repo *Settings* → *Pages* → *Source: GitHub Actions*.
-2. **Database:** sign up at neon.tech (free, no card) → create a project → copy the connection
-   string (`postgresql://...neon.tech/neondb?sslmode=require`).
-3. **Server:** sign in at render.com with GitHub → *New* → *Blueprint* → pick this repository.
-   Paste the Neon string into `MANUFAI_DATABASE_URL`, and choose
-   `MANUFAI_INITIAL_ADMIN_USERNAME` / `MANUFAI_INITIAL_ADMIN_PASSWORD` (10+ characters).
-   Check `<render address>/api/health` answers.
-4. If Render's address is not `https://manufai-server.onrender.com`: repo *Settings* →
-   *Secrets and variables* → *Actions* → *Variables* → `API_BASE` = that address, then re-run
-   the Pages workflow.
-5. Log in with the initial admin, change its password, add users on the **Users** page.
+### Optional: one shared server for everyone (Render + Neon, free tiers)
 
-Bridge on the factory PC: `server_url: wss://<render address>/api/bridge/ws`.
-
-Free-tier limit: the server sleeps after ~15 minutes idle; the first request then takes up to a
-minute while it wakes.
+For shared data and live machines, run the server on Render with a Neon database (`render.yaml`):
+create a free Neon project and copy its connection string; on render.com *New* → *Blueprint* →
+this repository, paste it as `MANUFAI_DATABASE_URL` and choose the initial admin name and
+password. Then set the repository variable `API_BASE` to the Render address and re-run the Pages
+workflow: the site then uses that server instead of the in-browser one. The free Render server
+sleeps after ~15 minutes idle (the next request takes up to a minute).
