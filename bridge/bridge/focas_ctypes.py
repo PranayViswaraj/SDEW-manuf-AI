@@ -282,6 +282,11 @@ def load_library(path: str | None) -> Any:
         raise FocasLibraryNotFound(path)
     try:
         if sys.platform == "win32":
+            # Fwlib64.dll loads its companions (fwlibe64.dll for Ethernet, fwlib30i64.dll for the
+            # 0i-F series...) by name at connect time: let Windows find them next to it.
+            folder = str(Path(path).resolve().parent)
+            os.environ["PATH"] = folder + os.pathsep + os.environ.get("PATH", "")
+            os.add_dll_directory(folder)  # type: ignore[attr-defined,unused-ignore]
             # stdcall on 32-bit Windows; on 64-bit WinDLL and CDLL are the same.
             lib = C.WinDLL(path)  # type: ignore[attr-defined,unused-ignore]  # Windows only
         else:
