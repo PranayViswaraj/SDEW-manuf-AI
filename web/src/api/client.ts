@@ -2,6 +2,16 @@
 
 const TOKEN_KEY = 'manufai.token';
 
+/** Where the server lives. Empty = same site (served by the server, or the dev proxy).
+ *  Set VITE_API_BASE (e.g. https://manufai-server.onrender.com) when the pages are hosted
+ *  separately, such as on GitHub Pages. */
+export const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '');
+
+/** Full address of a server path, e.g. apiUrl('/programs/1/file'). */
+export function apiUrl(path: string): string {
+  return `${API_BASE}/api${path}`;
+}
+
 export function getToken(): string | null {
   try {
     return localStorage.getItem(TOKEN_KEY);
@@ -61,7 +71,7 @@ export async function request<T>(method: string, path: string, body?: unknown): 
   }
   let res: Response;
   try {
-    res = await fetch(`/api${path}`, { method, headers, body: payload });
+    res = await fetch(apiUrl(path), { method, headers, body: payload });
   } catch {
     throw new ApiError(0, 'Cannot reach the ManufAI server. Check the network connection.');
   }

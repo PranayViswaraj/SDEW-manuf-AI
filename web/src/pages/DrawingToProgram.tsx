@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { api, getToken } from '../api/client';
+import { api, apiUrl, getToken } from '../api/client';
 import type {
   Cell,
   CellValue,
@@ -236,7 +236,7 @@ function DrawingViewer({ drawing, empty }: { drawing: Drawing | null; empty: Rea
         controller = new AbortController();
         const timer = window.setTimeout(() => controller?.abort(), DRAWING_TIMEOUT_MS);
         try {
-          const r = await fetch(`/api/drawings/${drawingId}/file`, {
+          const r = await fetch(apiUrl(`/drawings/${drawingId}/file`), {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
             signal: controller.signal,
           });

@@ -248,3 +248,25 @@ def test_app_object_is_importable_for_uvicorn() -> None:
     from app.main import app
 
     assert isinstance(app, FastAPI)
+
+
+def test_hosted_postgres_urls_use_psycopg() -> None:
+    for url in ("postgres://u:p@h:5432/d", "postgresql://u:p@h:5432/d"):
+        assert Settings(database_url=url).database_url == "postgresql+psycopg://u:p@h:5432/d"
+
+
+def test_initial_admin_created_once(settings: Settings, db: Session) -> None:
+    from app.auth.security import verify_password
+    from app.seed import seed_initial_admin
+
+    s = settings.model_copy(
+        update={"initial_admin_username": "chief", "initial_admin_password": "first-pass-123"}
+    )
+    assert seed_initial_admin(db, s) == ["created initial admin chief"]
+    user = db.scalar(select(User).where(User.username == "chief"))
+    assert user is not None and Role.ADMIN in user.roles
+    # A second start never resets the password someone may have changed since.
+    s2 = s.model_copy(update={"initial_admin_password": "other-pass-456"})
+    assert seed_initial_admin(db, s2) == []
+    db.refresh(user)
+    assert verify_password("first-pass-123", user.password_hash)

@@ -7,6 +7,8 @@ import { defineConfig, loadEnv } from 'vite';
 export default defineConfig(({ mode }) => {
   const env = { ...loadEnv(mode, '..', ''), ...process.env };
   return {
+    // '/' normally; '/SDEW-manuf-AI/' for GitHub Pages (set by .github/workflows/pages.yml).
+    base: env.VITE_BASE_PATH ?? '/',
     plugins: [react(), tailwindcss()],
     server: {
       host: true,

@@ -7,7 +7,7 @@ misconfigured server never comes up quietly.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV_JWT_PREFIX = "dev-only"
@@ -61,6 +61,19 @@ class Settings(BaseSettings):
     standalone: bool = False
     # Built web app (web/dist). When set, the server also serves the pages: one port for all.
     web_dir: str | None = None
+    # First admin for hosts without a shell (e.g. Render free tier). Created at seed time only
+    # when no user with this name exists; the password is never changed afterwards.
+    initial_admin_username: str | None = None
+    initial_admin_password: str | None = Field(default=None, min_length=10)
+
+    @field_validator("database_url")
+    @classmethod
+    def _psycopg_driver(cls, v: str) -> str:
+        # Hosting providers hand out postgres:// or postgresql:// URLs; we use psycopg 3.
+        for prefix in ("postgres://", "postgresql://"):
+            if v.startswith(prefix):
+                return "postgresql+psycopg://" + v[len(prefix) :]
+        return v
 
     @model_validator(mode="after")
     def _production_safety(self) -> "Settings":

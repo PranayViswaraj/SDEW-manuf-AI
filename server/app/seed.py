@@ -307,10 +307,26 @@ def seed_demo_feature_table(db: Session) -> list[str]:
     return ["created confirmed DEMO feature table for DEMO-SIM-001"]
 
 
+def seed_initial_admin(db: Session, settings: Settings) -> list[str]:
+    """Create the first admin from MANUFAI_INITIAL_ADMIN_* when the host has no shell for
+    the CLI. Does nothing if the user already exists (the password is never reset here)."""
+    name, password = settings.initial_admin_username, settings.initial_admin_password
+    if not name or not password:
+        return []
+    if db.scalar(select(User).where(User.username == name)) is not None:
+        return []
+    user = User(username=name, full_name="Administrator", password_hash=hash_password(password))
+    user.set_roles({Role.ADMIN})
+    db.add(user)
+    db.commit()
+    return [f"created initial admin {name}"]
+
+
 def run_seed(settings: Settings, db: Session) -> list[str]:
     """Run all seed steps that apply to these settings. Returns a log of what was done."""
     log: list[str] = []
     log += seed_machines(db)
+    log += seed_initial_admin(db, settings)
     if settings.seed_dev_data:
         if settings.env == "production":
             raise SeedRefusedError("Refusing to seed dev users in production.")

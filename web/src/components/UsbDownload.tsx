@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ApiError, getToken } from '../api/client';
+import { ApiError, apiUrl, getToken } from '../api/client';
 import { useToast } from './Toast';
 
 /** Approved program as O1234.NC for a USB stick (FANUC panel USB port). The server refuses
@@ -14,7 +14,7 @@ export default function UsbDownload({ programId, programName }: { programId: num
     setError(null);
     try {
       const token = getToken();
-      const res = await fetch(`/api/programs/${programId}/file`, {
+      const res = await fetch(apiUrl(`/programs/${programId}/file`), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) {

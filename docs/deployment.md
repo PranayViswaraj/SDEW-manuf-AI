@@ -126,3 +126,27 @@ All `MANUFAI_*` environment variables, with defaults, are in `server/app/config.
 are most likely to change: `MANUFAI_LOG_LEVEL`, `MANUFAI_JWT_EXPIRE_MINUTES` (default 480 = one shift),
 `MANUFAI_LOGIN_MAX_FAILURES`, `MANUFAI_LOGIN_LOCKOUT_S`, `MANUFAI_DB_POOL_SIZE`,
 `MANUFAI_STATUS_STALE_SECONDS` (safety rule 8, default 5).
+
+## Hosted online: GitHub Pages + Render (any laptop, anywhere)
+
+The web app is published to **https://pranayviswaraj.github.io/SDEW-manuf-AI/** by
+`.github/workflows/pages.yml` on every push to `main` that touches `web/`. GitHub Pages only
+serves files, so the server runs on Render (free tier) from `render.yaml`.
+
+One-time setup:
+
+1. **Server:** sign in at render.com with GitHub → *New* → *Blueprint* → pick this repository.
+   Enter `MANUFAI_INITIAL_ADMIN_USERNAME` and `MANUFAI_INITIAL_ADMIN_PASSWORD` (10+ characters)
+   when asked. Wait for the deploy, then copy the service address
+   (e.g. `https://manufai-server.onrender.com`) and check `<address>/api/health` answers.
+2. **Point the pages at it:** GitHub repo → *Settings* → *Secrets and variables* → *Actions* →
+   *Variables* → new variable `API_BASE` = that address (no trailing slash).
+3. **Turn on Pages:** *Settings* → *Pages* → *Source: GitHub Actions*. Then *Actions* →
+   *Deploy web app to GitHub Pages* → *Run workflow*.
+4. Log in with the initial admin, change its password, and add users on the **Users** page.
+
+Bridge on the factory PC: `server_url: wss://<render address>/api/bridge/ws`.
+
+Free-tier limits: the server sleeps after ~15 minutes idle (first request then takes up to a
+minute), and Render's free PostgreSQL expires after 30 days. For real use, move to a paid
+Render plan or the Docker production install above.

@@ -1,0 +1,48 @@
+# Render Blueprint: the ManufAI server + PostgreSQL, so the GitHub Pages site has a server to talk to.
+# Render dashboard > New > Blueprint > pick this repository. It asks for the values marked sync: false.
+services:
+  - type: web
+    name: manufai-server
+    runtime: docker
+    plan: free
+    rootDir: server
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: MANUFAI_ENV
+        value: production
+      - key: MANUFAI_DATABASE_URL
+        fromDatabase:
+          name: manufai-db
+          property: connectionString
+      - key: MANUFAI_JWT_SECRET
+        generateValue: true
+      - key: MANUFAI_CORS_ORIGINS
+        value: https://pranayviswaraj.github.io
+      - key: MANUFAI_SEED_DEV_DATA
+        value: "false"
+      - key: MANUFAI_HSTS
+        value: "true"
+      - key: MANUFAI_LOG_JSON
+        value: "true"
+      - key: MANUFAI_DOCS_ENABLED
+        value: "false"
+      # Free databases are small: keep the connection pool small too.
+      - key: MANUFAI_DB_POOL_SIZE
+        value: "3"
+      - key: MANUFAI_DB_MAX_OVERFLOW
+        value: "2"
+      # First admin login (created on first start; change the password after logging in).
+      - key: MANUFAI_INITIAL_ADMIN_USERNAME
+        sync: false
+      - key: MANUFAI_INITIAL_ADMIN_PASSWORD
+        sync: false
+
+databases:
+  - name: manufai-db
+    plan: free
+    databaseName: manufai
+    user: manufai
