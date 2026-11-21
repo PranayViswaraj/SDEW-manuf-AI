@@ -35,6 +35,8 @@ import { useAuth } from '../auth/AuthContext';
 import CapablePanel from '../components/CapablePanel';
 import CompareView from '../components/CompareView';
 import GcodeView from '../components/GcodeView';
+import GeneratingCode from '../components/GeneratingCode';
+import { useA11y } from '../a11y/A11yContext';
 import { useToast } from '../components/Toast';
 import UsbDownload from '../components/UsbDownload';
 import { MachineLiveBadge } from '../components/StatusBadge';
@@ -50,6 +52,14 @@ type Setup = Record<string, Record<string, string>>;
 
 // three.js loads only when the simulation is shown.
 const LatheSim3D = lazy(() => import('../components/LatheSim3D'));
+
+function reducedMotionQuery(): boolean {
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
 
 const EMPTY: Cell = { ai: null, value: null, confirmed: false };
 const filled = (c: Cell) => c.value !== null && c.value !== '';
@@ -941,6 +951,10 @@ export default function DrawingToProgram() {
   const [title] = useState('');
   const [preview, setPreview] = useState<GenPreview | null>(null);
   const [simResult, setSimResult] = useState<SimResult | null>(null);
+  // The generated text that has finished its "writing" animation.
+  const [typedFor, setTypedFor] = useState<string | null>(null);
+  const { prefs: a11yPrefs } = useA11y();
+  const animateCode = !a11yPrefs.reduceMotion && import.meta.env.MODE !== 'test' && !reducedMotionQuery();
   const [program, setProgram] = useState<ProgramDetail | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const toast = useToast();
@@ -1400,7 +1414,8 @@ export default function DrawingToProgram() {
         ]
       : [];
   const v = isEdited ? editCheck?.validation : preview?.validation;
-  const simText = preview?.ok && v?.ok ? (editText ?? preview.text) : null;
+  const writing = !!preview?.text && typedFor !== preview.text;
+  const simText = preview?.ok && v?.ok && !writing ? (editText ?? preview.text) : null;
   const simBar = Number(data?.header?.bar_diameter?.value);
   const simMaterial = data?.header?.material_grade?.value;
   const simDrawing = isEdited ? null : (preview?.drawing ?? null);
@@ -2052,7 +2067,16 @@ export default function DrawingToProgram() {
                         version on top of the generated one, with your name.
                       </Notice>
                     )}
+                    {preview.text && writing ? (
+                      <GeneratingCode
+                        key={preview.text}
+                        text={preview.text}
+                        animate={animateCode}
+                        onDone={() => setTypedFor(preview.text)}
+                      />
+                    ) : null}
                     {preview.text &&
+                      !writing &&
                       (isEngineer || isProgrammer ? (
                         <GcodeView
                           text={editText ?? preview.text}
@@ -2067,18 +2091,19 @@ export default function DrawingToProgram() {
                       ) : (
                         <GcodeView text={preview.text} />
                       ))}
-                    {(() => {
-                      const path = isEdited ? editCheck?.toolpath : preview.toolpath;
-                      return path ? (
-                        <>
-                          <ToolpathView key={isEdited ? 'edit' : 'gen'} preview={path} />
-                          {library.length > 0 && (
-                            <CompareView generated={path} provenName={library[0].name} />
-                          )}
-                        </>
-                      ) : null;
-                    })()}
-                    {simInput ? (
+                    {!writing &&
+                      (() => {
+                        const path = isEdited ? editCheck?.toolpath : preview.toolpath;
+                        return path ? (
+                          <>
+                            <ToolpathView key={isEdited ? 'edit' : 'gen'} preview={path} />
+                            {library.length > 0 && (
+                              <CompareView generated={path} provenName={library[0].name} />
+                            )}
+                          </>
+                        ) : null;
+                      })()}
+                    {writing ? null : simInput ? (
                       <Suspense
                         fallback={<p className="text-sm text-slate-600">Loading the 3D simulation…</p>}
                       >

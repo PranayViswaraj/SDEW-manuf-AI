@@ -149,6 +149,8 @@ export interface Interpreted {
   checks: SimCheck[];
   /** Tool numbers in the order they were first called. */
   toolsUsed: number[];
+  /** Name of each tool from the program comment at its first call, e.g. N1(16.5 DRILL). */
+  toolLabels: Record<number, string>;
 }
 
 interface State {
@@ -169,11 +171,56 @@ interface State {
 
 type ToolLookup = (n: number) => SimTool | undefined;
 
-export function interpret(text: string, machine: SimMachine): Interpreted {
+/** True when a block ends a program section (M30 / M02, or M99 without a jump target). */
+function endsSection(b: Block): boolean {
+  const ms = mCodes(b);
+  return ms.includes(30) || ms.includes(2) || (ms.includes(99) && !has(b, 'P'));
+}
+
+export interface Section {
+  index: number;
+  /** 1-based first line of the section. */
+  line: number;
+  label: string;
+}
+
+/** Sections of a multi-operation file (one per clamping), split at M30 / M02. Only sections
+ * that move the tool are listed. */
+export function listSections(text: string): Section[] {
+  const { blocks } = parseBlocks(text);
+  const out: Section[] = [];
+  let index = 0;
+  let start: Block | null = null;
+  let label = '';
+  let moves = false;
+  const flush = () => {
+    if (start && moves) out.push({ index, line: start.line, label: label || `Operation ${index + 1}` });
+  };
+  for (const b of blocks) {
+    if (!start && (b.words.length || b.comment)) start = b;
+    if (!label && b.comment && !/^O\d/.test(b.raw.trim()) && (b.seq !== null || !b.words.length))
+      label = b.comment;
+    if (hasMove(b)) moves = true;
+    if (endsSection(b)) {
+      flush();
+      index++;
+      start = null;
+      label = '';
+      moves = false;
+    }
+  }
+  flush();
+  return out;
+}
+
+export function interpret(text: string, machine: SimMachine, section = 0): Interpreted {
   const { lines, blocks } = parseBlocks(text);
   const moves: SimMove[] = [];
   const checks: SimCheck[] = [];
   const toolsUsed: number[] = [];
+  const toolLabels: Record<number, string> = {};
+  let pendingLabel = '';
+  let curLabel = '';
   const st: State = {
     x: null,
     z: null,
@@ -275,6 +322,7 @@ export function interpret(text: string, machine: SimMachine): Interpreted {
       coolant: st.coolant,
       comp: st.comp,
       pitch,
+      label: curLabel,
       realTime,
       t0: 0,
       t1: anim,
@@ -733,7 +781,12 @@ export function interpret(text: string, machine: SimMachine): Interpreted {
 
   // -------------------------------------------------- main loop
 
+  let sectionAt = 0;
   for (let i = 0; i < blocks.length; i++) {
+    if (sectionAt < section) {
+      if (endsSection(blocks[i])) sectionAt++;
+      continue;
+    }
     if (skip.has(i)) continue;
     const b = blocks[i];
     cur = b;
@@ -770,13 +823,16 @@ export function interpret(text: string, machine: SimMachine): Interpreted {
     if (ms.includes(4)) st.spindle = 'ccw';
     if (ms.includes(8)) st.coolant = true;
 
+    if (b.seq !== null && b.comment) pendingLabel = b.comment;
     const t = get(b, 'T');
     if (t) {
       const digits = String(Math.round(t.value));
       const n = digits.length >= 3 ? Number(digits.slice(0, -2)) : Number(digits);
+      if (n > 0) curLabel = (b.comment || pendingLabel).trim();
       if (n > 0 && n !== st.tool) {
         st.tool = n;
         if (!toolsUsed.includes(n)) toolsUsed.push(n);
+        if (toolLabels[n] === undefined) toolLabels[n] = curLabel;
         emitTimed('index', machine.indexTime ?? null, ANIM_INDEX, `T${String(n).padStart(2, '0')} index`);
       }
     }
@@ -834,7 +890,13 @@ export function interpret(text: string, machine: SimMachine): Interpreted {
     if (ms.includes(5)) st.spindle = 'off';
     if (ms.includes(9)) st.coolant = false;
     if (ms.includes(98)) note('warning', 'program', 'M98 sub-program call is not followed.');
-    if (ms.includes(30) || ms.includes(2) || ms.includes(99)) break;
+    if (ms.includes(99) && has(b, 'P'))
+      note(
+        'warning',
+        'program',
+        `M99 P${num(b, 'P')} jump is not followed: every block of this operation is shown.`,
+      );
+    if (endsSection(b)) break;
   }
 
   // Positions never known: park the tool clear of the part for display (not a real position).
@@ -852,7 +914,7 @@ export function interpret(text: string, machine: SimMachine): Interpreted {
     }
     last = m.to;
   }
-  return { lines, moves, checks, toolsUsed };
+  return { lines, moves, checks, toolsUsed, toolLabels };
 }
 
 /** Name the operation of each move from the tool and the cycle. Non-cutting moves take the op of
@@ -863,7 +925,7 @@ export function classifyOps(moves: SimMove[], toolOf: ToolLookup): void {
     if (!cutting(m)) continue;
     const tool = m.tool !== null ? toolOf(m.tool) : undefined;
     const role = tool?.role ?? 'unknown';
-    const name = (tool?.name ?? '').toUpperCase();
+    const name = (m.label || tool?.name || '').toUpperCase();
     let op: OpKind = 'Other';
     if (role === 'drill') op = 'Drill';
     else if (role === 'part') op = 'Part-off';
@@ -875,6 +937,7 @@ export function classifyOps(moves: SimMove[], toolOf: ToolLookup): void {
       const dr = Math.abs(m.to[1] - m.from[1]);
       if (m.cycle.startsWith('G94')) op = 'Face';
       else if (m.cycle.startsWith('G70')) op = 'Finish';
+      else if (/FAC/.test(name) && !m.cycle.startsWith('G71')) op = 'Face';
       else if (m.cycle.startsWith('G71') || m.cycle.startsWith('G72') || m.cycle.startsWith('G90'))
         op = 'Rough';
       else if (m.cycle.startsWith('G74') || m.cycle.startsWith('G83')) op = 'Drill';

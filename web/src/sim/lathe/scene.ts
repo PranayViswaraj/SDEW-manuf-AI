@@ -345,7 +345,7 @@ export class LatheScene {
   setResult(result: SimResult, input: SimInput) {
     this.result = result;
     this.input = input;
-    this.tools = new Map(input.tools.map((t) => [t.number, t]));
+    this.tools = new Map(result.tools.map((t) => [t.number, t]));
     this.matVersion = -1;
     this.activeTool = null;
     this.buildMachine();

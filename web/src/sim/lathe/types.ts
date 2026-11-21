@@ -103,6 +103,8 @@ export interface SimInput {
   tools: SimTool[];
   machine: SimMachine;
   drawing?: DrawingProfile | null;
+  /** Which operation (clamping) of a multi-operation file to run, split at M30. Default 0. */
+  section?: number;
 }
 
 export type OpKind =
@@ -146,6 +148,8 @@ export interface SimMove {
   spindle: 'cw' | 'ccw' | 'off';
   coolant: boolean;
   comp: 40 | 41 | 42;
+  /** Program comment naming the tool at its call, e.g. "OD FIN". */
+  label?: string;
   /** Thread lead (mm/rev) for thread moves. */
   pitch?: number;
   /** Real time of this move in seconds; null when it cannot be known (rapid rate unknown). */
@@ -235,4 +239,6 @@ export interface SimResult {
   /** Fields that were missing from the input, as "what: unknown". */
   unknowns: string[];
   blocked: boolean;
+  /** Tools as simulated: the tool list, plus tools named only in program comments. */
+  tools: SimTool[];
 }

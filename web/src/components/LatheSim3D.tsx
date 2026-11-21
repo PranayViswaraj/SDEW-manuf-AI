@@ -13,6 +13,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useA11y } from '../a11y/A11yContext';
 import { simulate } from '../sim/lathe/client';
 import { makeStepper, materialAt } from '../sim/lathe/engine';
+import { listSections } from '../sim/lathe/gcode';
 import type { ColourMode, LatheScene, ViewName } from '../sim/lathe/scene';
 import { Stock } from '../sim/lathe/stock';
 import type { Point, SimCheck, SimInput, SimMove, SimResult } from '../sim/lathe/types';
@@ -108,7 +109,6 @@ export interface LatheSim3DProps {
 export default function LatheSim3D({ input, onResult, title = '3D machining simulation' }: LatheSim3DProps) {
   const { prefs } = useA11y();
   const calm = prefs.reduceMotion || prefersReducedMotion();
-  const [result, setResult] = useState<SimResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [glError, setGlError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -134,23 +134,47 @@ export default function LatheSim3D({ input, onResult, title = '3D machining simu
   const onResultRef = useRef(onResult);
   onResultRef.current = onResult;
 
-  // Run the simulation (worker).
+  // Operations (clampings) of a multi-operation file, split at M30. Each runs on a fresh bar.
+  const sections = useMemo(() => {
+    const list = listSections(input.program);
+    return list.length ? list : [{ index: 0, line: 1, label: 'Program' }];
+  }, [input.program]);
+  const [opIndex, setOpIndex] = useState(0);
+  const [results, setResults] = useState<SimResult[] | null>(null);
+  const inputFor = useCallback(
+    (k: number): SimInput => ({
+      ...input,
+      section: sections[k]?.index ?? 0,
+      // The drawing profile describes the first clamping only.
+      drawing: k === 0 ? input.drawing : null,
+    }),
+    [input, sections],
+  );
+  const run = useMemo(() => inputFor(opIndex), [inputFor, opIndex]);
+  const result = results?.[opIndex] ?? null;
+
+  // Run every operation (worker); the verdict covers all of them.
   useEffect(() => {
     let alive = true;
-    setResult(null);
+    setResults(null);
+    setOpIndex(0);
     setError(null);
     setPlaying(false);
-    simulate(input)
-      .then((r) => {
+    Promise.all(sections.map((_, k) => simulate(inputFor(k))))
+      .then((rs) => {
         if (!alive) return;
-        setResult(r);
-        onResultRef.current?.(r);
+        setResults(rs);
+        const many = rs.length > 1;
+        const checks = rs.flatMap((r, k) =>
+          r.checks.map((c) => (many ? { ...c, message: `[${sections[k].label}] ${c.message}` } : c)),
+        );
+        onResultRef.current?.({ ...rs[0], checks, blocked: rs.some((r) => r.blocked) });
       })
       .catch((e: Error) => alive && setError(e.message));
     return () => {
       alive = false;
     };
-  }, [input]);
+  }, [sections, inputFor]);
 
   /** Put the material and time at t (from the nearest snapshot). */
   const seek = useCallback(
@@ -163,14 +187,14 @@ export default function LatheSim3D({ input, onResult, title = '3D machining simu
       const f = m && m.t1 > m.t0 ? Math.min(1, Math.max(0, (tt - m.t0) / (m.t1 - m.t0))) : 1;
       const g = result.grid;
       const mat = matRef.current ?? new Stock(g.zMin, g.zMax, g.res, g.barR, g.faceZ);
-      matRef.current = materialAt(result, input, Math.max(0, i), f, mat);
+      matRef.current = materialAt(result, run, Math.max(0, i), f, mat);
       appliedRef.current = { move: Math.max(0, i), frac: f };
-      stepperRef.current = makeStepper(input);
+      stepperRef.current = makeStepper(result);
       verRef.current++;
       sceneRef.current?.resetDrop();
       setHud({ t: tt, move: Math.max(0, i) });
     },
-    [result, input],
+    [result, run],
   );
 
   // New result: start at the beginning.
@@ -198,7 +222,7 @@ export default function LatheSim3D({ input, onResult, title = '3D machining simu
           return;
         }
         scene.calm = calm;
-        scene.setResult(result, input);
+        scene.setResult(result, run);
         sceneRef.current = scene;
         if (typeof ResizeObserver !== 'undefined') {
           ro = new ResizeObserver(() => scene?.resize());
@@ -212,7 +236,7 @@ export default function LatheSim3D({ input, onResult, title = '3D machining simu
       scene?.dispose();
       sceneRef.current = null;
     };
-  }, [result, input, calm]);
+  }, [result, run, calm]);
 
   useEffect(() => {
     sceneRef.current?.setView(view);
@@ -369,6 +393,10 @@ export default function LatheSim3D({ input, onResult, title = '3D machining simu
 
   const errors = result.checks.filter((c) => c.severity === 'error');
   const warnings = result.checks.filter((c) => c.severity === 'warning');
+  // The verdict (and approval) covers every operation of the file.
+  const allChecks = (results ?? [result]).flatMap((r) => r.checks);
+  const allErrors = allChecks.filter((c) => c.severity === 'error').length;
+  const allWarnings = allChecks.filter((c) => c.severity === 'warning').length;
   const t = hud.t;
   const done = t >= result.duration - 1e-6;
   const elapsedReal = result.moves.slice(0, hud.move).reduce((s, m) => s + (m.realTime ?? 0), 0);
@@ -407,15 +435,35 @@ export default function LatheSim3D({ input, onResult, title = '3D machining simu
             </strong>
           </p>
         </div>
+        {sections.length > 1 && (
+          <label className="text-sm">
+            <span className="block text-xs font-medium text-slate-700">Operation (clamping)</span>
+            <select
+              className="input mt-1 w-56"
+              value={opIndex}
+              aria-label="Operation"
+              onChange={(e) => {
+                setPlaying(false);
+                setOpIndex(Number(e.target.value));
+              }}
+            >
+              {sections.map((sec, k) => (
+                <option key={k} value={k}>
+                  {k + 1}. {sec.label} (line {sec.line}){results?.[k]?.blocked ? ' - errors' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <p
           role="status"
           data-testid="sim-verdict"
-          className={errors.length ? 'badge-red' : warnings.length ? 'badge-amber' : 'badge-green'}
+          className={allErrors ? 'badge-red' : allWarnings ? 'badge-amber' : 'badge-green'}
         >
-          {errors.length
-            ? `${errors.length} simulation error${errors.length > 1 ? 's' : ''}: approval blocked`
-            : warnings.length
-              ? `No errors · ${warnings.length} warning${warnings.length > 1 ? 's' : ''}`
+          {allErrors
+            ? `${allErrors} simulation error${allErrors > 1 ? 's' : ''}: approval blocked`
+            : allWarnings
+              ? `No errors · ${allWarnings} warning${allWarnings > 1 ? 's' : ''}`
               : 'No simulation errors or warnings'}
         </p>
       </div>
@@ -778,6 +826,13 @@ export default function LatheSim3D({ input, onResult, title = '3D machining simu
         </div>
       </details>
 
+      {sections.length > 1 && (
+        <p className="text-xs text-slate-600">
+          This file has {sections.length} operations (split at M30). Each is shown on a fresh bar: cuts from
+          an earlier clamping are not carried over, and M99 P jumps are not followed. The drawing compare
+          applies to the first operation only.
+        </p>
+      )}
       <p className="rounded bg-slate-50 p-2 text-xs text-slate-600" data-testid="sim-disclaimer">
         Advisory only. This simulation is a visual and arithmetic aid: the bar is modelled as a turned
         profile, nose radius compensation is approximated and machine dynamics are ignored. It never changes

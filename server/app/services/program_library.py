@@ -12,7 +12,8 @@ from pathlib import Path
 
 from app.services.program_store import read_header
 
-_NAME = re.compile(r"^O\d{4}$")
+# "O0003", or "O0003_3227C07701" when two parts use the same O-number.
+_NAME = re.compile(r"^O\d{4}(_[A-Z0-9]+)?$")
 
 
 @dataclass(frozen=True)

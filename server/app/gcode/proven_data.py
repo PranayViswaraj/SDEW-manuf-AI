@@ -36,11 +36,15 @@ def _kind(comment: str, body: str) -> str | None:
         return "thread"
     if "DRILL" in c or re.search(r"\bU\s?D\b", c):
         return "drill"
-    if "BORE" in c or "BOREING" in c:
+    if "BORE" in c or "BOREING" in c or re.search(r"\bBB\b", c):  # "12.0MM BB" = boring bar
         return "bore"
     if "STOP" in c:
         return "stopper"
     if "CSK" in c:
+        return None
+    # A plain facing block (even one using G72, as O0003_3227C07701 N2) is not OD roughing: its
+    # step is a facing allowance, not a turning depth of cut.
+    if "FAC" in c and not re.search(r"\bRG\b|ROUGH", c):
         return None
     if re.search(r"G7[12]", body) or re.search(r"\bRG\b|ROUGH", c):
         return "od_rough"

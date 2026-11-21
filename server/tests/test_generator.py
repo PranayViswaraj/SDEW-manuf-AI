@@ -344,7 +344,14 @@ def test_plan_prefills_from_proven_programs(
     r = client.get(f"/api/generator/plan?feature_table_id={ft.id}&machine_id={lmw.id}", headers=h)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["proven_programs"] == ["O0001", "O0002", "O0003", "O0004", "O0009"]
+    assert body["proven_programs"] == [
+        "O0001",
+        "O0002",
+        "O0003",
+        "O0003_3227C07701",
+        "O0004",
+        "O0009",
+    ]
     ops = {o["key"]: o for o in body["operations"]}
     assert ops["thread"]["needed"] and ops["bore"]["needed"]
     gen_params = {p["key"]: p["suggestion"] for p in ops["general"]["params"]}
@@ -737,7 +744,7 @@ def _plan_and_preview(
 
 
 @pytest.mark.parametrize(
-    "part", ["3773480M01", "1816C01001", "1627C00501", "3216C11701", "832100172"]
+    "part", ["3773480M01", "1816C01001", "1627C00501", "3216C11701", "832100172", "3227C07701"]
 )
 def test_every_known_lathe_drawing_generates_with_nothing_to_ask(
     client: TestClient, settings: Settings, db: Session, make_user: UserFactory, part: str
@@ -981,3 +988,22 @@ def test_edited_program_is_checked_then_saved_as_a_new_version(
     op = headers_for(make_user(Role.OPERATOR))
     r = client.post("/api/generator/check", json={"machine_id": lmw.id, "text": text}, headers=op)
     assert r.status_code == 403  # operators run programs, they do not edit them
+
+
+def test_boss_suction_pipe_drawing_and_program_match() -> None:
+    """3227C07701: the uploaded drawing autofills, and O0003 for it is in the library under a
+    file name of its own (the shop reuses the O-number O0003 for another part)."""
+    from app.ai.known_drawings import find_known, load_known
+    from app.gcode.generator import read_geometry
+    from app.services.program_library import load_library, match_part
+
+    pdf = "afae912b517962a21589fd17a4d8cf714879d5b8f8be51b3c5616bcef21df2b8"
+    k = find_known(load_known(KNOWN_JSON), sha256=pdf)
+    assert k is not None and k.part_number == "3227C07701"
+    assert k.header["overall_length"] == 67.0 and k.header["material_grade"] == "EN3A / EN3B"
+    geo, problems = read_geometry(k.table_data())
+    assert problems == [] and geo is not None
+    assert [s.dia for s in geo.od] == [22.22, 30.9]  # D31 0/-0.2 cut at the middle
+    lib = load_library(REPO / "samples" / "programs")
+    assert [p.name for p in match_part(lib, "3227C07701")] == ["O0003_3227C07701"]
+    assert [p.name for p in match_part(lib, "1627C00501")] == ["O0003"]

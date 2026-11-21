@@ -539,6 +539,165 @@
       "back_note": "Back end (drawing: D34.60 +-0.2, C-1.0 x 45). Step length 9.0 = 22.0 - 13.0 (drawing)."
     },
     {
+      "part_number": "3227C07701",
+      "aliases": [],
+      "title": "BOSS-SUCTION PIPE (TAFE), drawing issue 01",
+      "sha256": [
+        "afae912b517962a21589fd17a4d8cf714879d5b8f8be51b3c5616bcef21df2b8"
+      ],
+      "read_by": "Read from drawing 3227C07701 issue 01 on 21 Nov 2026; cross-checked with proven program O0003 (3227C07701 BOSS SUC)",
+      "not_on_drawing": [
+        "bar_diameter"
+      ],
+      "not_in_table": [
+        "Drill D16.5 is not on the drawing: taken from O0003 N1 (Z-40, small end) and N5 (Z-36, flange end)",
+        "R3 fillet between D22.22 and the D31 shoulder (O0003 N9/N10: G02 X28.22 Z-34 R3): the table has no inside-corner radius, so the shoulder is drawn sharp",
+        "Face groove on the flange face (Detail B): outer D31.88 +-0.25, radial width 3.94 +0.51/0, depth 2.79 +0.13/0, 5 deg walls, R0.2 - the table has no face-groove type; O0003 N8 cuts it with T0808 (3 mm face groove tool)",
+        "Perpendicularity 0.05 of the flange face to datum A (bore)",
+        "R0.2 max at the flange root; all edges 0.5 x 45 deg (typical)",
+        "Finished weight 0.160 kg; coat with long-term rust preventive oil",
+        "CHECK WITH THE PROGRAMMER: O0003 N9/N10 turn D30.9 only to Z-56 (11 from the flange face) but the drawing puts the flange (6 thick) at 61 from the small end; the table follows the drawing",
+        "CHECK WITH THE PROGRAMMER: O0003 chamfers are 0.75-1.15 x 45 deg (e.g. X20.5 to X19.0 A225) against 0.5 x 45 typical on the drawing; the table follows the drawing",
+        "0.5 x 45 chamfer tolerance: the drawing's radii/chamfer table starts above 0.5, so +-0.2 (its smallest row) is used"
+      ],
+      "header": {
+        "material_grade": "EN3A / EN3B",
+        "bar_diameter": null,
+        "overall_length": 67.0
+      },
+      "bar_estimate": {
+        "value": 40.0,
+        "note": "Not on the drawing. O0003 faces out to X40.5 (N2) and turns the flange down from the bar to X38.5 (N6), and G71 starts at X40 (N9): bright bar 40 (estimate - check the bar in stock)."
+      },
+      "back_note": "Flange end (2nd OPRN of O0003): face, D38 x 6 flange, bore D19 from this side. The bore is through (D19 +-0.2, 67 long): 33 from the small end (O0003 N3 bores to Z-33) and 34 from the flange end so the two meet.",
+      "features": [
+        {
+          "type": "face",
+          "fields": {
+            "position": 0.0,
+            "tol_plus": 0.8,
+            "tol_minus": -0.8
+          }
+        },
+        {
+          "type": "chamfer",
+          "fields": {
+            "size": 0.5,
+            "angle": 45.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "od",
+          "fields": {
+            "diameter": 22.22,
+            "length": 34.0,
+            "tol_plus": 0.1,
+            "tol_minus": -0.1
+          }
+        },
+        {
+          "type": "chamfer",
+          "fields": {
+            "size": 0.5,
+            "angle": 45.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "od",
+          "fields": {
+            "diameter": 31.0,
+            "length": 27.0,
+            "tol_plus": 0.0,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "drill",
+          "fields": {
+            "diameter": 16.5,
+            "depth": 40.0
+          }
+        },
+        {
+          "type": "chamfer",
+          "fields": {
+            "size": 0.5,
+            "angle": 45.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "bore",
+          "fields": {
+            "diameter": 19.0,
+            "depth": 33.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "flip",
+          "fields": {}
+        },
+        {
+          "type": "face",
+          "fields": {
+            "position": 0.0,
+            "tol_plus": 0.8,
+            "tol_minus": -0.8
+          }
+        },
+        {
+          "type": "chamfer",
+          "fields": {
+            "size": 0.5,
+            "angle": 45.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "od",
+          "fields": {
+            "diameter": 38.0,
+            "length": 6.0,
+            "tol_plus": 0.8,
+            "tol_minus": -0.8
+          }
+        },
+        {
+          "type": "drill",
+          "fields": {
+            "diameter": 16.5,
+            "depth": 36.0
+          }
+        },
+        {
+          "type": "chamfer",
+          "fields": {
+            "size": 0.5,
+            "angle": 45.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        },
+        {
+          "type": "bore",
+          "fields": {
+            "diameter": 19.0,
+            "depth": 34.0,
+            "tol_plus": 0.2,
+            "tol_minus": -0.2
+          }
+        }
+      ]
+    },
+    {
       "part_number": "3314A01701 (assembly)",
       "aliases": [],
       "title": "PROPELLER SHAFT COVER 2 - welded tube assembly",

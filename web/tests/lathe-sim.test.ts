@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { materialAt, runSimulation } from '../src/sim/lathe/engine';
 import { BAD_PROGRAM, DEMO_PROGRAM, SIM_LATHE, demoInput } from '../src/sim/lathe/demo';
-import { interpret, parseBlocks } from '../src/sim/lathe/gcode';
+import { interpret, listSections, parseBlocks } from '../src/sim/lathe/gcode';
 import { parseHolderCode, parseInsertCode, toolGeometry } from '../src/sim/lathe/tools';
 import type { SimInput, SimMachine } from '../src/sim/lathe/types';
 
@@ -181,5 +182,39 @@ describe('missing input', () => {
     expect(codes).toContain('tool-unknown');
     expect(codes).toContain('travel-unknown');
     expect(r.realTimePartial).toBe(true);
+  });
+});
+
+describe('proven program O0003 for 3227C07701 (BOSS-SUCTION PIPE)', () => {
+  const text = readFileSync('../samples/programs/O0003_3227C07701', 'ascii');
+  const base: SimInput = {
+    program: text,
+    stock: { diameter: 40, length: null, stickOut: null, faceZ: null },
+    material: 'EN3A / EN3B',
+    tools: [],
+    machine: { name: 'LMW Lathe 1', travelX: null, travelZ: null, maxRpm: 3000, rapidRate: null },
+    drawing: null,
+  };
+
+  it('splits the file into its operations at M30', () => {
+    expect(listSections(text).map((s) => s.label)).toEqual([
+      '1ST OPN',
+      '2ND OPRN',
+      '12 MM CCMT',
+      'Operation 4',
+      '16.5 DRILL',
+    ]);
+  });
+
+  it('runs every operation with no errors, naming tools from the program comments', () => {
+    const r = listSections(text).map((s) => runSimulation({ ...base, section: s.index }));
+    for (const x of r) expect(x.checks.filter((c) => c.severity === 'error')).toEqual([]);
+    expect(r[1].ops.map((o) => o.op)).toEqual(['Drill', 'Drill', 'Face', 'Bore', 'Groove']);
+    expect(r[0].checks.map((c) => c.message)).toContain(
+      'M99 P4 jump is not followed: every block of this operation is shown.',
+    );
+    // The 16.5 drill makes its hole: material at the centre is gone down to Z-36 in op 2.
+    const g = r[1].grid;
+    expect(r[1].final.inner[Math.floor((-20 - g.zMin) / g.res)]).toBeGreaterThanOrEqual(8.25 - 1e-3);
   });
 });

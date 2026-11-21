@@ -113,10 +113,40 @@ function overlapsBox(poly: Point[], z0: number, z1: number, r0: number, r1: numb
 
 const fmtZ = (z: number) => z.toFixed(2);
 
+/** A tool known only from the program comment, e.g. "16.5 DRILL", "12.0MM BB", "3MM GROOVE". */
+export function toolFromComment(n: number, label: string): SimTool {
+  const t = label.toUpperCase();
+  const size = t.match(/(\d+(?:\.\d+)?)/);
+  let role: SimTool['role'] = 'unknown';
+  if (/STOP/.test(t)) role = 'stopper';
+  else if (/DRILL|CENT(ER|RE)|SPOT/.test(t)) role = 'drill';
+  else if (/PART/.test(t)) role = 'part';
+  else if (/GROOV/.test(t)) role = 'groove';
+  else if (/THREAD/.test(t)) role = 'thread';
+  else if (/\bBB\b|BOR|\bID\b/.test(t)) role = 'bore';
+  else if (/FAC|\bOD\b|\bRG\b|FIN|TURN|CNMG|WNMG|DNMG|VNMG|TNMG/.test(t)) role = 'od';
+  return {
+    number: n,
+    name: label,
+    role,
+    roleSource: 'program comment',
+    shape: null,
+    insertSize: null,
+    noseRadius: null,
+    tipDirection: null,
+    holder: null,
+    leadAngle: null,
+    // A drill size written in the comment ("16.5 DRILL"); a centre drill has none.
+    drillDiameter: role === 'drill' && /DRILL/.test(t) && size ? Number(size[1]) : null,
+    spindle: null,
+  };
+}
+
 export function runSimulation(input: SimInput): SimResult {
   const toolMap = new Map<number, SimTool>();
   for (const t of input.tools) toolMap.set(t.number, t);
   const toolOf = (n: number) => toolMap.get(n);
+  const fromComment = new Set<number>();
   const geoms = new Map<number, ToolGeometry>();
   const geomOf = (n: number | null): ToolGeometry => {
     const key = n ?? -1;
@@ -124,7 +154,19 @@ export function runSimulation(input: SimInput): SimResult {
     return geoms.get(key) as ToolGeometry;
   };
 
-  const { lines, moves, checks: progChecks, toolsUsed } = interpret(input.program, input.machine);
+  const {
+    lines,
+    moves,
+    checks: progChecks,
+    toolsUsed,
+    toolLabels,
+  } = interpret(input.program, input.machine, input.section ?? 0);
+  // Tools missing from the tool list: what the program's own comment says, nothing more.
+  for (const n of toolsUsed) {
+    if (toolMap.has(n) || !toolLabels[n]) continue;
+    toolMap.set(n, toolFromComment(n, toolLabels[n]));
+    fromComment.add(n);
+  }
   classifyOps(moves, toolOf);
   const checks: SimCheck[] = [];
   const add = (severity: Severity, code: CheckCode, message: string, m: SimMove | null) => {
@@ -168,6 +210,18 @@ export function runSimulation(input: SimInput): SimResult {
     const tool = toolOf(n);
     const g = geomOf(n);
     const tn = `T${String(n).padStart(2, '0')}`;
+    if (tool && fromComment.has(n)) {
+      unknowns.push(`${tn} tool data`);
+      add(
+        'warning',
+        'tool-unknown',
+        `${tn} (${tool.name}): not in the tool list. Taken from the program comment as ${tool.role}${
+          tool.drillDiameter ? ` Ø${tool.drillDiameter}` : ''
+        }; ${g.shaped ? 'no holder checks' : 'it cuts at its tip point only; no holder checks'}.`,
+        null,
+      );
+      continue;
+    }
     if (!tool) {
       unknowns.push(`${tn} tool data`);
       add(
@@ -366,6 +420,7 @@ export function runSimulation(input: SimInput): SimResult {
     compare,
     unknowns,
     blocked: checks.some((c) => c.severity === 'error'),
+    tools: [...toolMap.values()],
   };
 }
 
@@ -525,7 +580,8 @@ export function materialAt(
   let snap = result.snapshots[0];
   for (const s of result.snapshots) if (s.at <= index) snap = s;
   if (snap) mat.restore(snap.state);
-  const stepper = makeStepper(input);
+  void input;
+  const stepper = makeStepper(result);
   for (let i = snap ? snap.at : 0; i < index && i < result.moves.length; i++)
     stepper(mat, result.moves[i], 1);
   if (f > 0 && index < result.moves.length) stepper(mat, result.moves[index], f);
@@ -533,9 +589,9 @@ export function materialAt(
 }
 
 /** Apply (part of) one move to the material: the same removal as the full run, for playback. */
-export function makeStepper(input: SimInput) {
+export function makeStepper(src: { tools: SimTool[] }) {
   const toolMap = new Map<number, SimTool>();
-  for (const t of input.tools) toolMap.set(t.number, t);
+  for (const t of src.tools) toolMap.set(t.number, t);
   const geoms = new Map<number, ToolGeometry>();
   let lastDir: Point | null = null;
   return (mat: Stock, m: SimMove, f: number, from = 0) => {

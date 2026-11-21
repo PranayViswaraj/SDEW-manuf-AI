@@ -10,6 +10,16 @@
 | O0004 | 3314A01701                        | SLEEVE COMPACT       | `36d2cd18c9849f8255439b16fccf697c38d7de0cab0ee03c4ce386105a965a44` |
 | O0009 | 3216C11701                        | SUCTION PIPELINE     | `eeac3e1ef7951f0db138978ebf0ae85ebbe1d7dc6d350516826dcc73b59916f3` |
 
+Library-only programs (matched to a drawing by part number, NOT imported onto a machine, because the
+shop reuses the O-number for another part):
+
+| File             | Part number | Description          | SHA-256 |
+|------------------|-------------|----------------------|---------|
+| O0003_3227C07701 | 3227C07701  | BOSS SUCTION PIPE    | `a8f9b9fe4d8f490d91dccf83831a1e382d40061992980079be5bc598be535fa3` |
+
+O0003_3227C07701 was supplied as pasted text on 21 Nov 2026 (line endings normalised to CR LF), not as
+the file exported by the control, so its hash is of that text.
+
 Rules:
 
 - **Do not edit these files.** They are kept byte-for-byte as supplied, including FANUC `%`
