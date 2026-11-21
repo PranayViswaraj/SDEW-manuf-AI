@@ -32,7 +32,6 @@ import type {
   Suggestion,
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
-import CapablePanel from '../components/CapablePanel';
 import CompareView from '../components/CompareView';
 import GcodeView from '../components/GcodeView';
 import GeneratingCode from '../components/GeneratingCode';
@@ -299,7 +298,12 @@ function DrawingViewer({ drawing, empty }: { drawing: Drawing | null; empty: Rea
     );
   if (drawing.content_type === 'application/pdf')
     return (
-      <iframe title={`Drawing ${drawing.filename}`} src={url} className="h-[78vh] w-full rounded-xl border" />
+      // Full-page drawing: no thumbnail side bar, fitted to the width.
+      <iframe
+        title={`Drawing ${drawing.filename}`}
+        src={`${url}#navpanes=0&pagemode=none&view=FitH`}
+        className="h-[78vh] w-full rounded-xl border"
+      />
     );
   return (
     <div className="space-y-2">
@@ -1904,7 +1908,6 @@ export default function DrawingToProgram() {
                 {machine && hasRole('admin') && (
                   <MachineSetupForm machine={machine} onSaved={reloadMachines} />
                 )}
-                {confirmed && <CapablePanel featureTableId={ft.id} />}
               </Step>
             )}
 
