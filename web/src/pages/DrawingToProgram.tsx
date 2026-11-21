@@ -1,6 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowRight, Check } from 'lucide-react';
 import {
+  lazy,
+  Suspense,
   createContext,
   useCallback,
   useContext,
@@ -38,11 +40,16 @@ import UsbDownload from '../components/UsbDownload';
 import { MachineLiveBadge } from '../components/StatusBadge';
 import { useLiveStatus } from '../hooks/useLiveStatus';
 import ToolpathView from '../components/ToolpathView';
+import { simInputFromApp } from '../sim/lathe/fromApp';
+import type { SimResult } from '../sim/lathe/types';
 import { ErrorBox, Notice } from '../components/ui';
 
 /* ------------------------------------------------------------------ helpers */
 
 type Setup = Record<string, Record<string, string>>;
+
+// three.js loads only when the simulation is shown.
+const LatheSim3D = lazy(() => import('../components/LatheSim3D'));
 
 const EMPTY: Cell = { ai: null, value: null, confirmed: false };
 const filled = (c: Cell) => c.value !== null && c.value !== '';
@@ -933,6 +940,7 @@ export default function DrawingToProgram() {
   const [programNumber, setProgramNumber] = useState('');
   const [title] = useState('');
   const [preview, setPreview] = useState<GenPreview | null>(null);
+  const [simResult, setSimResult] = useState<SimResult | null>(null);
   const [program, setProgram] = useState<ProgramDetail | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const toast = useToast();
@@ -1392,6 +1400,26 @@ export default function DrawingToProgram() {
         ]
       : [];
   const v = isEdited ? editCheck?.validation : preview?.validation;
+  const simText = preview?.ok && v?.ok ? (editText ?? preview.text) : null;
+  const simBar = Number(data?.header?.bar_diameter?.value);
+  const simMaterial = data?.header?.material_grade?.value;
+  const simDrawing = isEdited ? null : (preview?.drawing ?? null);
+  // Shown right after the program is generated and has passed the checks (advisory 3D simulation).
+  const simInput = useMemo(
+    () =>
+      simText && machine
+        ? simInputFromApp({
+            program: simText,
+            machine,
+            barDiameter: simBar > 0 ? simBar : null,
+            material: simMaterial ? String(simMaterial) : null,
+            setup,
+            drawing: simDrawing,
+          })
+        : null,
+    [simText, machine, simBar, simMaterial, setup, simDrawing],
+  );
+  useEffect(() => setSimResult(null), [simInput]);
   const accepted = program?.status === 'approved';
   const machineControlOk = !!machine && (machine.controller ?? '').toUpperCase().startsWith('FANUC');
   const acceptBlockers: string[] = [];
@@ -1403,6 +1431,11 @@ export default function DrawingToProgram() {
   else if (stale) acceptBlockers.push('You changed something: press "Generate live program" again.');
   else if (isEdited && (checking || !editCheck)) acceptBlockers.push('Checking your edit…');
   else if (v && !v.ok) acceptBlockers.push('The program has validation errors (see step 4).');
+  else if (!simResult) acceptBlockers.push('Waiting for the 3D simulation (step 4)…');
+  else if (simResult.blocked)
+    acceptBlockers.push(
+      `The 3D simulation found ${simResult.checks.filter((c) => c.severity === 'error').length} error(s) (see step 4).`,
+    );
   const sendBlockers: string[] = [];
   if (!accepted) sendBlockers.push('The program must be accepted in step 5 first.');
   if (!isOperator) sendBlockers.push('Log in as Operator (or Sample) to send.');
@@ -2045,6 +2078,17 @@ export default function DrawingToProgram() {
                         </>
                       ) : null;
                     })()}
+                    {simInput ? (
+                      <Suspense
+                        fallback={<p className="text-sm text-slate-600">Loading the 3D simulation…</p>}
+                      >
+                        <LatheSim3D input={simInput} onResult={setSimResult} />
+                      </Suspense>
+                    ) : (
+                      <p className="text-sm text-slate-600">
+                        The 3D simulation runs once the program passes the checks above.
+                      </p>
+                    )}
                   </>
                 )}
               </Step>

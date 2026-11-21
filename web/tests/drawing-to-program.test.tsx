@@ -196,6 +196,9 @@ describe('drawing to program', () => {
     expect(await screen.findByLabelText('Generated program text')).toHaveTextContent('O1000(P-100)');
     expect(screen.queryByRole('button', { name: /Send to/ })).not.toBeInTheDocument();
     vi.spyOn(window, 'confirm').mockReturnValue(true);
+    // Accept opens only after the 3D simulation has run with no errors.
+    expect(await screen.findByTestId('sim-verdict')).toHaveTextContent('No errors');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Accept program' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Accept program' }));
     expect(await screen.findByText('Accepted')).toBeInTheDocument();
     expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(

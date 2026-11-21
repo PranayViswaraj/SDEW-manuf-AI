@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
+  Box,
   Boxes,
   Cpu,
   FileCode2,
@@ -65,6 +66,13 @@ export const NAV: NavItem[] = [
     label: 'Programs',
     description: 'CNC programs, checks, tool path and approval',
     icon: FileCode2,
+    section: 'Engineering',
+  },
+  {
+    to: '/simulate',
+    label: 'Lathe simulation',
+    description: '3D lathe simulation demo on the SIM Lathe',
+    icon: Box,
     section: 'Engineering',
   },
   {

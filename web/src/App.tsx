@@ -20,6 +20,7 @@ const PartDetail = lazy(() => import('./pages/PartDetail'));
 const ProgramDetail = lazy(() => import('./pages/ProgramDetail'));
 const RunDetail = lazy(() => import('./pages/RunDetail'));
 const Users = lazy(() => import('./pages/Users'));
+const LatheSimDemo = lazy(() => import('./pages/LatheSimDemo'));
 
 function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] }) {
   const { user, loading, hasRole } = useAuth();
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="/programs/:id" element={<ProgramDetail />} />
         <Route path="/run" element={<Run />} />
         <Route path="/make" element={<DrawingToProgram />} />
+        <Route path="/simulate" element={<LatheSimDemo />} />
         <Route path="/parts" element={<Parts />} />
         <Route path="/parts/:id" element={<PartDetail />} />
         <Route path="/runs/:id" element={<RunDetail />} />

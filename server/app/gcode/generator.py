@@ -640,6 +640,52 @@ def _check_corner(s: Step, other: float, what: str, p: list[str], *, external: b
 # ------------------------------------------------------------------ program text
 
 
+def _corner_len(s: Step) -> float:
+    """Axial length of the corner (chamfer / radius / cone) at the front of a step."""
+    c = s.corner
+    if c.chamfer:
+        return c.chamfer[0]
+    if c.radius:
+        return c.radius
+    if c.cone:
+        return s.z_front - c.cone_points(s.dia, s.z_front)[3]
+    return 0.0
+
+
+def drawing_profile(geo: Geometry) -> dict[str, Any]:
+    """The finished first-clamping shape, for the simulator's compare with the drawing.
+
+    Z is program Z (front face 0, negative towards the chuck); diameters are the cut sizes
+    (middle of tolerance). Corners are given as their axial length so the compare skips them.
+    """
+
+    def steps(ss: list[Step]) -> list[dict[str, float]]:
+        return [
+            {"dia": s.dia, "z_front": s.z_front, "z_back": s.z_back, "corner": _corner_len(s)}
+            for s in ss
+        ]
+
+    return {
+        "length": geo.length,
+        "od": steps(geo.od),
+        "bores": steps(geo.bores),
+        "drill": {"dia": geo.drill[0], "depth": geo.drill[1]} if geo.drill else None,
+        "grooves": [
+            {"dia": g.dia, "z_front": -g.position, "z_back": -(g.position + g.width)}
+            for g in geo.grooves
+        ],
+        "threads": [
+            {
+                "major": t.major,
+                "pitch": t.pitch,
+                "z_front": t.z_start,
+                "z_back": t.z_start - t.length,
+            }
+            for t in geo.threads
+        ],
+    }
+
+
 def fmt(v: float) -> str:
     """FANUC number with a decimal point (parameter 3401 safe): 45.2, 0.0, -31.0."""
     s = f"{round(v, 3) + 0.0:.3f}".rstrip("0")

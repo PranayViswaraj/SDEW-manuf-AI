@@ -371,6 +371,10 @@ def test_preview_save_approve_flow(
     assert r.status_code == 200 and r.json()["ok"], r.text
     assert r.json()["validation"]["ok"] is True
     assert r.json()["toolpath"]["segments"]
+    # Finished shape for the 3D simulation's compare with the drawing.
+    dwg = r.json()["drawing"]
+    assert dwg["length"] > 0 and dwg["od"]
+    assert all(s["z_back"] < s["z_front"] <= 0 for s in dwg["od"])
 
     r = client.post("/api/generator/programs", json=body, headers=prog)
     assert r.status_code == 201, r.text

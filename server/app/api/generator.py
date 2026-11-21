@@ -27,7 +27,14 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.gcode.backplot import backplot, stock_outline
-from app.gcode.generator import OPS, Fallback, ToolInfo, generate, read_geometry
+from app.gcode.generator import (
+    OPS,
+    Fallback,
+    ToolInfo,
+    drawing_profile,
+    generate,
+    read_geometry,
+)
 from app.gcode.proven_data import (
     PartContext,
     ProvenData,
@@ -451,6 +458,7 @@ def preview(
         "text": res.text,
         "validation": None,
         "toolpath": None,
+        "drawing": None,
         "table_problem": feature_table_problem(db, ft.part_number),
         "controller_problem": controller_problem(machine),
         "notes": res.notes,
@@ -462,6 +470,9 @@ def preview(
         out["toolpath"] = plot.to_dict(
             stock=stock_outline(float(bar) if isinstance(bar, int | float) else None, plot)
         )
+        # Finished shape for the 3D simulation's compare with the drawing (advisory only).
+        geo, _ = read_geometry(ft.data, _fallback(_part_ctx(request, ft.part_number)))
+        out["drawing"] = drawing_profile(geo) if geo is not None else None
     return out
 
 

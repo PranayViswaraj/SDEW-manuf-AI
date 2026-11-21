@@ -416,6 +416,8 @@ export interface GenPreview {
   text: string | null;
   validation: ProgramDetail['validation'] | null;
   toolpath: import('../components/ToolpathView').Toolpath | null;
+  /** Finished first-clamping shape, for the 3D simulation's compare with the drawing. */
+  drawing?: import('../sim/lathe/types').DrawingProfile | null;
   table_problem: string | null;
   controller_problem: string | null;
   notes: string[];
