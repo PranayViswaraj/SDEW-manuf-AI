@@ -349,6 +349,7 @@ def test_plan_prefills_from_proven_programs(
         "O0002",
         "O0003",
         "O0003_3227C07701",
+        "O0003_3227C07701_FULL",
         "O0004",
         "O0009",
     ]
@@ -1005,5 +1006,10 @@ def test_boss_suction_pipe_drawing_and_program_match() -> None:
     assert problems == [] and geo is not None
     assert [s.dia for s in geo.od] == [22.22, 30.9]  # D31 0/-0.2 cut at the middle
     lib = load_library(REPO / "samples" / "programs")
-    assert [p.name for p in match_part(lib, "3227C07701")] == ["O0003_3227C07701"]
+    matches = match_part(lib, "3227C07701")
+    assert [p.name for p in matches] == ["O0003_3227C07701", "O0003_3227C07701_FULL"]
+    # The program offered for this part is N4-N8 only: what the machine runs after M99P4.
+    first = matches[0].text
+    assert "N4(CENTER)" in first and "N8(3MM GROOVE)" in first
+    assert "N3(" not in first and "N9(" not in first and "M99" not in first
     assert [p.name for p in match_part(lib, "1627C00501")] == ["O0003"]

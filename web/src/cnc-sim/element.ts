@@ -250,6 +250,9 @@ export class CncSimulator extends HTMLElement {
 
   async loadProgram(text: string) {
     this.text = text;
+    // M99 Pn at the top: the machine jumps to Nn, so start where the machine starts (N4 for O0003).
+    const head = text.split(/\r?\n/).slice(0, 6).join('\n');
+    this.mode = /^\s*M99\s*P\d+/m.test(head) ? 'machine' : 'full';
     await this.compute();
   }
 

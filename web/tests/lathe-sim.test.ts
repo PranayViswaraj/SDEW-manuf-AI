@@ -186,7 +186,7 @@ describe('missing input', () => {
 });
 
 describe('proven program O0003 for 3227C07701 (BOSS-SUCTION PIPE)', () => {
-  const text = readFileSync('../samples/programs/O0003_3227C07701', 'ascii');
+  const text = readFileSync('../samples/programs/O0003_3227C07701_FULL', 'ascii');
   const base: SimInput = {
     program: text,
     stock: { diameter: 40, length: null, stickOut: null, faceZ: null },

@@ -92,7 +92,10 @@ def _part_ctx(request: Request, part_number: str) -> PartContext | None:
         names += [k.part_number, *k.aliases]
     for name in names:
         if match := match_part(lib, name):
-            return part_context(match[0].name, match[0].text)
+            # Values come from the most complete program for the part (3227C07701: the full
+            # O0003 file, not its N4-N8 extract that is offered to run).
+            best = max(match, key=lambda p: len(p.text))
+            return part_context(best.name, best.text)
     return None
 
 

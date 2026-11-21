@@ -13,12 +13,15 @@
 Library-only programs (matched to a drawing by part number, NOT imported onto a machine, because the
 shop reuses the O-number for another part):
 
-| File             | Part number | Description          | SHA-256 |
-|------------------|-------------|----------------------|---------|
-| O0003_3227C07701 | 3227C07701  | BOSS SUCTION PIPE    | `a8f9b9fe4d8f490d91dccf83831a1e382d40061992980079be5bc598be535fa3` |
+| File                  | Part number | Description                                   | SHA-256 |
+|-----------------------|-------------|-----------------------------------------------|---------|
+| O0003_3227C07701      | 3227C07701  | BOSS SUCTION PIPE: N4-N8 only (what runs)     | `95d2dc27892b0874ebd934e7ca6b2c9c8cbfaf79d796e1787e85bed29f46fa45` |
+| O0003_3227C07701_FULL | 3227C07701  | BOSS SUCTION PIPE: the whole file as supplied | `a8f9b9fe4d8f490d91dccf83831a1e382d40061992980079be5bc598be535fa3` |
 
-O0003_3227C07701 was supplied as pasted text on 21 Nov 2026 (line endings normalised to CR LF), not as
-the file exported by the control, so its hash is of that text.
+The full file starts with M99P4, so the control jumps to N4 and runs N4-N8 (2nd operation) up to the
+M30 after N8. O0003_3227C07701 is exactly those blocks, line for line (shop request, 21 Nov 2026), and
+is the program offered for this part. The full file was supplied as pasted text (line endings
+normalised to CR LF), so its hash is of that text.
 
 Rules:
 
