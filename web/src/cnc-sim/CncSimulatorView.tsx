@@ -19,12 +19,16 @@ declare module 'react' {
 /** React wrapper for <cnc-simulator>. Events: progress, line, operation, finished, warning. */
 export default function CncSimulatorView({
   programUrl,
+  programText,
   speed = 10,
   autoplay = false,
   height = 680,
   onEvent,
 }: {
-  programUrl: string;
+  /** Fetch the program from a URL... */
+  programUrl?: string;
+  /** ...or give its text directly (e.g. a program just generated). */
+  programText?: string;
   speed?: number;
   autoplay?: boolean;
   height?: number;
@@ -42,11 +46,14 @@ export default function CncSimulatorView({
     });
     return () => types.forEach((t, k) => el.removeEventListener(t, fns[k]));
   }, [onEvent]);
+  useEffect(() => {
+    if (programText) void ref.current?.loadProgram(programText);
+  }, [programText]);
   return (
     <div style={{ height, minHeight: 520 }}>
       <cnc-simulator
         ref={ref as unknown as React.Ref<HTMLElement>}
-        program-url={programUrl}
+        program-url={programUrl || undefined}
         speed={String(speed)}
         {...(autoplay ? { autoplay: true } : {})}
       />
