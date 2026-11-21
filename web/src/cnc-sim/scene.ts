@@ -4,7 +4,7 @@
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { toolGeometry } from '../sim/lathe/tools';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { Point } from '../sim/lathe/types';
 import { SIM_CONFIG } from './config';
 import { cuttingShape, type Grid } from './grid';
@@ -12,7 +12,8 @@ import { F, MOVE_TYPE, STRIDE, type Job, type JobSetup } from './job';
 import { PartMeshBuilder } from './mesh';
 import { AXIAL_GROOVE_TOOLS, toolFor } from './tools';
 
-export type Look = 'video' | 'enhanced';
+export type Look = 'real' | 'video' | 'enhanced';
+export type ViewPreset = 'iso' | 'front' | 'top' | 'follow';
 
 export interface Theme {
   viewport: string;
@@ -53,6 +54,8 @@ export class CncScene {
   readonly camera = new THREE.PerspectiveCamera(35, 1, 0.5, 4000);
   controls!: OrbitControls;
   private antialias = false;
+  private envTex: THREE.Texture | null = null;
+  private follow = false;
   private theme: Theme;
   private hemi = new THREE.HemisphereLight('#ffffff', '#94a3b8', 1.6);
   private sun = new THREE.DirectionalLight('#ffffff', 1.6);
@@ -150,8 +153,8 @@ export class CncScene {
     );
 
     // chuck: body + 3 jaws (fixture)
-    const grey = new THREE.MeshLambertMaterial({ color: theme.fixture });
-    const greyDark = new THREE.MeshLambertMaterial({ color: '#64748b' });
+    const grey = new THREE.MeshStandardMaterial({ color: '#7b8590', metalness: 0.85, roughness: 0.3 });
+    const greyDark = new THREE.MeshStandardMaterial({ color: '#4b5563', metalness: 0.8, roughness: 0.35 });
     const body = new THREE.Mesh(new THREE.CylinderGeometry(34, 34, 28, 48), grey);
     body.rotation.z = Math.PI / 2;
     body.position.x = -20 - 12;
@@ -164,6 +167,7 @@ export class CncScene {
     }
     this.chuck.add(this.chuckSpin);
     this.disposables.push(grey, greyDark, body.geometry, this.jaws[0].geometry);
+    this.buildMachine();
 
     // view cube
     const faces = ['RIGHT', 'LEFT', 'TOP', 'BOTTOM', 'FRONT', 'BACK'].map(
@@ -201,6 +205,14 @@ export class CncScene {
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.autoClear = false;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.envTex?.dispose();
+    this.envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environment = this.envTex;
+    pmrem.dispose();
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.style.width = '100%';
     this.renderer.domElement.style.height = '100%';
@@ -242,10 +254,91 @@ export class CncScene {
 
   setLook(look: Look) {
     this.look = look;
+    const real = look === 'real';
+    this.builder.setColours(
+      real
+        ? { stock: '#c4ccd4', fresh: '#f2b84b', cap: '#8f9aa6' }
+        : { stock: this.theme.stock, fresh: this.theme.fresh, cap: this.theme.cap },
+    );
+    this.partStdMat.metalness = real ? 0.9 : 0.15;
+    this.partStdMat.roughness = real ? 0.24 : 0.45;
+    this.partStdMat.opacity = real ? 1 : 0.92;
+    this.partStdMat.transparent = !real;
+    this.partStdMat.needsUpdate = true;
+    this.scene.background = new THREE.Color(real ? '#20262e' : this.theme.viewport);
+    this.machine.visible = real;
     this.partMesh.material = look === 'video' ? this.partMat : this.partStdMat;
     this.partEdges.visible = look === 'enhanced';
+    if (real) this.partMesh.material = this.partStdMat;
     this.hemi.intensity = look === 'video' ? 1.6 : 1.1;
     this.sun.intensity = look === 'video' ? 1.6 : 2.2;
+  }
+
+  private machine = new THREE.Group();
+
+  /** Slant-bed lathe around the part: bed, headstock, enclosure, coolant nozzle. */
+  private buildMachine() {
+    const m = (c: string, metal = 0.6, rough = 0.5) => {
+      const mat = new THREE.MeshStandardMaterial({ color: c, metalness: metal, roughness: rough });
+      this.disposables.push(mat);
+      return mat;
+    };
+    const box = (
+      w: number,
+      h: number,
+      d: number,
+      mat: THREE.Material,
+      x: number,
+      y: number,
+      z: number,
+      rx = 0,
+    ) => {
+      const g = new THREE.BoxGeometry(w, h, d);
+      this.disposables.push(g);
+      const mesh = new THREE.Mesh(g, mat);
+      mesh.position.set(x, y, z);
+      mesh.rotation.x = rx;
+      this.machine.add(mesh);
+      return mesh;
+    };
+    const paint = m('#d9dee3', 0.1, 0.55);
+    const dark = m('#2f363e', 0.5, 0.5);
+    const cast = m('#4a535c', 0.4, 0.6);
+    // slant bed with two hardened ways
+    box(420, 18, 120, cast, -20, -92, -10, -0.5);
+    box(400, 6, 10, m('#b8c0c8', 1, 0.18), -20, -78, -40, -0.5);
+    box(400, 6, 10, m('#b8c0c8', 1, 0.18), -20, -102, 8, -0.5);
+    // headstock housing behind the chuck
+    box(110, 150, 150, paint, -150, -10, -20);
+    box(112, 8, 152, dark, -150, 62, -20);
+    // enclosure back wall and floor tray
+    box(520, 280, 6, m('#3a424b', 0.3, 0.7), -20, 20, -110);
+    box(520, 6, 220, m('#262c33', 0.3, 0.8), -20, -130, 0);
+    this.scene.add(this.machine);
+  }
+
+  /** Camera presets. Follow keeps the tool in view. */
+  setView(v: ViewPreset) {
+    this.follow = v === 'follow';
+    const t = this.controls.target.clone();
+    const d = this.camera.position.distanceTo(t);
+    const dir =
+      v === 'front'
+        ? new THREE.Vector3(0, 0.12, 1)
+        : v === 'top'
+          ? new THREE.Vector3(0, 1, 0.02)
+          : new THREE.Vector3(0.35, 0.42, 0.84);
+    if (v === 'iso') {
+      this.frame();
+      return;
+    }
+    this.camAnim = {
+      from: this.camera.position.clone().sub(t),
+      to: dir.normalize().multiplyScalar(v === 'follow' ? Math.min(d, 90) : d),
+      up0: this.camera.up.clone(),
+      up1: new THREE.Vector3(0, 1, 0),
+      t: 0,
+    };
   }
 
   setCutaway(on: boolean) {
@@ -329,6 +422,7 @@ export class CncScene {
 
   /** Frame the part at a 3/4 angle. */
   frame() {
+    this.follow = false;
     const mid = S.faceStockFront - S.length / 2 + 10;
     const target = new THREE.Vector3(mid, 4, 0);
     const d = S.length * 1.55 + 30;
@@ -402,39 +496,33 @@ export class CncScene {
     this.toolRoot.position.set(z + retract * 0.4, x / 2 + retract, 0.1);
   }
 
+  private mats: Record<string, THREE.MeshStandardMaterial> | null = null;
+  private material(name: 'carbide' | 'steel' | 'tin' | 'dark' | 'turret' | 'screw') {
+    if (!this.mats) {
+      this.mats = {
+        carbide: new THREE.MeshStandardMaterial({ color: '#3a3f47', metalness: 0.75, roughness: 0.32 }),
+        steel: new THREE.MeshStandardMaterial({ color: '#8d969f', metalness: 0.9, roughness: 0.3 }),
+        tin: new THREE.MeshStandardMaterial({ color: '#d4a843', metalness: 0.95, roughness: 0.25 }),
+        dark: new THREE.MeshStandardMaterial({ color: '#2b3138', metalness: 0.6, roughness: 0.45 }),
+        turret: new THREE.MeshStandardMaterial({ color: '#5b6672', metalness: 0.75, roughness: 0.35 }),
+        screw: new THREE.MeshStandardMaterial({ color: '#c0c6cc', metalness: 1, roughness: 0.2 }),
+      };
+      this.disposables.push(...Object.values(this.mats));
+    }
+    return this.mats[name];
+  }
+
+  /** Real-looking tool: insert on a clamped shank, twist drill, boring bar or grooving blade, on an
+   * 8-station turret that indexes to the station in use. */
   private buildTool(tool: number, opName: string) {
     for (const c of [...this.toolBody.children]) {
       this.toolBody.remove(c);
-      (c as THREE.Mesh).geometry?.dispose();
+      c.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     }
     if (!tool) return;
     const shape = cuttingShape(tool, opName);
     const def = toolFor(tool, opName);
-    const black = new THREE.MeshStandardMaterial({
-      color: this.theme.insert,
-      metalness: 0.6,
-      roughness: 0.35,
-    });
-    const copper = new THREE.MeshStandardMaterial({
-      color: this.theme.holder,
-      metalness: 0.7,
-      roughness: 0.35,
-    });
-    if (shape.length >= 3) {
-      const sh = new THREE.Shape(shape.map(([z, r]) => new THREE.Vector2(z, r)));
-      const g = new THREE.ExtrudeGeometry(sh, {
-        depth: 4,
-        bevelEnabled: true,
-        bevelSize: 0.15,
-        bevelThickness: 0.15,
-        bevelSegments: 1,
-      });
-      g.translate(0, 0, -1.5);
-      this.toolBody.add(new THREE.Mesh(g, black));
-    } else {
-      const g = new THREE.SphereGeometry(0.8, 10, 8);
-      this.toolBody.add(new THREE.Mesh(g, black));
-    }
+    const role = def?.role ?? 'unknown';
     let zMax = 0;
     let rMax = 0;
     let rMin = 0;
@@ -443,38 +531,145 @@ export class CncScene {
       rMax = Math.max(rMax, r);
       rMin = Math.min(rMin, r);
     }
-    const role = def?.role ?? 'unknown';
-    const axial = role === 'drill' || role === 'bore' || AXIAL_GROOVE_TOOLS.has(tool);
-    if (axial) {
-      const rad = role === 'bore' ? (def?.barDiameter ?? 12) / 2 : Math.max(3, (rMax - rMin) / 2 + 0.5);
-      const len = 45;
-      const g = new THREE.CylinderGeometry(rad, rad, len, 24);
+    const add = (g: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z = 0) => {
+      const mesh = new THREE.Mesh(g, m);
+      mesh.position.set(x, y, z);
+      this.toolBody.add(mesh);
+      return mesh;
+    };
+    const axialGroove = AXIAL_GROOVE_TOOLS.has(tool);
+    let mountX = 0;
+    let mountY = 0;
+    if (role === 'drill') {
+      // Twist drill (TiN gold): 118 deg point, body with flutes, shank into a holder.
+      const d = def?.drillDiameter ?? 6;
+      const r = d / 2;
+      const cone = r / Math.tan((59 * Math.PI) / 180);
+      const body = Math.max(5 * d, 30);
+      const prof = [
+        new THREE.Vector2(0.001, 0),
+        new THREE.Vector2(r, cone),
+        new THREE.Vector2(r, body),
+        new THREE.Vector2(r * 0.92, body + 2),
+        new THREE.Vector2(r * 0.92, body + 30),
+        new THREE.Vector2(0.001, body + 30),
+      ];
+      const g = new THREE.LatheGeometry(prof, 28);
+      g.rotateZ(-Math.PI / 2); // lathe axis (y) -> +x
+      add(g, this.material('tin'), 0, 0);
+      // flutes: two dark helical grooves suggested by thin twisted bands
+      const flute = new THREE.TubeGeometry(
+        new THREE.CatmullRomCurve3(
+          Array.from({ length: 40 }, (_, i) => {
+            const t = i / 39;
+            const a = t * Math.PI * 2 * (body / (d * 1.6));
+            return new THREE.Vector3(
+              cone + t * (body - cone),
+              Math.cos(a) * r * 0.98,
+              Math.sin(a) * r * 0.98,
+            );
+          }),
+        ),
+        120,
+        Math.max(0.22, r * 0.07),
+        5,
+      );
+      add(flute, this.material('dark'), 0, 0);
+      const flute2 = flute.clone();
+      flute2.rotateX(Math.PI);
+      add(flute2, this.material('dark'), 0, 0);
+      const holder = new THREE.CylinderGeometry(r + 6, r + 6, 26, 28);
+      holder.rotateZ(Math.PI / 2);
+      add(holder, this.material('steel'), body + 30 + 8, 0);
+      mountX = body + 30 + 21;
+      mountY = 0;
+    } else if (role === 'bore' || axialGroove) {
+      // Round boring bar (or face-groove holder) along +Z with the insert at its tip.
+      const ins = this.insertMesh(shape);
+      this.toolBody.add(ins);
+      const bar = axialGroove ? 10 : (def?.barDiameter ?? 12);
+      const yc = axialGroove ? (rMax + rMin) / 2 : def?.tipDirection === 2 ? -(bar / 2 + 0.8) : bar / 2 + 0.8;
+      const len = 70;
+      const g = new THREE.CylinderGeometry(bar / 2, bar / 2, len, 28);
       g.rotateZ(Math.PI / 2);
-      const holder = new THREE.Mesh(g, copper);
-      const yc = role === 'bore' ? (def?.tipDirection === 2 ? -(rad + 1.2) : rad + 1.2) : (rMax + rMin) / 2;
-      holder.position.set(zMax + len / 2, yc, 0);
-      this.toolBody.add(holder);
-      const block = new THREE.Mesh(
-        new THREE.BoxGeometry(12, 18, 18),
-        new THREE.MeshLambertMaterial({ color: '#475569' }),
-      );
-      block.position.set(zMax + len + 9, yc, 0);
-      this.toolBody.add(block);
+      add(g, this.material('steel'), zMax + len / 2 - 2, yc);
+      const sleeve = new THREE.CylinderGeometry(bar / 2 + 5, bar / 2 + 5, 24, 28);
+      sleeve.rotateZ(Math.PI / 2);
+      add(sleeve, this.material('dark'), zMax + len - 6, yc);
+      mountX = zMax + len + 6;
+      mountY = yc;
     } else {
-      const geo = toolGeometry(def);
-      void geo;
-      const len = 34;
-      const g = new THREE.CylinderGeometry(4.5, 4.5, len, 24);
-      const holder = new THREE.Mesh(g, copper);
-      holder.position.set(Math.max(4, zMax * 0.5), rMax + len / 2, 0);
-      this.toolBody.add(holder);
-      const block = new THREE.Mesh(
-        new THREE.BoxGeometry(18, 12, 18),
-        new THREE.MeshLambertMaterial({ color: '#475569' }),
-      );
-      block.position.set(Math.max(4, zMax * 0.5), rMax + len + 9, 0);
-      this.toolBody.add(block);
+      // Turning / grooving: carbide insert, clamp screw, square steel shank going up into the turret.
+      this.toolBody.add(this.insertMesh(shape));
+      const cx = Math.max(3, zMax * 0.45);
+      const screw = new THREE.CylinderGeometry(1.1, 1.1, 1.2, 12);
+      screw.rotateX(Math.PI / 2);
+      add(screw, this.material('screw'), cx, Math.max(2, rMax * 0.45), 2.6);
+      const head = new THREE.BoxGeometry(Math.max(14, zMax + 6), 10, 14);
+      add(head, this.material('dark'), cx, rMax + 3, 0);
+      const shank = new THREE.BoxGeometry(16, 46, 16);
+      add(shank, this.material('steel'), cx, rMax + 31, 0);
+      mountX = cx;
+      mountY = rMax + 54;
     }
+    // Turret: 8-station disc, axis along Z, the station in use pointing at the part.
+    const turret = new THREE.Group();
+    const R = 46;
+    const discG = new THREE.CylinderGeometry(R, R, 34, 8);
+    discG.rotateZ(Math.PI / 2);
+    turret.add(new THREE.Mesh(discG, this.material('turret')));
+    const hubG = new THREE.CylinderGeometry(18, 18, 40, 24);
+    hubG.rotateZ(Math.PI / 2);
+    turret.add(new THREE.Mesh(hubG, this.material('dark')));
+    for (let s = 0; s < 8; s++) {
+      const a = (s * Math.PI) / 4;
+      const blk = new THREE.Mesh(new THREE.BoxGeometry(30, 12, 22), this.material('dark'));
+      blk.position.set(0, -(R + 4) * Math.cos(a), (R + 4) * Math.sin(a));
+      blk.rotation.x = a;
+      turret.add(blk);
+      if (s) {
+        const stub = new THREE.Mesh(new THREE.BoxGeometry(10, 16, 10), this.material('steel'));
+        stub.position.set(0, -(R + 18) * Math.cos(a), (R + 18) * Math.sin(a));
+        stub.rotation.x = a;
+        turret.add(stub);
+      }
+    }
+    turret.position.set(mountX, mountY + R + 2, 0);
+    this.turret = turret;
+    this.toolBody.add(turret);
+    const stations = 8;
+    this.turretTarget = ((tool - 1) * 2 * Math.PI) / stations;
+    this.turretAngle = this.turretTarget + Math.PI / 4; // index in from the previous station
+  }
+
+  private turret: THREE.Group | null = null;
+  private turretAngle = 0;
+  private turretTarget = 0;
+
+  /** Animate the turret indexing (called every frame). */
+  stepTurret(dt: number): boolean {
+    if (!this.turret) return false;
+    const d = this.turretTarget - this.turretAngle;
+    if (Math.abs(d) < 1e-3) return false;
+    this.turretAngle += d * Math.min(1, dt * 10);
+    // the station in use stays pointing at the part: rotate the other stations around it
+    this.turret.rotation.x = this.turretAngle - this.turretTarget;
+    return true;
+  }
+
+  private insertMesh(shape: Point[]): THREE.Mesh {
+    if (shape.length < 3)
+      return new THREE.Mesh(new THREE.SphereGeometry(0.8, 10, 8), this.material('carbide'));
+    const sh = new THREE.Shape(shape.map(([z, r]) => new THREE.Vector2(z, r)));
+    const g = new THREE.ExtrudeGeometry(sh, {
+      depth: 4.8,
+      bevelEnabled: true,
+      bevelSize: 0.2,
+      bevelThickness: 0.2,
+      bevelSegments: 2,
+    });
+    g.translate(0, 0, -2.4);
+    return new THREE.Mesh(g, this.material('carbide'));
   }
 
   /** Path reveal up to move i (fraction f), within the current setup. */
@@ -544,6 +739,19 @@ export class CncScene {
   /** Advance camera damping / animation. Returns true while something is still moving. */
   updateCamera(dt: number): boolean {
     let moving = false;
+    if (this.follow && this.toolRoot.visible) {
+      const want = this.toolRoot.position;
+      const delta = this.tmp
+        .copy(want)
+        .sub(this.controls.target)
+        .multiplyScalar(Math.min(1, dt * 4));
+      if (delta.lengthSq() > 1e-6) {
+        this.controls.target.add(delta);
+        this.camera.position.add(delta);
+        moving = true;
+      }
+    }
+    if (this.stepTurret(dt)) moving = true;
     if (this.camAnim) {
       const a = this.camAnim;
       a.t = Math.min(1, a.t + dt / 0.5);
@@ -752,6 +960,7 @@ export class CncScene {
       const mat = m.material as THREE.Material | undefined;
       mat?.dispose?.();
     });
+    this.envTex?.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

@@ -104,10 +104,11 @@ const HTML = `
    <label class="t"><input type="checkbox" class="cutaway" checked> Cut-away</label>
    <label class="t"><input type="checkbox" class="paths" checked> Path</label>
    <label class="t extras-l" hidden><input type="checkbox" class="extras"> N33/N34</label>
-   <span class="seg look"><button data-look="video">Video style</button><button data-look="enhanced" class="on">Enhanced</button></span>
+   <span class="seg look"><button data-look="real" class="on">Realistic</button><button data-look="video">Video style</button><button data-look="enhanced">Enhanced</button></span>
+   <span class="seg views"><button data-view="iso">Iso</button><button data-view="front">Front</button><button data-view="top">Top</button><button data-view="follow">Follow tool</button></span>
    <span class="time"></span>
   </div>
-  <div class="legend">Blue = stock, yellow = freshly cut, dotted orange = rapid moves. Press F for fps.</div>
+  <div class="legend">Realistic: steel stock, fresh cuts glint gold. Video style: blue = stock, yellow = freshly cut. Dotted orange = rapid moves. Drag to orbit, right-drag to pan, wheel to zoom, Space = play/pause, F = fps.</div>
  </div>
 </div>`;
 
@@ -176,7 +177,7 @@ export class CncSimulator extends HTMLElement {
       this.$('.loading').textContent = 'This browser has no WebGL: the 3D view cannot be shown.';
       return;
     }
-    this.scene.setLook('enhanced');
+    this.scene.setLook('real');
     this.runner = new Runner();
     this.grid = new Grid();
     const sp = this.$<HTMLSelectElement>('.speed');
@@ -369,6 +370,13 @@ export class CncSimulator extends HTMLElement {
       this.scene?.setLook(b.dataset.look as Look);
       this.meshVersion = -1;
       this.dirty = true;
+      this.kick();
+    });
+    on('.views', 'click', (e) => {
+      const b = (e.target as HTMLElement).closest('button');
+      if (!b) return;
+      for (const x of this.root.querySelectorAll('.views button')) x.classList.toggle('on', x === b);
+      this.scene?.setView(b.dataset.view as 'iso' | 'front' | 'top' | 'follow');
       this.kick();
     });
     on('.tabs', 'click', (e) => {
