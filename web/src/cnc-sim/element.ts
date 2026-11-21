@@ -20,6 +20,10 @@ const CSS = `
  --sim-fixture:#9aa5b1;--sim-holder:#b0663a;--sim-insert:#111827;--sim-line:#1d4ed8}
 @media (prefers-color-scheme:dark){:host{--sim-viewport:#d9e0e8}}
 *{box-sizing:border-box}
+:host(:fullscreen){width:100vw;height:100vh;min-height:0}
+:host(:fullscreen) .root{border-radius:0;height:100vh}
+.fs{position:absolute;right:10px;bottom:34px;background:rgba(15,23,42,.8);color:#fff;border:0;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer}
+.fs:hover{background:#1e3a5f}
 .root{display:flex;flex-direction:column;height:100%;min-height:520px;background:var(--sim-bg);color:var(--sim-text);border-radius:12px;overflow:hidden}
 .main{flex:1;display:flex;min-height:0}
 .view{position:relative;flex:1;min-width:0;margin:8px;border-radius:10px;overflow:hidden;background:var(--sim-viewport)}
@@ -81,6 +85,7 @@ const HTML = `
    <div class="fps"></div>
    <div class="scale"><span></span><i></i></div>
    <div class="note" hidden></div>
+   <button class="fs" title="Full screen (Enter)">⛶ Full screen</button>
   </div>
   <div class="side">
    <div class="box" style="flex:1">
@@ -108,7 +113,7 @@ const HTML = `
    <span class="seg views"><button data-view="iso">Iso</button><button data-view="front">Front</button><button data-view="top">Top</button><button data-view="follow">Follow tool</button></span>
    <span class="time"></span>
   </div>
-  <div class="legend">Realistic: steel stock, fresh cuts glint gold. Video style: blue = stock, yellow = freshly cut. Dotted orange = rapid moves. Drag to orbit, right-drag to pan, wheel to zoom, Space = play/pause, F = fps.</div>
+  <div class="legend">Realistic: steel stock, fresh cuts glint gold. Video style: blue = stock, yellow = freshly cut. Dotted orange = rapid moves. Drag to orbit, right-drag to pan, wheel to zoom, Space = play/pause, Enter = full screen, F = fps.</div>
  </div>
 </div>`;
 
@@ -295,6 +300,12 @@ export class CncSimulator extends HTMLElement {
     this.pause();
   }
 
+  /** Fill the whole screen with the simulator (Esc or the button again to leave). */
+  toggleFullscreen() {
+    if (document.fullscreenElement === this) void document.exitFullscreen?.();
+    else void this.requestFullscreen?.().catch(() => undefined);
+  }
+
   setSpeed(x: number | 'max') {
     this.speed = x;
     this.$<HTMLSelectElement>('.speed').value = String(x);
@@ -347,6 +358,14 @@ export class CncSimulator extends HTMLElement {
       this.kick();
     });
     on('[data-act="end"]', 'click', () => this.jumpToEnd());
+    on('.fs', 'click', () => this.toggleFullscreen());
+    const fsChange = () => {
+      this.$('.fs').textContent =
+        document.fullscreenElement === this ? '✕ Exit full screen' : '⛶ Full screen';
+      requestAnimationFrame(() => this.resize());
+    };
+    document.addEventListener('fullscreenchange', fsChange);
+    this.cleanups.push(() => document.removeEventListener('fullscreenchange', fsChange));
     on('.speed', 'change', (e) => {
       const v = (e.target as HTMLSelectElement).value;
       this.speed = v === 'max' ? 'max' : Number(v);
@@ -435,6 +454,9 @@ export class CncSimulator extends HTMLElement {
       if (e.key === 'f' || e.key === 'F') {
         this.fpsOn = !this.fpsOn;
         this.$('.fps').style.display = this.fpsOn ? 'block' : 'none';
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        this.toggleFullscreen();
       } else if (e.key === ' ') {
         e.preventDefault();
         if (this.playing) this.pause();
