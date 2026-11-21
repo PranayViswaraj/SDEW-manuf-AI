@@ -1,7 +1,10 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import LatheSim3D from '../components/LatheSim3D';
 import { BAD_PROGRAM, DEMO_PROGRAM, demoInput } from '../sim/lathe/demo';
 import type { SimResult } from '../sim/lathe/types';
+
+// <cnc-simulator> (three.js) loads only on this page.
+const CncSimulatorView = lazy(() => import('../cnc-sim/CncSimulatorView'));
 
 /** 3D lathe simulation on the fictional SIM Lathe, with demo programs only. */
 export default function LatheSimDemo() {
@@ -13,6 +16,12 @@ export default function LatheSimDemo() {
 
   return (
     <div className="space-y-4">
+      <section className="space-y-2">
+        <h2 className="text-lg font-semibold">O0003 · 3227C07701 BOSS-SUCTION PIPE</h2>
+        <Suspense fallback={<p className="text-sm text-slate-600">Loading the simulator…</p>}>
+          <CncSimulatorView programUrl={`${import.meta.env.BASE_URL}samples/O0003.nc`} speed={10} />
+        </Suspense>
+      </section>
       <div>
         <h1 className="text-xl font-semibold">Lathe simulation (demo)</h1>
         <p className="text-sm text-slate-600">

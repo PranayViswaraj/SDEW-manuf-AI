@@ -1,0 +1,601 @@
+/**
+ * three.js scene of <cnc-simulator>. three.js X = program Z (spindle axis), Y = radius on the
+ * tool side, Z = towards the operator. The part is built in its own frame and placed per setup.
+ */
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { toolGeometry } from '../sim/lathe/tools';
+import type { Point } from '../sim/lathe/types';
+import { SIM_CONFIG } from './config';
+import { cuttingShape, type Grid } from './grid';
+import { F, MOVE_TYPE, STRIDE, type Job, type JobSetup } from './job';
+import { PartMeshBuilder } from './mesh';
+import { AXIAL_GROOVE_TOOLS, toolFor } from './tools';
+
+export type Look = 'video' | 'enhanced';
+
+export interface Theme {
+  viewport: string;
+  stock: string;
+  fresh: string;
+  cap: string;
+  rapid: string;
+  ghost: string;
+  fixture: string;
+  holder: string;
+  insert: string;
+}
+
+const S = SIM_CONFIG.stock;
+
+function label(text: string, bg: string, fg: string, size = 128): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d') as CanvasRenderingContext2D;
+  g.fillStyle = bg;
+  g.fillRect(0, 0, size, size);
+  g.strokeStyle = '#94a3b8';
+  g.lineWidth = 6;
+  g.strokeRect(3, 3, size - 6, size - 6);
+  g.fillStyle = fg;
+  g.font = `bold ${Math.round(size / 5.2)}px system-ui, sans-serif`;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(text, size / 2, size / 2);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+export class CncScene {
+  renderer!: THREE.WebGLRenderer;
+  readonly scene = new THREE.Scene();
+  readonly camera = new THREE.PerspectiveCamera(35, 1, 0.5, 4000);
+  controls!: OrbitControls;
+  private antialias = false;
+  private theme: Theme;
+  private hemi = new THREE.HemisphereLight('#ffffff', '#94a3b8', 1.6);
+  private sun = new THREE.DirectionalLight('#ffffff', 1.6);
+  // part
+  private builder: PartMeshBuilder;
+  private partMat: THREE.MeshLambertMaterial;
+  private partStdMat: THREE.MeshStandardMaterial;
+  private partMesh: THREE.Mesh;
+  private partEdges: THREE.LineSegments;
+  private partPlace = new THREE.Group(); // orientation of the current setup
+  private partSpin = new THREE.Group();
+  private pivot = new THREE.Group(); // flip animation
+  // chuck
+  private chuck = new THREE.Group();
+  private chuckSpin = new THREE.Group();
+  private jaws: THREE.Mesh[] = [];
+  // tool
+  private toolRoot = new THREE.Group();
+  private toolBody = new THREE.Group();
+  private toolKey = '';
+  // paths
+  private ghost = new THREE.LineSegments();
+  private feeds = new THREE.LineSegments();
+  private rapids = new THREE.LineSegments();
+  private current = new THREE.Line();
+  private feedBefore = new Int32Array(1);
+  private rapidBefore = new Int32Array(1);
+  // view cube + triad
+  private cubeScene = new THREE.Scene();
+  private cubeCam = new THREE.PerspectiveCamera(30, 1, 0.1, 20);
+  private cube!: THREE.Mesh;
+  private triScene = new THREE.Scene();
+  private triCam = new THREE.PerspectiveCamera(30, 1, 0.1, 20);
+  private ray = new THREE.Raycaster();
+  private camAnim: {
+    from: THREE.Vector3;
+    to: THREE.Vector3;
+    up0: THREE.Vector3;
+    up1: THREE.Vector3;
+    t: number;
+  } | null = null;
+  private job: Job | null = null;
+  private setup = -1;
+  private look: Look = 'video';
+  private cutaway = true;
+  private disposables: { dispose(): void }[] = [];
+  private tmp = new THREE.Vector3();
+  width = 1;
+  height = 1;
+
+  constructor(
+    private host: HTMLElement,
+    theme: Theme,
+  ) {
+    this.theme = theme;
+    this.createRenderer(false);
+    this.camera.position.set(80, 60, 110);
+    this.scene.add(this.hemi, this.sun);
+    this.sun.position.set(60, 120, 90);
+
+    this.builder = new PartMeshBuilder({ stock: theme.stock, fresh: theme.fresh, cap: theme.cap });
+    this.partMat = new THREE.MeshLambertMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.9,
+      side: THREE.DoubleSide,
+      flatShading: true,
+    });
+    this.partStdMat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.92,
+      side: THREE.DoubleSide,
+      roughness: 0.45,
+      metalness: 0.15,
+    });
+    this.partMesh = new THREE.Mesh(this.builder.geometry, this.partMat);
+    this.partMesh.frustumCulled = false;
+    this.partEdges = new THREE.LineSegments(
+      this.builder.edges,
+      new THREE.LineBasicMaterial({ color: '#1e3a8a', transparent: true, opacity: 0.35 }),
+    );
+    this.partEdges.frustumCulled = false;
+    this.partEdges.visible = false;
+    this.partPlace.add(this.partMesh, this.partEdges);
+    this.partSpin.add(this.partPlace);
+    this.pivot.add(this.partSpin);
+    this.scene.add(this.pivot, this.chuck, this.toolRoot);
+    this.toolRoot.add(this.toolBody);
+    this.disposables.push(
+      this.builder,
+      this.partMat,
+      this.partStdMat,
+      this.partEdges.material as THREE.Material,
+    );
+
+    // chuck: body + 3 jaws (fixture)
+    const grey = new THREE.MeshLambertMaterial({ color: theme.fixture });
+    const greyDark = new THREE.MeshLambertMaterial({ color: '#64748b' });
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(42, 42, 34, 48), grey);
+    body.rotation.z = Math.PI / 2;
+    body.position.x = -20 - 12;
+    this.chuckSpin.add(body);
+    for (let k = 0; k < 3; k++) {
+      const jaw = new THREE.Mesh(new THREE.BoxGeometry(14, 22, 14), greyDark);
+      jaw.userData.angle = (k * 2 * Math.PI) / 3 + Math.PI / 6;
+      this.jaws.push(jaw);
+      this.chuckSpin.add(jaw);
+    }
+    this.chuck.add(this.chuckSpin);
+    this.disposables.push(grey, greyDark, body.geometry, this.jaws[0].geometry);
+
+    // view cube
+    const faces = ['RIGHT', 'LEFT', 'TOP', 'BOTTOM', 'FRONT', 'BACK'].map(
+      (t) => new THREE.MeshBasicMaterial({ map: label(t, '#f8fafc', '#0f172a') }),
+    );
+    this.cube = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 1.6), faces);
+    this.cubeScene.add(this.cube);
+    this.disposables.push(this.cube.geometry, ...faces, ...faces.map((f) => f.map as THREE.Texture));
+    // axis triad: X (radius, up) red, Z (spindle) blue, Y green
+    const arrow = (dir: THREE.Vector3, colour: string, text: string) => {
+      const a = new THREE.ArrowHelper(dir, new THREE.Vector3(), 1.1, colour, 0.28, 0.16);
+      this.triScene.add(a);
+      const sp = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: label(text, 'rgba(0,0,0,0)', colour, 64), depthTest: false }),
+      );
+      sp.position.copy(dir).multiplyScalar(1.45);
+      sp.scale.setScalar(0.55);
+      this.triScene.add(sp);
+      this.disposables.push(sp.material, sp.material.map as THREE.Texture);
+    };
+    arrow(new THREE.Vector3(1, 0, 0), '#2563eb', 'Z');
+    arrow(new THREE.Vector3(0, 1, 0), '#dc2626', 'X');
+    arrow(new THREE.Vector3(0, 0, 1), '#16a34a', 'Y');
+
+    this.setTheme(theme);
+  }
+
+  private createRenderer(antialias: boolean) {
+    const old = this.renderer;
+    this.antialias = antialias;
+    this.renderer = new THREE.WebGLRenderer({
+      antialias,
+      preserveDrawingBuffer: false,
+      powerPreference: 'high-performance',
+    });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    this.renderer.autoClear = false;
+    this.renderer.domElement.style.display = 'block';
+    this.renderer.domElement.style.width = '100%';
+    this.renderer.domElement.style.height = '100%';
+    this.renderer.domElement.style.touchAction = 'none';
+    if (old) {
+      old.domElement.replaceWith(this.renderer.domElement);
+      old.dispose();
+    } else this.host.appendChild(this.renderer.domElement);
+    const target = this.controls?.target.clone();
+    this.controls?.dispose();
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.12;
+    if (target) this.controls.target.copy(target);
+    this.renderer.setSize(this.width, this.height, false);
+  }
+
+  /** Turn antialias on once the frame rate is known to hold (re-creates the renderer). */
+  upgradeAntialias() {
+    if (!this.antialias) this.createRenderer(true);
+  }
+  get hasAntialias() {
+    return this.antialias;
+  }
+
+  setTheme(t: Theme) {
+    this.theme = t;
+    this.scene.background = new THREE.Color(t.viewport);
+    this.builder.setColours({ stock: t.stock, fresh: t.fresh, cap: t.cap });
+  }
+
+  resize(w: number, h: number) {
+    this.width = Math.max(1, w);
+    this.height = Math.max(1, h);
+    this.renderer.setSize(this.width, this.height, false);
+    this.camera.aspect = this.width / this.height;
+    this.camera.updateProjectionMatrix();
+  }
+
+  setLook(look: Look) {
+    this.look = look;
+    this.partMesh.material = look === 'video' ? this.partMat : this.partStdMat;
+    this.partEdges.visible = look === 'enhanced';
+    this.hemi.intensity = look === 'video' ? 1.6 : 1.1;
+    this.sun.intensity = look === 'video' ? 1.6 : 2.2;
+  }
+
+  setCutaway(on: boolean) {
+    this.cutaway = on;
+  }
+
+  // ------------------------------------------------------------------ job
+
+  setJob(job: Job) {
+    this.job = job;
+    this.setup = -1;
+    this.toolKey = '';
+    for (const l of [this.ghost, this.feeds, this.rapids]) {
+      l.geometry.dispose();
+      (l.material as THREE.Material | undefined)?.dispose?.();
+    }
+    const n = job.count;
+    const ghost: number[] = [];
+    const feed: number[] = [];
+    const feedCol: number[] = [];
+    const rapid: number[] = [];
+    this.feedBefore = new Int32Array(n + 1);
+    this.rapidBefore = new Int32Array(n + 1);
+    const col = new THREE.Color();
+    for (let i = 0; i < n; i++) {
+      const o = i * STRIDE;
+      const m = job.moves;
+      this.feedBefore[i] = feed.length / 6;
+      this.rapidBefore[i] = rapid.length / 6;
+      const type = m[o + F.type];
+      if (type === MOVE_TYPE.dwell || type === MOVE_TYPE.index || !m[o + F.known]) {
+        ghost.push(0, 0, 0, 0, 0, 0);
+        continue;
+      }
+      const seg = [m[o + F.z0], m[o + F.x0] / 2, 0.08, m[o + F.z1], m[o + F.x1] / 2, 0.08];
+      ghost.push(...seg);
+      if (type === MOVE_TYPE.rapid) rapid.push(...seg);
+      else {
+        feed.push(...seg);
+        col.set(job.ops[m[o + F.op]].colour);
+        feedCol.push(col.r, col.g, col.b, col.r, col.g, col.b);
+      }
+    }
+    this.feedBefore[n] = feed.length / 6;
+    this.rapidBefore[n] = rapid.length / 6;
+    const geo = (arr: number[], colours?: number[]) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+      if (colours) g.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
+      return g;
+    };
+    this.ghost = new THREE.LineSegments(
+      geo(ghost),
+      new THREE.LineBasicMaterial({ color: this.theme.ghost, transparent: true, opacity: 0.45 }),
+    );
+    this.feeds = new THREE.LineSegments(
+      geo(feed, feedCol),
+      new THREE.LineBasicMaterial({ vertexColors: true }),
+    );
+    this.rapids = new THREE.LineSegments(
+      geo(rapid),
+      new THREE.LineDashedMaterial({ color: this.theme.rapid, dashSize: 1.2, gapSize: 1.0 }),
+    );
+    this.rapids.computeLineDistances();
+    for (const l of [this.ghost, this.feeds, this.rapids]) {
+      l.frustumCulled = false;
+      this.scene.add(l);
+    }
+    if (!this.current.parent) {
+      this.current = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+        new THREE.LineBasicMaterial({ color: '#0f172a' }),
+      );
+      this.current.frustumCulled = false;
+      this.scene.add(this.current);
+    }
+    this.frame();
+  }
+
+  /** Frame the part at a 3/4 angle. */
+  frame() {
+    const mid = S.faceStockFront - S.length / 2 + 10;
+    const target = new THREE.Vector3(mid, 4, 0);
+    const d = S.length * 2.1 + 60;
+    this.controls.target.copy(target);
+    this.camera.up.set(0, 1, 0);
+    this.camera.position.copy(target).add(new THREE.Vector3(0.62, 0.45, 0.85).normalize().multiplyScalar(d));
+    this.camera.lookAt(target);
+    this.controls.update();
+  }
+
+  /** Show setup k: part orientation, chuck, path ranges. */
+  showSetup(k: number, grid: Grid, animate: boolean): boolean {
+    if (!this.job || k === this.setup) return false;
+    const prev = this.setup;
+    this.setup = k;
+    const s = this.job.setups[k];
+    this.placePart(s);
+    this.placeChuck(s, grid);
+    return animate && prev >= 0;
+  }
+
+  private placePart(s: JobSetup) {
+    // part frame p -> program z: orient 0: z = faceFront - p ; orient 1: z = p - (L - faceBack)
+    if (s.orient === 0) {
+      this.partPlace.scale.x = -1;
+      this.partPlace.position.x = S.faceStockFront;
+    } else {
+      this.partPlace.scale.x = 1;
+      this.partPlace.position.x = -(S.length - S.faceStockBack);
+    }
+  }
+
+  private placeChuck(s: JobSetup, grid: Grid) {
+    this.chuck.position.x = s.chuckZ;
+    const p =
+      s.orient === 0 ? S.faceStockFront - (s.chuckZ - 6) : S.length - S.faceStockBack + (s.chuckZ - 6);
+    const r = Math.max(4, grid.outerAt(p));
+    for (const j of this.jaws) {
+      const a = j.userData.angle as number;
+      const rr = r + 11;
+      j.position.set(-7, rr * Math.cos(a), rr * Math.sin(a));
+      j.rotation.x = a - Math.PI / 2;
+    }
+  }
+
+  /** Flip animation progress e (0..1): the part turns 180 degrees about the vertical axis. */
+  flip(e: number) {
+    const mid = S.faceStockFront - S.length / 2;
+    this.pivot.position.x = mid;
+    this.partSpin.position.x = -mid;
+    this.pivot.rotation.y = Math.PI * (1 - e);
+    if (e >= 1) {
+      this.pivot.rotation.y = 0;
+      this.pivot.position.x = 0;
+      this.partSpin.position.x = 0;
+    }
+  }
+
+  rebuildPart(grid: Grid, now: number) {
+    return this.builder.build(grid, now, this.cutaway, this.look === 'enhanced');
+  }
+
+  /** Tool at programmed point (z, x diameter); retract offset for tool-change animation. */
+  placeTool(tool: number, opName: string, z: number, x: number, retract: number) {
+    const key = `${tool}|${opName}`;
+    if (key !== this.toolKey) {
+      this.toolKey = key;
+      this.buildTool(tool, opName);
+    }
+    this.toolRoot.visible = tool > 0;
+    this.toolRoot.position.set(z + retract * 0.4, x / 2 + retract, 0.1);
+  }
+
+  private buildTool(tool: number, opName: string) {
+    for (const c of [...this.toolBody.children]) {
+      this.toolBody.remove(c);
+      (c as THREE.Mesh).geometry?.dispose();
+    }
+    if (!tool) return;
+    const shape = cuttingShape(tool, opName);
+    const def = toolFor(tool, opName);
+    const black = new THREE.MeshLambertMaterial({ color: this.theme.insert });
+    const copper = new THREE.MeshLambertMaterial({ color: this.theme.holder });
+    if (shape.length >= 3) {
+      const sh = new THREE.Shape(shape.map(([z, r]) => new THREE.Vector2(z, r)));
+      const g = new THREE.ExtrudeGeometry(sh, { depth: 3, bevelEnabled: false });
+      g.translate(0, 0, -1.5);
+      this.toolBody.add(new THREE.Mesh(g, black));
+    } else {
+      const g = new THREE.SphereGeometry(0.8, 10, 8);
+      this.toolBody.add(new THREE.Mesh(g, black));
+    }
+    let zMax = 0;
+    let rMax = 0;
+    let rMin = 0;
+    for (const [z, r] of shape as Point[]) {
+      zMax = Math.max(zMax, z);
+      rMax = Math.max(rMax, r);
+      rMin = Math.min(rMin, r);
+    }
+    const role = def?.role ?? 'unknown';
+    const axial = role === 'drill' || role === 'bore' || AXIAL_GROOVE_TOOLS.has(tool);
+    if (axial) {
+      const rad = role === 'bore' ? (def?.barDiameter ?? 12) / 2 : Math.max(3, (rMax - rMin) / 2 + 0.5);
+      const len = 70;
+      const g = new THREE.CylinderGeometry(rad, rad, len, 24);
+      g.rotateZ(Math.PI / 2);
+      const holder = new THREE.Mesh(g, copper);
+      const yc = role === 'bore' ? (def?.tipDirection === 2 ? -(rad + 1.2) : rad + 1.2) : (rMax + rMin) / 2;
+      holder.position.set(zMax + len / 2, yc, 0);
+      this.toolBody.add(holder);
+      const block = new THREE.Mesh(
+        new THREE.BoxGeometry(18, 30, 30),
+        new THREE.MeshLambertMaterial({ color: '#475569' }),
+      );
+      block.position.set(zMax + len + 9, yc, 0);
+      this.toolBody.add(block);
+    } else {
+      const geo = toolGeometry(def);
+      void geo;
+      const len = 55;
+      const g = new THREE.CylinderGeometry(7, 7, len, 24);
+      const holder = new THREE.Mesh(g, copper);
+      holder.position.set(Math.max(4, zMax * 0.5), rMax + len / 2, 0);
+      this.toolBody.add(holder);
+      const block = new THREE.Mesh(
+        new THREE.BoxGeometry(30, 18, 30),
+        new THREE.MeshLambertMaterial({ color: '#475569' }),
+      );
+      block.position.set(Math.max(4, zMax * 0.5), rMax + len + 9, 0);
+      this.toolBody.add(block);
+    }
+  }
+
+  /** Path reveal up to move i (fraction f), within the current setup. */
+  showProgress(i: number, f: number, z: number, x: number) {
+    if (!this.job) return;
+    const s = this.job.setups[this.setup];
+    const a = s.firstMove;
+    const done = Math.min(i + (f >= 1 ? 1 : 0), s.lastMove + 1);
+    this.ghost.geometry.setDrawRange(a * 2, (s.lastMove + 1 - a) * 2);
+    const f0 = this.feedBefore[a];
+    this.feeds.geometry.setDrawRange(f0 * 2, (this.feedBefore[done] - f0) * 2);
+    const r0 = this.rapidBefore[a];
+    this.rapids.geometry.setDrawRange(r0 * 2, (this.rapidBefore[done] - r0) * 2);
+    const o = i * STRIDE;
+    const m = this.job.moves;
+    const p = this.current.geometry.getAttribute('position') as THREE.BufferAttribute;
+    p.setXYZ(0, m[o + F.z0], m[o + F.x0] / 2, 0.12);
+    p.setXYZ(1, z, x / 2, 0.12);
+    p.needsUpdate = true;
+  }
+
+  setPathsVisible(v: boolean) {
+    this.ghost.visible = this.feeds.visible = this.rapids.visible = this.current.visible = v;
+  }
+
+  spin(angle: number, partToo: boolean) {
+    this.chuckSpin.rotation.x = angle;
+    this.partSpin.rotation.x = partToo ? angle : 0;
+  }
+
+  // ------------------------------------------------------------------ camera helpers
+
+  /** mm per CSS pixel at the orbit target. */
+  mmPerPixel(): number {
+    const d = this.camera.position.distanceTo(this.controls.target);
+    const h = 2 * d * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+    return h / this.height;
+  }
+
+  /** Clicked in the view cube corner? Snap the camera to that face. Returns true if handled. */
+  cubeClick(px: number, py: number): boolean {
+    const size = this.cubeSize();
+    const x0 = this.width - size - 8;
+    if (px < x0 || px > x0 + size || py < 8 || py > 8 + size) return false;
+    const ndc = new THREE.Vector2(((px - x0) / size) * 2 - 1, -(((py - 8) / size) * 2 - 1));
+    this.ray.setFromCamera(ndc, this.cubeCam);
+    const hit = this.ray.intersectObject(this.cube)[0];
+    if (!hit?.face) return true;
+    const n = hit.face.normal.clone();
+    const dist = this.camera.position.distanceTo(this.controls.target);
+    const to = n.clone().multiplyScalar(dist);
+    if (Math.abs(n.y) > 0.9) to.z += 0.001 * dist; // avoid looking straight down the up vector
+    this.camAnim = {
+      from: this.camera.position.clone().sub(this.controls.target),
+      to,
+      up0: this.camera.up.clone(),
+      up1: new THREE.Vector3(0, 1, 0),
+      t: 0,
+    };
+    return true;
+  }
+
+  private cubeSize() {
+    return Math.round(Math.min(96, Math.max(64, this.width * 0.09)));
+  }
+
+  /** Advance camera damping / animation. Returns true while something is still moving. */
+  updateCamera(dt: number): boolean {
+    let moving = false;
+    if (this.camAnim) {
+      const a = this.camAnim;
+      a.t = Math.min(1, a.t + dt / 0.5);
+      const e = a.t < 0.5 ? 2 * a.t * a.t : 1 - Math.pow(-2 * a.t + 2, 2) / 2;
+      const len = a.from.length() + (a.to.length() - a.from.length()) * e;
+      this.tmp
+        .copy(a.from)
+        .normalize()
+        .lerp(this.tmp.clone().copy(a.to).normalize(), e)
+        .normalize()
+        .multiplyScalar(len);
+      this.camera.position.copy(this.controls.target).add(this.tmp);
+      this.camera.lookAt(this.controls.target);
+      if (a.t >= 1) this.camAnim = null;
+      moving = true;
+    }
+    if (this.controls.update()) moving = true;
+    return moving;
+  }
+
+  render() {
+    const r = this.renderer;
+    r.setViewport(0, 0, this.width, this.height);
+    r.setScissorTest(false);
+    r.clear();
+    r.render(this.scene, this.camera);
+    // view cube (top right) and triad (bottom left) follow the main camera
+    const dir = this.tmp.copy(this.camera.position).sub(this.controls.target).normalize();
+    const size = this.cubeSize();
+    r.setScissorTest(true);
+    r.clearDepth();
+    this.cubeCam.position.copy(dir).multiplyScalar(5.2);
+    this.cubeCam.up.copy(this.camera.up);
+    this.cubeCam.lookAt(0, 0, 0);
+    r.setViewport(this.width - size - 8, this.height - size - 8, size, size);
+    r.setScissor(this.width - size - 8, this.height - size - 8, size, size);
+    r.render(this.cubeScene, this.cubeCam);
+    this.triCam.position.copy(dir).multiplyScalar(6);
+    this.triCam.up.copy(this.camera.up);
+    this.triCam.lookAt(0, 0, 0);
+    r.setViewport(8, 8, 84, 84);
+    r.setScissor(8, 8, 84, 84);
+    r.render(this.triScene, this.triCam);
+    r.setScissorTest(false);
+  }
+
+  canvas() {
+    return this.renderer.domElement;
+  }
+
+  dispose() {
+    this.controls.dispose();
+    for (const d of this.disposables) d.dispose();
+    for (const l of [this.ghost, this.feeds, this.rapids, this.current]) {
+      l.geometry.dispose();
+      (l.material as THREE.Material).dispose();
+    }
+    this.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh && m.geometry) m.geometry.dispose();
+    });
+    this.triScene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.geometry) m.geometry.dispose();
+      const mat = m.material as THREE.Material | undefined;
+      mat?.dispose?.();
+    });
+    this.renderer.dispose();
+    this.renderer.domElement.remove();
+  }
+}

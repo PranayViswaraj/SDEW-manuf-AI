@@ -73,6 +73,8 @@ export interface SimMachine {
   indexTime?: number | null;
   /** Reference point (G28) in program coordinates: X diameter, Z. null = unknown. */
   home?: { x: number; z: number } | null;
+  /** Second reference point (G30), program coordinates. Defaults to home. */
+  home30?: { x: number; z: number } | null;
   /** Chuck outside diameter (mm), for drawing and the chuck check. */
   chuckDiameter?: number | null;
   turretStations?: number | null;

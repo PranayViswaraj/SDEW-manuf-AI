@@ -322,7 +322,7 @@ export function interpret(text: string, machine: SimMachine, section = 0): Inter
       coolant: st.coolant,
       comp: st.comp,
       pitch,
-      label: curLabel,
+      label: pendingLabel || curLabel,
       realTime,
       t0: 0,
       t1: anim,
@@ -350,6 +350,7 @@ export function interpret(text: string, machine: SimMachine, section = 0): Inter
       spindle: st.spindle,
       coolant: st.coolant,
       comp: st.comp,
+      label: pendingLabel || curLabel,
       realTime: seconds,
       t0: 0,
       t1: seconds ?? animFallback,
@@ -851,22 +852,24 @@ export function interpret(text: string, machine: SimMachine, section = 0): Inter
     } else if (gs.includes(76)) {
       g76run(b);
     } else if (gs.includes(28) || gs.includes(30)) {
-      const home = machine.home;
+      const g30 = gs.includes(30);
+      const home = g30 ? (machine.home30 ?? machine.home) : machine.home;
+      const hname = g30 ? 'G30 home' : 'G28 home';
       if (known()) {
         const [x, z] = target(b); // intermediate point (G28 U0 W0 = where it is)
-        moveTo(x, z, 'rapid', 'G28 home');
+        moveTo(x, z, 'rapid', hname);
       }
       if (home) {
         if (!known()) {
           st.x = home.x;
           st.z = home.z;
-          emit('rapid', null, point(), 'G28 home');
+          emit('rapid', null, point(), hname);
         } else
           moveTo(
             has(b, 'U') || has(b, 'X') ? home.x : null,
             has(b, 'W') || has(b, 'Z') ? home.z : null,
             'rapid',
-            'G28 home',
+            hname,
           );
       } else {
         if (has(b, 'U') || has(b, 'X')) st.x = null;
