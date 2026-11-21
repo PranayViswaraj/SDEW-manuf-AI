@@ -11,7 +11,7 @@ export const SIM_CONFIG = {
   /** Revolve segments of the part mesh. */
   segments: 96,
   /** Rebuild the part mesh at most this often while playing (Hz). */
-  meshHz: 15,
+  meshHz: 30,
   /** Freshly cut surfaces fade from yellow back to blue over this much simulated time (s). */
   fadeSeconds: 3,
   /** Tool change and part flip animations: real seconds, at any speed. */

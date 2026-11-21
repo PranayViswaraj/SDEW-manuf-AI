@@ -104,7 +104,7 @@ const HTML = `
    <label class="t"><input type="checkbox" class="cutaway" checked> Cut-away</label>
    <label class="t"><input type="checkbox" class="paths" checked> Path</label>
    <label class="t extras-l" hidden><input type="checkbox" class="extras"> N33/N34</label>
-   <span class="seg look"><button data-look="video" class="on">Video style</button><button data-look="enhanced">Enhanced</button></span>
+   <span class="seg look"><button data-look="video">Video style</button><button data-look="enhanced" class="on">Enhanced</button></span>
    <span class="time"></span>
   </div>
   <div class="legend">Blue = stock, yellow = freshly cut, dotted orange = rapid moves. Press F for fps.</div>
@@ -156,6 +156,7 @@ export class CncSimulator extends HTMLElement {
   private ro: ResizeObserver | null = null;
   private io: IntersectionObserver | null = null;
   private dragging = false;
+  private removedNow = 0;
 
   constructor() {
     super();
@@ -175,6 +176,7 @@ export class CncSimulator extends HTMLElement {
       this.$('.loading').textContent = 'This browser has no WebGL: the 3D view cannot be shown.';
       return;
     }
+    this.scene.setLook('enhanced');
     this.runner = new Runner();
     this.grid = new Grid();
     const sp = this.$<HTMLSelectElement>('.speed');
@@ -616,7 +618,7 @@ export class CncSimulator extends HTMLElement {
       const z = m[o + F.z0] + (m[o + F.z1] - m[o + F.z0]) * f;
       const x = m[o + F.x0] + (m[o + F.x1] - m[o + F.x0]) * f;
       const setup = m[o + F.setup];
-      if (scene.showSetup(setup, grid, true)) this.flipAnim = 0;
+      if (scene.showSetup(setup, grid, this.playing)) this.flipAnim = 0;
       if (this.flipAnim < 1) {
         this.flipAnim = Math.min(1, this.flipAnim + dt / SIM_CONFIG.flipAnim);
         scene.flip(this.flipAnim);
@@ -642,6 +644,9 @@ export class CncSimulator extends HTMLElement {
         const rps = Math.min(Math.abs(rpm) / 60, SIM_CONFIG.spinCap);
         this.spinAngle += (rpm > 0 ? -1 : 1) * rps * 2 * Math.PI * dt;
       }
+      const cutting = this.removedNow > 0 && m[o + F.type] !== 0;
+      if (scene.effects(dt, cutting, this.playing)) busy = true;
+      if (!this.playing) this.removedNow = 0;
       const cutaway = this.$<HTMLInputElement>('.cutaway').checked;
       scene.spin(this.spinAngle, !cutaway);
       // part mesh at most meshHz, or while the yellow fade runs
@@ -688,6 +693,7 @@ export class CncSimulator extends HTMLElement {
     const grid = this.grid!;
     const i = Math.max(0, moveAt(job.moves, job.count, t));
     const f = this.fracAt(i, t);
+    this.removedNow = 0;
     let { move, frac } = this.applied;
     // far ahead: restore the latest snapshot in between instead of cutting every move
     let snap: Precomputed['snaps'][number] | null = null;
@@ -699,7 +705,7 @@ export class CncSimulator extends HTMLElement {
     }
     while (move <= i) {
       const end = move === i ? f : 1;
-      if (end > frac) cutMove(grid, job, move, frac, end);
+      if (end > frac) this.removedNow += cutMove(grid, job, move, frac, end);
       if (move === i) {
         frac = Math.max(frac, end);
         break;

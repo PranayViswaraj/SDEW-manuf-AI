@@ -119,7 +119,7 @@ export class CncScene {
       transparent: true,
       opacity: 0.9,
       side: THREE.DoubleSide,
-      flatShading: true,
+      flatShading: false,
     });
     this.partStdMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
@@ -152,12 +152,12 @@ export class CncScene {
     // chuck: body + 3 jaws (fixture)
     const grey = new THREE.MeshLambertMaterial({ color: theme.fixture });
     const greyDark = new THREE.MeshLambertMaterial({ color: '#64748b' });
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(42, 42, 34, 48), grey);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(34, 34, 28, 48), grey);
     body.rotation.z = Math.PI / 2;
     body.position.x = -20 - 12;
     this.chuckSpin.add(body);
     for (let k = 0; k < 3; k++) {
-      const jaw = new THREE.Mesh(new THREE.BoxGeometry(14, 22, 14), greyDark);
+      const jaw = new THREE.Mesh(new THREE.BoxGeometry(10, 14, 10), greyDark);
       jaw.userData.angle = (k * 2 * Math.PI) / 3 + Math.PI / 6;
       this.jaws.push(jaw);
       this.chuckSpin.add(jaw);
@@ -281,8 +281,10 @@ export class CncScene {
         continue;
       }
       const seg = [m[o + F.z0], m[o + F.x0] / 2, 0.08, m[o + F.z1], m[o + F.x1] / 2, 0.08];
-      ghost.push(...seg);
-      if (type === MOVE_TYPE.rapid) rapid.push(...seg);
+      // Travel to / from the reference points (G28 / G30) is far off the part: not drawn.
+      const far = Math.max(m[o + F.z0], m[o + F.z1]) > 40 || Math.max(m[o + F.x0], m[o + F.x1]) > 90;
+      ghost.push(...(far ? [0, 0, 0, 0, 0, 0] : seg));
+      if (type === MOVE_TYPE.rapid) rapid.push(...(far ? [0, 0, 0, 0, 0, 0] : seg));
       else {
         feed.push(...seg);
         col.set(job.ops[m[o + F.op]].colour);
@@ -329,10 +331,10 @@ export class CncScene {
   frame() {
     const mid = S.faceStockFront - S.length / 2 + 10;
     const target = new THREE.Vector3(mid, 4, 0);
-    const d = S.length * 2.1 + 60;
+    const d = S.length * 1.55 + 30;
     this.controls.target.copy(target);
     this.camera.up.set(0, 1, 0);
-    this.camera.position.copy(target).add(new THREE.Vector3(0.62, 0.45, 0.85).normalize().multiplyScalar(d));
+    this.camera.position.copy(target).add(new THREE.Vector3(0.35, 0.42, 0.84).normalize().multiplyScalar(d));
     this.camera.lookAt(target);
     this.controls.update();
   }
@@ -408,11 +410,25 @@ export class CncScene {
     if (!tool) return;
     const shape = cuttingShape(tool, opName);
     const def = toolFor(tool, opName);
-    const black = new THREE.MeshLambertMaterial({ color: this.theme.insert });
-    const copper = new THREE.MeshLambertMaterial({ color: this.theme.holder });
+    const black = new THREE.MeshStandardMaterial({
+      color: this.theme.insert,
+      metalness: 0.6,
+      roughness: 0.35,
+    });
+    const copper = new THREE.MeshStandardMaterial({
+      color: this.theme.holder,
+      metalness: 0.7,
+      roughness: 0.35,
+    });
     if (shape.length >= 3) {
       const sh = new THREE.Shape(shape.map(([z, r]) => new THREE.Vector2(z, r)));
-      const g = new THREE.ExtrudeGeometry(sh, { depth: 3, bevelEnabled: false });
+      const g = new THREE.ExtrudeGeometry(sh, {
+        depth: 4,
+        bevelEnabled: true,
+        bevelSize: 0.15,
+        bevelThickness: 0.15,
+        bevelSegments: 1,
+      });
       g.translate(0, 0, -1.5);
       this.toolBody.add(new THREE.Mesh(g, black));
     } else {
@@ -431,7 +447,7 @@ export class CncScene {
     const axial = role === 'drill' || role === 'bore' || AXIAL_GROOVE_TOOLS.has(tool);
     if (axial) {
       const rad = role === 'bore' ? (def?.barDiameter ?? 12) / 2 : Math.max(3, (rMax - rMin) / 2 + 0.5);
-      const len = 70;
+      const len = 45;
       const g = new THREE.CylinderGeometry(rad, rad, len, 24);
       g.rotateZ(Math.PI / 2);
       const holder = new THREE.Mesh(g, copper);
@@ -439,7 +455,7 @@ export class CncScene {
       holder.position.set(zMax + len / 2, yc, 0);
       this.toolBody.add(holder);
       const block = new THREE.Mesh(
-        new THREE.BoxGeometry(18, 30, 30),
+        new THREE.BoxGeometry(12, 18, 18),
         new THREE.MeshLambertMaterial({ color: '#475569' }),
       );
       block.position.set(zMax + len + 9, yc, 0);
@@ -447,13 +463,13 @@ export class CncScene {
     } else {
       const geo = toolGeometry(def);
       void geo;
-      const len = 55;
-      const g = new THREE.CylinderGeometry(7, 7, len, 24);
+      const len = 34;
+      const g = new THREE.CylinderGeometry(4.5, 4.5, len, 24);
       const holder = new THREE.Mesh(g, copper);
       holder.position.set(Math.max(4, zMax * 0.5), rMax + len / 2, 0);
       this.toolBody.add(holder);
       const block = new THREE.Mesh(
-        new THREE.BoxGeometry(30, 18, 30),
+        new THREE.BoxGeometry(18, 12, 18),
         new THREE.MeshLambertMaterial({ color: '#475569' }),
       );
       block.position.set(Math.max(4, zMax * 0.5), rMax + len + 9, 0);
@@ -572,6 +588,147 @@ export class CncScene {
     r.setScissor(8, 8, 84, 84);
     r.render(this.triScene, this.triCam);
     r.setScissorTest(false);
+  }
+
+  // ------------------------------------------------------------------ chips, coolant, cut glow
+
+  private fx: {
+    chips: THREE.InstancedMesh;
+    state: Float32Array; // per chip: x y z vx vy vz rx ry rz life
+    next: number;
+    coolant: THREE.Points;
+    phase: Float32Array;
+    glow: THREE.PointLight;
+    spark: THREE.Mesh;
+    dummy: THREE.Object3D;
+  } | null = null;
+
+  private ensureFx() {
+    if (this.fx) return this.fx;
+    const N = 90;
+    const chips = new THREE.InstancedMesh(
+      new THREE.TorusGeometry(0.7, 0.13, 4, 10, Math.PI * 1.5),
+      new THREE.MeshStandardMaterial({ color: '#cbd5e1', metalness: 0.85, roughness: 0.3 }),
+      N,
+    );
+    chips.frustumCulled = false;
+    chips.count = 0;
+    const cg = new THREE.BufferGeometry();
+    cg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(140 * 3), 3));
+    const coolant = new THREE.Points(
+      cg,
+      new THREE.PointsMaterial({
+        color: '#38bdf8',
+        size: 1.1,
+        transparent: true,
+        opacity: 0.7,
+        depthWrite: false,
+      }),
+    );
+    coolant.frustumCulled = false;
+    coolant.visible = false;
+    const glow = new THREE.PointLight('#fb923c', 0, 40, 1.6);
+    const spark = new THREE.Mesh(
+      new THREE.SphereGeometry(0.9, 12, 10),
+      new THREE.MeshBasicMaterial({
+        color: '#fdba74',
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    this.scene.add(chips, coolant, glow, spark);
+    const phase = new Float32Array(140);
+    for (let i = 0; i < phase.length; i++) phase[i] = Math.random();
+    this.fx = {
+      chips,
+      state: new Float32Array(N * 10),
+      next: 0,
+      coolant,
+      phase,
+      glow,
+      spark,
+      dummy: new THREE.Object3D(),
+    };
+    this.disposables.push(
+      chips.geometry,
+      chips.material as THREE.Material,
+      cg,
+      coolant.material as THREE.Material,
+    );
+    this.disposables.push(spark.geometry, spark.material as THREE.Material);
+    return this.fx;
+  }
+
+  /** Chips fly off while cutting, coolant sprays at the tip, the tip glows. Returns true if alive. */
+  effects(dt: number, cutting: boolean, playing: boolean): boolean {
+    const fx = this.ensureFx();
+    const tip = this.toolRoot.position;
+    const N = fx.state.length / 10;
+    const s = fx.state;
+    if (cutting && playing) {
+      for (let k = 0; k < 2; k++) {
+        const i = fx.next;
+        fx.next = (fx.next + 1) % N;
+        const o = i * 10;
+        s[o] = tip.x;
+        s[o + 1] = tip.y;
+        s[o + 2] = tip.z + 0.5;
+        s[o + 3] = 8 + Math.random() * 25;
+        s[o + 4] = 15 + Math.random() * 30;
+        s[o + 5] = 10 + Math.random() * 35;
+        s[o + 6] = Math.random() * 6;
+        s[o + 7] = Math.random() * 6;
+        s[o + 8] = Math.random() * 6;
+        s[o + 9] = 1.1;
+      }
+    }
+    let alive = 0;
+    for (let i = 0; i < N; i++) {
+      const o = i * 10;
+      if (s[o + 9] <= 0) continue;
+      s[o + 4] -= 160 * dt;
+      s[o] += s[o + 3] * dt;
+      s[o + 1] += s[o + 4] * dt;
+      s[o + 2] += s[o + 5] * dt;
+      s[o + 6] += 9 * dt;
+      s[o + 7] += 7 * dt;
+      s[o + 9] -= dt;
+      fx.dummy.position.set(s[o], s[o + 1], s[o + 2]);
+      fx.dummy.rotation.set(s[o + 6], s[o + 7], s[o + 8]);
+      fx.dummy.updateMatrix();
+      fx.chips.setMatrixAt(alive++, fx.dummy.matrix);
+    }
+    fx.chips.count = alive;
+    fx.chips.instanceMatrix.needsUpdate = true;
+    const on = cutting && playing;
+    fx.coolant.visible = on;
+    if (on) {
+      const p = fx.coolant.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const nx = tip.x + 22;
+      const ny = tip.y + 28;
+      const nz = tip.z + 14;
+      for (let i = 0; i < fx.phase.length; i++) {
+        fx.phase[i] = (fx.phase[i] + dt * 2.4) % 1;
+        const t = fx.phase[i];
+        const j = ((i * 7.31) % 1) - 0.5;
+        const k = ((i * 3.77) % 1) - 0.5;
+        p.setXYZ(
+          i,
+          nx + (tip.x - nx) * t + j * 2.5 * t,
+          ny + (tip.y - ny) * t + k * 2.5 * t,
+          nz + (tip.z - nz) * t,
+        );
+      }
+      p.needsUpdate = true;
+    }
+    const flick = 0.75 + Math.random() * 0.25;
+    fx.glow.position.copy(tip);
+    fx.spark.position.copy(tip);
+    fx.glow.intensity = on ? 350 * flick : 0;
+    (fx.spark.material as THREE.MeshBasicMaterial).opacity = on ? 0.85 * flick : 0;
+    return alive > 0 || on;
   }
 
   canvas() {

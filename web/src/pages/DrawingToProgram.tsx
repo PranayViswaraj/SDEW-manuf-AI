@@ -298,12 +298,20 @@ function DrawingViewer({ drawing, empty }: { drawing: Drawing | null; empty: Rea
     );
   if (drawing.content_type === 'application/pdf')
     return (
-      // Full-page drawing: no thumbnail side bar, fitted to the width.
-      <iframe
-        title={`Drawing ${drawing.filename}`}
-        src={`${url}#navpanes=0&pagemode=none&view=FitH`}
-        className="h-[78vh] w-full rounded-xl border"
-      />
+      <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
+        <div className="flex items-center justify-between gap-2 border-b bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+          <span className="truncate font-medium">{drawing.filename}</span>
+          <a className="shrink-0 text-blue-700 underline" href={url} target="_blank" rel="noreferrer">
+            Open full size
+          </a>
+        </div>
+        {/* Full-page drawing: no PDF toolbar or thumbnail side bar, fitted to the width. */}
+        <iframe
+          title={`Drawing ${drawing.filename}`}
+          src={`${url}#toolbar=0&navpanes=0&pagemode=none&view=FitH`}
+          className="h-[calc(100vh-11rem)] min-h-[420px] w-full"
+        />
+      </div>
     );
   return (
     <div className="space-y-2">
@@ -955,6 +963,23 @@ export default function DrawingToProgram() {
   const [title] = useState('');
   const [preview, setPreview] = useState<GenPreview | null>(null);
   const [simResult, setSimResult] = useState<SimResult | null>(null);
+  // Drawing column shown beside the steps (remembered on this computer).
+  const [showDrawing, setShowDrawing] = useState(() => {
+    try {
+      return localStorage.getItem('make.showDrawing') !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const toggleDrawing = () =>
+    setShowDrawing((v) => {
+      try {
+        localStorage.setItem('make.showDrawing', v ? '0' : '1');
+      } catch {
+        /* storage blocked: not remembered */
+      }
+      return !v;
+    });
   // The generated text that has finished its "writing" animation.
   const [typedFor, setTypedFor] = useState<string | null>(null);
   const { prefs: a11yPrefs } = useA11y();
@@ -1605,9 +1630,14 @@ export default function DrawingToProgram() {
           </div>
         )}
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="flex justify-end">
+          <button className="btn text-sm" onClick={() => toggleDrawing()}>
+            {showDrawing ? 'Hide drawing' : 'Show drawing'}
+          </button>
+        </div>
+        <div className={`grid gap-4 ${showDrawing ? 'xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]' : ''}`}>
           {/* ---------------- left: the drawing */}
-          <div className="space-y-2 xl:sticky xl:top-4 xl:self-start">
+          <div className={`space-y-2 xl:sticky xl:top-4 xl:self-start ${showDrawing ? '' : 'hidden'}`}>
             {ft && (
               <div className="flex flex-wrap items-center gap-2">
                 {drawings.length > 1 && (
