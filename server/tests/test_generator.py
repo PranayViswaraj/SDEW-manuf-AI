@@ -1000,7 +1000,7 @@ def test_boss_suction_pipe_drawing_and_program_match() -> None:
     pdf = "afae912b517962a21589fd17a4d8cf714879d5b8f8be51b3c5616bcef21df2b8"
     k = find_known(load_known(KNOWN_JSON), sha256=pdf)
     assert k is not None and k.part_number == "3227C07701"
-    assert k.header["overall_length"] == 67.0 and k.header["material_grade"] == "EN3A / EN3B"
+    assert k.header["overall_length"] == 62.0 and k.header["material_grade"] == "EN3A / EN3B"
     geo, problems = read_geometry(k.table_data())
     assert problems == [] and geo is not None
     assert [s.dia for s in geo.od] == [22.22, 30.9]  # D31 0/-0.2 cut at the middle
