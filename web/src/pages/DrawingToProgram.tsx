@@ -1280,9 +1280,13 @@ export default function DrawingToProgram() {
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const bodyKey = JSON.stringify(body) + tableVersion;
   const stale = !!preview && generatedKey !== bodyKey;
+  // The proven program loaded into step 4 instead of a generated one (copied line for line).
+  const [fromLib, setFromLib] = useState<LibraryProgram | null>(null);
+  const autoLoaded = useRef('');
   useEffect(() => {
     setPreview(null);
     setGeneratedKey(null);
+    setFromLib(null);
   }, [tableId, machineId]);
 
   // Editing the generated text on screen: checked live, saved as a new version on accept.
@@ -1321,6 +1325,7 @@ export default function DrawingToProgram() {
   async function generateLive() {
     if (!body) return;
     setGenerating(true);
+    setFromLib(null);
     try {
       const p = await api.post<GenPreview>('/generator/preview', body);
       setEditText(null);
@@ -1356,7 +1361,14 @@ export default function DrawingToProgram() {
       return;
     try {
       let id = program?.id;
-      if (!id) {
+      if (!id && fromLib) {
+        // the proven program, byte for byte (no regeneration)
+        const r = await api.post<{ program_id: number }>(`/generator/library/${fromLib.name}/use`, {
+          machine_id: machine.id,
+          part_number: ft?.part_number ?? '',
+        });
+        id = r.program_id;
+      } else if (!id) {
         const r = await api.post<{ program_id: number }>('/generator/programs', body);
         id = r.program_id;
       }
@@ -1376,24 +1388,50 @@ export default function DrawingToProgram() {
     }
   }
 
-  async function copyLibraryProgram(lib: LibraryProgram) {
-    if (!machineId || !ft) return;
+  /** Put the part's proven program into step 4 (checked, tool path, 3D) exactly as written. */
+  async function loadLibraryProgram(lib: LibraryProgram, quiet = false) {
+    if (!machineId) return;
     try {
-      const r = await api.post<{ program_id: number }>(`/generator/library/${lib.name}/use`, {
-        machine_id: machineId,
-        part_number: ft.part_number,
-      });
-      const p = await api.get<ProgramDetail>(`/programs/${r.program_id}`);
-      setProgram(p);
-      setNotice(
-        `${lib.name} copied to ${p.machine_name} byte for byte as v${p.version} (${p.status}). ` +
-          'A programmer approves it for this machine next.',
+      const bar = Number(data?.header?.bar_diameter?.value);
+      const chk = await api.post<{ validation: GenPreview['validation']; toolpath: GenPreview['toolpath'] }>(
+        '/generator/check',
+        { machine_id: machineId, text: lib.text, bar_diameter: bar > 0 ? bar : null },
       );
+      setEditText(null);
+      setEditing(false);
+      setEditCheck(null);
+      setPreview({
+        ok: true,
+        problems: [],
+        operations: [],
+        text: lib.text,
+        validation: chk.validation,
+        toolpath: chk.toolpath,
+        drawing: null,
+        table_problem: null,
+        controller_problem: null,
+        notes: [],
+      });
+      setFromLib(lib);
+      setGeneratedKey(bodyKey);
+      setProgram(null);
       setError(null);
+      setNotice(`${lib.name} loaded: your proven program for this part, copied line for line.`);
     } catch (e) {
-      setError((e as Error).message);
+      if (!quiet) setError((e as Error).message);
     }
   }
+
+  // When the part has a proven program, step 4 starts with it (shop rule: run what is proven).
+  useEffect(() => {
+    if (!ft || !machineId || !plan || library.length === 0 || preview || !(isEngineer || isProgrammer))
+      return;
+    const key = `${ft.id}|${machineId}|${library[0].name}`;
+    if (autoLoaded.current === key) return;
+    autoLoaded.current = key;
+    void loadLibraryProgram(library[0], true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ft, machineId, plan, library, preview, isEngineer, isProgrammer]);
 
   async function sendToMachine() {
     if (!program || !machineId) return;
@@ -1916,14 +1954,27 @@ export default function DrawingToProgram() {
 
             {ft && machine && plan && (
               <Step n={4} title="Generate the program" done={!!preview?.ok && !stale}>
-                {library.length > 0 && (
+                {library.length > 0 && fromLib && (
+                  <Notice tone="info">
+                    Step 4 shows <strong className="font-mono">{fromLib.name}</strong>, your proven program
+                    for part {ft.part_number}, copied line for line. Accepting saves exactly this text.{' '}
+                    <button
+                      className="underline"
+                      disabled={generating || !body}
+                      onClick={() => void generateLive()}
+                    >
+                      Generate a new program from the drawing instead
+                    </button>
+                  </Notice>
+                )}
+                {library.length > 0 && !fromLib && (
                   <Notice tone="info">
                     Your shop already runs <strong className="font-mono">{library[0].name}</strong> for part{' '}
                     {ft.part_number}. You can generate a new program from the drawing below, or{' '}
                     <button
                       className="underline"
                       disabled={!!program || (!isEngineer && !isProgrammer)}
-                      onClick={() => void copyLibraryProgram(library[0])}
+                      onClick={() => void loadLibraryProgram(library[0])}
                     >
                       use {library[0].name} instead
                     </button>{' '}

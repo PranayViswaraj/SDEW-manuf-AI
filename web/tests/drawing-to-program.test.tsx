@@ -176,6 +176,50 @@ describe('drawing to program', () => {
     expect((await screen.findAllByText(/Stock on the front face not entered/)).length).toBeGreaterThan(0);
   });
 
+  it("starts step 4 with the part's proven program, copied line for line, and accepts exactly it", async () => {
+    const proven = '%\nO0003(P-100 BOSS)\nN4(CENTER)\nG28U0W0\nN8(3MM GROOVE)\nM30\n%\n';
+    const lib = [
+      {
+        name: 'O0003_P100',
+        program_number: 3,
+        part_numbers: ['P-100'],
+        title: 'BOSS',
+        sha256: 'x',
+        text: proven,
+      },
+    ];
+    const accepted = {
+      id: 88,
+      name: 'O0003',
+      version: 1,
+      status: 'approved',
+      source: 'library',
+      machine_name: 'LMW Lathe 1',
+      approved_by_name: 'Eng',
+    };
+    const { calls } = renderApp('/make?table=4&machine=2', makeUser(['engineer']), {
+      ...routes(() => READY),
+      'GET /generator/library': lib,
+      'POST /generator/check': { validation: READY.validation, toolpath: null },
+      'POST /generator/library/O0003_P100/use': { program_id: 88, name: 'O0003', version: 1 },
+      'POST /programs/88/approve': accepted,
+    });
+    expect(
+      await screen.findByText(/copied line for line\. Accepting saves exactly this text/),
+    ).toBeInTheDocument();
+    expect(await screen.findByLabelText('Generated program text')).toHaveTextContent('N8(3MM GROOVE)');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Accept program' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Accept program' }));
+    expect(await screen.findByText('Accepted')).toBeInTheDocument();
+    const paths = calls.map((c) => `${c.method} ${c.path}`);
+    expect(paths).toEqual(
+      expect.arrayContaining(['POST /generator/library/O0003_P100/use', 'POST /programs/88/approve']),
+    );
+    expect(paths).not.toContain('POST /generator/preview');
+    expect(paths).not.toContain('POST /generator/programs');
+  });
+
   it('works in order: generate, engineer accepts, then send', async () => {
     const accepted = {
       id: 77,
