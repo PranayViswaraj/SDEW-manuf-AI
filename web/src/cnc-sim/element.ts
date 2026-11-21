@@ -9,70 +9,111 @@ import { Grid, cutMove } from './grid';
 import { F, STRIDE, moveAt, type JobMode } from './job';
 import type { Precomputed } from './precompute';
 import { Runner } from './runner';
-import { CncScene, type Look, type Theme } from './scene';
+import { CncScene, type Look, type Quality, type Theme } from './scene';
 
 const SPEEDS: (number | 'max')[] = [0.25, 0.5, 1, 2, 5, 10, 25, 50, 100, 'max'];
 
+const ICON = {
+  restart: '<svg viewBox="0 0 24 24"><path d="M6 5v14M19 6l-9 6 9 6V6z"/></svg>',
+  back: '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7V5z" fill="currentColor"/></svg>',
+  pause: '<svg viewBox="0 0 24 24"><path d="M8 5h3v14H8zM14 5h3v14h-3z" fill="currentColor"/></svg>',
+  fwd: '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+  end: '<svg viewBox="0 0 24 24"><path d="M18 5v14M5 6l9 6-9 6V6z"/></svg>',
+  full: '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+  spindle:
+    '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v4M12 16v4M4 12h4M16 12h4"/></svg>',
+};
+
 const CSS = `
-:host{display:block;width:100%;height:100%;min-height:520px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
- --sim-bg:#0f1b2d;--sim-panel:#13233a;--sim-border:#24364f;--sim-text:#e2e8f0;--sim-muted:#94a3b8;--sim-accent:#3b82f6;
- --sim-viewport:#eef2f6;--sim-stock:#7cc0f0;--sim-fresh:#facc15;--sim-cap:#3b82c4;--sim-rapid:#f97316;--sim-ghost:#c084fc;
+:host{display:block;width:100%;height:100%;min-height:520px;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+ --sim-bg:#0b1320;--sim-panel:#111c2c;--sim-panel2:#16243a;--sim-border:#22344d;--sim-text:#e6edf5;--sim-muted:#8ea0b8;
+ --sim-accent:#3b82f6;--sim-accent2:#22d3ee;--sim-ok:#22c55e;--sim-warn:#f59e0b;
+ --sim-viewport:#e9eef3;--sim-stock:#7cc0f0;--sim-fresh:#facc15;--sim-cap:#3b82c4;--sim-rapid:#f97316;--sim-ghost:#c084fc;
  --sim-fixture:#9aa5b1;--sim-holder:#b0663a;--sim-insert:#111827;--sim-line:#1d4ed8}
-@media (prefers-color-scheme:dark){:host{--sim-viewport:#d9e0e8}}
 *{box-sizing:border-box}
+svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 :host(:fullscreen){width:100vw;height:100vh;min-height:0}
 :host(:fullscreen) .root{border-radius:0;height:100vh}
-.fs{position:absolute;right:10px;bottom:34px;background:rgba(15,23,42,.8);color:#fff;border:0;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer}
-.fs:hover{background:#1e3a5f}
-.root{display:flex;flex-direction:column;height:100%;min-height:520px;background:var(--sim-bg);color:var(--sim-text);border-radius:12px;overflow:hidden}
+.root{display:flex;flex-direction:column;height:100%;min-height:520px;background:var(--sim-bg);color:var(--sim-text);border-radius:14px;overflow:hidden;box-shadow:0 10px 30px rgba(2,8,23,.35)}
 .main{flex:1;display:flex;min-height:0}
-.view{position:relative;flex:1;min-width:0;margin:8px;border-radius:10px;overflow:hidden;background:var(--sim-viewport)}
+.view{position:relative;flex:1;min-width:0;margin:10px;border-radius:12px;overflow:hidden;background:#12171e;box-shadow:inset 0 0 0 1px var(--sim-border)}
 .canvas{position:absolute;inset:0}
-.hud{position:absolute;left:10px;top:10px;background:rgba(15,23,42,.78);color:#e2e8f0;font:12px/1.45 ui-monospace,Consolas,monospace;padding:8px 10px;border-radius:8px;pointer-events:none;min-width:210px;white-space:pre}
-.hud b{color:#93c5fd;font-weight:600}
-.scale{position:absolute;right:12px;bottom:12px;font:11px ui-monospace,monospace;color:#0f172a;text-align:center;pointer-events:none}
-.scale i{display:block;height:6px;border:2px solid #0f172a;border-top:none;margin-top:2px}
-.note{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);background:rgba(15,23,42,.85);color:#fde68a;font-size:12px;padding:5px 10px;border-radius:6px;display:flex;gap:8px;align-items:center;max-width:70%}
+.glass{background:rgba(10,16,26,.74);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(148,163,184,.18);border-radius:12px}
+.dro{position:absolute;left:12px;top:12px;padding:10px 12px;min-width:250px;pointer-events:none;color:#e6edf5}
+.dro .dhead{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:5px;font:600 10px/1 Inter,system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;padding:4px 7px;border-radius:999px;background:rgba(59,130,246,.18);color:#bfdbfe;white-space:nowrap}
+.chip.op{background:rgba(34,211,238,.16);color:#a5f3fc}
+.chip.off{background:rgba(148,163,184,.14);color:#94a3b8}
+.chip.on{background:rgba(34,197,94,.18);color:#86efac}
+.chip.rapid{background:rgba(249,115,22,.2);color:#fdba74}
+.axes{display:grid;grid-template-columns:auto 1fr;gap:0 12px;align-items:baseline;font-family:"JetBrains Mono",ui-monospace,Consolas,monospace}
+.axes b{font-size:13px;color:#93c5fd;font-weight:700}
+.axes span{font-size:24px;font-weight:600;text-align:right;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.meta{display:grid;grid-template-columns:repeat(2,auto);gap:4px 14px;margin-top:8px;font:12px/1.4 "JetBrains Mono",ui-monospace,monospace;color:#cbd5e1;align-items:center}
+.meta i{font-style:normal;color:#64748b;margin-right:4px}
+.spin{display:inline-flex;align-items:center;gap:5px}
+.spin svg{width:14px;height:14px}
+.spin.run svg{animation:sp .5s linear infinite}
+.spin.ccw svg{animation-direction:reverse}
+@keyframes sp{to{transform:rotate(360deg)}}
+.vtools{position:absolute;right:12px;bottom:12px;display:flex;gap:8px;align-items:flex-end}
+.scale{padding:6px 10px;font:11px "JetBrains Mono",ui-monospace,monospace;color:#cbd5e1;text-align:center;pointer-events:none}
+.scale i{display:block;height:6px;border:2px solid #cbd5e1;border-top:none;margin:3px auto 0}
+.ibtn{display:inline-flex;align-items:center;gap:6px;color:#e6edf5;border:1px solid rgba(148,163,184,.25);background:rgba(10,16,26,.74);border-radius:10px;padding:7px 10px;font-size:12px;cursor:pointer}
+.ibtn:hover{background:rgba(30,58,95,.85)}
+.note{position:absolute;left:50%;top:12px;transform:translateX(-50%);color:#fde68a;font-size:12px;padding:6px 10px;display:flex;gap:8px;align-items:center;max-width:56%}
 .note select{font-size:12px}
-.fps{position:absolute;right:110px;top:10px;font:11px monospace;background:#0f172acc;color:#86efac;padding:2px 6px;border-radius:4px;display:none}
-.loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#334155;font-size:14px}
-.side{width:340px;display:flex;flex-direction:column;margin:8px 8px 8px 0;gap:8px;min-height:0}
-.box{background:var(--sim-panel);border:1px solid var(--sim-border);border-radius:10px;display:flex;flex-direction:column;min-height:0}
-.tabs{display:flex;border-bottom:1px solid var(--sim-border)}
-.tabs button{flex:1;background:none;border:0;color:var(--sim-muted);padding:8px;font-size:12px;cursor:pointer}
+.fps{position:absolute;right:116px;top:14px;font:11px monospace;padding:3px 7px;color:#86efac;display:none}
+.loading{position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;color:#cbd5e1;font-size:13px;background:#12171e}
+.loading:before{content:"";width:34px;height:34px;border-radius:50%;border:3px solid rgba(148,163,184,.25);border-top-color:var(--sim-accent);animation:sp .8s linear infinite}
+.side{width:340px;display:flex;flex-direction:column;margin:10px 10px 10px 0;gap:10px;min-height:0}
+.box{background:var(--sim-panel);border:1px solid var(--sim-border);border-radius:12px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.tabs{display:flex;border-bottom:1px solid var(--sim-border);background:var(--sim-panel2)}
+.tabs button{flex:1;background:none;border:0;color:var(--sim-muted);padding:9px;font-size:12px;font-weight:600;cursor:pointer}
 .tabs button.on{color:var(--sim-text);box-shadow:inset 0 -2px var(--sim-accent)}
-.code{flex:1;overflow:auto;font:12px/18px ui-monospace,Consolas,monospace;position:relative;min-height:120px}
-.row{position:absolute;left:0;right:0;height:18px;display:flex;gap:8px;padding:0 8px;cursor:pointer;white-space:pre}
-.row:hover{background:#1e3a5f}
-.row.on{background:var(--sim-line);color:#fff}
-.row .n{color:#64748b;width:30px;text-align:right;flex:none}
+.code{flex:1;overflow:auto;font:12px/18px "JetBrains Mono",ui-monospace,Consolas,monospace;position:relative;min-height:120px}
+.row{position:absolute;left:0;right:0;height:18px;display:flex;gap:8px;padding:0 8px;cursor:pointer;white-space:pre;color:#cbd5e1}
+.row:hover{background:#1a2e4a}
+.row.on{background:linear-gradient(90deg,#1d4ed8,#1e40af);color:#fff}
+.row .n{color:#4b5d75;width:30px;text-align:right;flex:none}
 .row.on .n{color:#bfdbfe}
-.seq{max-height:42%;overflow:auto}
-.seqh{font-size:11px;letter-spacing:.06em;color:var(--sim-muted);padding:8px 10px;border-bottom:1px solid var(--sim-border)}
-.op{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;cursor:pointer;position:relative}
-.op:hover{background:#1e3a5f}.op.on{background:#1d3557}
-.op .dot{width:9px;height:9px;border-radius:50%;flex:none}.op .t{margin-left:auto;color:var(--sim-muted);font-variant-numeric:tabular-nums}
-.op .tn{color:var(--sim-muted)}
-.op .bar{position:absolute;left:0;bottom:0;height:2px;background:var(--sim-accent)}
-.setup{font-size:10px;color:var(--sim-muted);padding:6px 10px 2px;letter-spacing:.05em}
-.transport{padding:6px 12px 10px;display:flex;flex-direction:column;gap:8px}
-.tlwrap{position:relative;height:18px;cursor:pointer}
-.tl{position:absolute;inset:4px 0;border-radius:5px;overflow:hidden;display:flex}
-.tl span{height:100%;opacity:.85}
-.tick{position:absolute;top:2px;width:2px;height:14px;background:#facc15;border-radius:1px;pointer-events:none}
-.head{position:absolute;top:-1px;width:4px;height:20px;margin-left:-2px;background:#fff;border-radius:2px;box-shadow:0 0 0 2px var(--sim-accent);pointer-events:none}
-.ctrls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
-button.b{background:#1e2f47;border:1px solid var(--sim-border);color:var(--sim-text);border-radius:7px;padding:6px 10px;cursor:pointer;font-size:12px}
-button.b:hover{background:#26405f}
-button.primary{background:var(--sim-accent);border-color:var(--sim-accent);color:#fff;font-weight:600;min-width:86px}
-select{background:#1e2f47;color:var(--sim-text);border:1px solid var(--sim-border);border-radius:7px;padding:5px}
-label.t{display:flex;align-items:center;gap:4px;color:var(--sim-muted);cursor:pointer}
-.time{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--sim-text)}
-.legend{color:var(--sim-muted);font-size:11px}
-.seg{display:inline-flex;border:1px solid var(--sim-border);border-radius:7px;overflow:hidden}
-.seg button{background:none;border:0;color:var(--sim-muted);padding:5px 8px;cursor:pointer;font-size:12px}
+.seq{max-height:44%;overflow:auto}
+.seqh{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--sim-muted);padding:9px 12px;border-bottom:1px solid var(--sim-border);background:var(--sim-panel2)}
+.op{display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:12.5px;cursor:pointer;position:relative}
+.op:hover{background:#17283f}.op.on{background:#1a3152}
+.op .dot{width:9px;height:9px;border-radius:50%;flex:none;box-shadow:0 0 0 3px rgba(255,255,255,.06)}
+.op .t{margin-left:auto;color:var(--sim-muted);font-variant-numeric:tabular-nums}
+.op .tn{color:var(--sim-muted);font:11px ui-monospace,monospace}
+.op .bar{position:absolute;left:0;bottom:0;height:2px;background:var(--sim-accent2)}
+.setup{font-size:10px;font-weight:700;color:var(--sim-muted);padding:8px 12px 3px;letter-spacing:.08em}
+.transport{padding:4px 12px 12px;display:flex;flex-direction:column;gap:10px}
+.tlwrap{position:relative;height:22px;cursor:pointer}
+.tl{position:absolute;inset:6px 0;border-radius:6px;overflow:hidden;display:flex;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.tl span{height:100%;opacity:.9}
+.done{position:absolute;left:0;top:6px;bottom:6px;background:rgba(255,255,255,.22);border-radius:6px 0 0 6px;pointer-events:none}
+.tick{position:absolute;top:3px;width:2px;height:16px;background:#facc15;border-radius:1px;pointer-events:none}
+.head{position:absolute;top:0;width:14px;height:22px;margin-left:-7px;border-radius:7px;background:#fff;box-shadow:0 0 0 3px var(--sim-accent),0 4px 10px rgba(0,0,0,.4);pointer-events:none}
+.bar1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.grp{display:inline-flex;align-items:center;gap:4px;background:var(--sim-panel);border:1px solid var(--sim-border);border-radius:12px;padding:4px}
+.tb{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;border:0;background:none;color:var(--sim-text);cursor:pointer}
+.tb:hover{background:#1c2f4a}
+.tb.play{width:46px;height:46px;border-radius:50%;background:linear-gradient(180deg,#4f8ff7,#2563eb);color:#fff;box-shadow:0 6px 16px rgba(37,99,235,.45)}
+.tb.play:hover{background:linear-gradient(180deg,#60a5fa,#2563eb)}
+.tb.play svg{width:20px;height:20px}
+select{background:var(--sim-panel2);color:var(--sim-text);border:1px solid var(--sim-border);border-radius:8px;padding:6px 8px;font-size:12px}
+.lbl{font-size:11px;color:var(--sim-muted);margin:0 2px 0 6px}
+.tog{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--sim-muted);cursor:pointer;padding:6px 8px;border-radius:8px;user-select:none}
+.tog:hover{color:var(--sim-text);background:#17283f}
+.tog input{accent-color:var(--sim-accent)}
+.seg{display:inline-flex;background:var(--sim-panel);border:1px solid var(--sim-border);border-radius:10px;overflow:hidden;padding:3px;gap:2px}
+.seg button{background:none;border:0;color:var(--sim-muted);padding:6px 10px;cursor:pointer;font-size:12px;border-radius:7px}
+.seg button:hover{color:var(--sim-text)}
 .seg button.on{background:var(--sim-accent);color:#fff}
-@media (max-width:900px){.main{flex-direction:column}.side{width:auto;margin:0 8px 8px}.view{min-height:340px}}
+.time{margin-left:auto;font:600 15px "JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--sim-text)}
+.time small{color:var(--sim-muted);font-weight:400;font-size:11px;margin-left:4px}
+.legend{color:var(--sim-muted);font-size:11px}
+@media (max-width:900px){.main{flex-direction:column}.side{width:auto;margin:0 10px 10px}.view{min-height:340px}.dro{min-width:0}.axes span{font-size:18px}}
 `;
 
 const HTML = `
@@ -80,12 +121,19 @@ const HTML = `
  <div class="main">
   <div class="view">
    <div class="canvas"></div>
-   <div class="loading">Loading program…</div>
-   <div class="hud"></div>
-   <div class="fps"></div>
-   <div class="scale"><span></span><i></i></div>
-   <div class="note" hidden></div>
-   <button class="fs" title="Full screen (Enter)">⛶ Full screen</button>
+   <div class="loading">Preparing simulation…</div>
+   <div class="dro glass">
+    <div class="dhead"><span class="chip op" id="op">—</span><span class="chip" id="setup">—</span><span class="chip off" id="mode">—</span></div>
+    <div class="axes"><b>X</b><span id="x">0.000</span><b>Z</b><span id="z">0.000</span></div>
+    <div class="meta">
+     <div><i>F</i><span id="feed">—</span></div><div><i>S</i><span id="rpm">—</span></div>
+     <div><i>T</i><span id="tool">—</span></div><div><i>N</i><span id="line">—</span></div>
+     <div class="spin" id="spin">${ICON.spindle}<span id="dir">STOP</span></div><div><span class="chip off" id="cool">Coolant off</span></div>
+    </div>
+   </div>
+   <div class="fps glass"></div>
+   <div class="note glass" hidden></div>
+   <div class="vtools"><div class="scale glass"><span></span><i></i></div><button class="ibtn fs" title="Full screen (Enter)">${ICON.full}<span>Full screen</span></button></div>
   </div>
   <div class="side">
    <div class="box" style="flex:1">
@@ -96,24 +144,32 @@ const HTML = `
   </div>
  </div>
  <div class="transport">
-  <div class="tlwrap"><div class="tl"></div><div class="ticks"></div><div class="head"></div></div>
-  <div class="ctrls">
-   <button class="b" data-act="restart" title="Restart">⏮</button>
-   <button class="b primary" data-act="play">▶ Play</button>
-   <button class="b" data-act="end" title="Jump to end">⏭</button>
-   <label class="t">Speed <select class="speed"></select></label>
-   <label class="t"><input type="checkbox" class="realtime"> Real time</label>
-   <label class="t"><input type="checkbox" class="loop"> Loop</label>
-   <label class="t"><input type="checkbox" class="single"> Single block</label>
-   <label class="t"><input type="checkbox" class="optstop"> M01 stop</label>
-   <label class="t"><input type="checkbox" class="cutaway" checked> Cut-away</label>
-   <label class="t"><input type="checkbox" class="paths" checked> Path</label>
-   <label class="t extras-l" hidden><input type="checkbox" class="extras"> N33/N34</label>
+  <div class="tlwrap"><div class="tl"></div><div class="done"></div><div class="ticks"></div><div class="head"></div></div>
+  <div class="bar1">
+   <span class="grp">
+    <button class="tb" data-act="restart" title="Restart">${ICON.restart}</button>
+    <button class="tb" data-act="back" title="Previous move (Left arrow)">${ICON.back}</button>
+    <button class="tb play" data-act="play" title="Play / pause (Space)">${ICON.play}</button>
+    <button class="tb" data-act="fwd" title="Next move (Right arrow)">${ICON.fwd}</button>
+    <button class="tb" data-act="end" title="Jump to end">${ICON.end}</button>
+   </span>
+   <span class="grp"><span class="lbl">Speed</span><select class="speed" aria-label="Speed"></select>
+    <label class="tog"><input type="checkbox" class="realtime"> Real time</label></span>
+   <span class="seg views"><button data-view="iso" class="on">Iso</button><button data-view="front">Front</button><button data-view="top">Top</button><button data-view="follow">Follow tool</button></span>
    <span class="seg look"><button data-look="real" class="on">Realistic</button><button data-look="video">Video style</button><button data-look="enhanced">Enhanced</button></span>
-   <span class="seg views"><button data-view="iso">Iso</button><button data-view="front">Front</button><button data-view="top">Top</button><button data-view="follow">Follow tool</button></span>
+   <span class="grp"><span class="lbl">Quality</span><select class="quality" aria-label="Quality"><option value="auto">Auto</option><option value="high">High</option><option value="balanced">Balanced</option><option value="fast">Fast</option></select></span>
    <span class="time"></span>
   </div>
-  <div class="legend">Realistic: steel stock, fresh cuts glint gold. Video style: blue = stock, yellow = freshly cut. Dotted orange = rapid moves. Drag to orbit, right-drag to pan, wheel to zoom, Space = play/pause, Enter = full screen, F = fps.</div>
+  <div class="bar1">
+   <label class="tog"><input type="checkbox" class="cutaway" checked> Cut-away</label>
+   <label class="tog"><input type="checkbox" class="paths" checked> Tool path</label>
+   <label class="tog"><input type="checkbox" class="fxon" checked> Chips &amp; coolant</label>
+   <label class="tog"><input type="checkbox" class="loop"> Loop</label>
+   <label class="tog"><input type="checkbox" class="single"> Single block</label>
+   <label class="tog"><input type="checkbox" class="optstop"> M01 stop</label>
+   <label class="tog extras-l" hidden><input type="checkbox" class="extras"> N33/N34</label>
+   <span class="legend" style="margin-left:auto">Drag to orbit · right-drag to pan · wheel to zoom · Space play/pause · ←/→ step · Enter full screen · F fps</span>
+  </div>
  </div>
 </div>`;
 
@@ -163,6 +219,11 @@ export class CncSimulator extends HTMLElement {
   private io: IntersectionObserver | null = null;
   private dragging = false;
   private removedNow = 0;
+  private autoQuality = true;
+  private qFrames = 0;
+  private qTime = 0;
+  private qGood = 0;
+  private spinRate = 0;
 
   constructor() {
     super();
@@ -361,10 +422,23 @@ export class CncSimulator extends HTMLElement {
       this.kick();
     });
     on('[data-act="end"]', 'click', () => this.jumpToEnd());
+    on('[data-act="back"]', 'click', () => this.stepMove(-1));
+    on('[data-act="fwd"]', 'click', () => this.stepMove(1));
+    on('.quality', 'change', (e) => {
+      const v = (e.target as HTMLSelectElement).value;
+      this.autoQuality = v === 'auto';
+      if (!this.autoQuality) this.scene?.setQuality(v as Quality);
+      this.dirty = true;
+      this.kick();
+    });
+    on('.fxon', 'change', (e) => {
+      this.scene?.setEffects((e.target as HTMLInputElement).checked);
+      this.kick();
+    });
     on('.fs', 'click', () => this.toggleFullscreen());
     const fsChange = () => {
-      this.$('.fs').textContent =
-        document.fullscreenElement === this ? '✕ Exit full screen' : '⛶ Full screen';
+      (this.$('.fs span') as HTMLElement).textContent =
+        document.fullscreenElement === this ? 'Exit full screen' : 'Full screen';
       requestAnimationFrame(() => this.resize());
     };
     document.addEventListener('fullscreenchange', fsChange);
@@ -460,6 +534,9 @@ export class CncSimulator extends HTMLElement {
       } else if (e.key === 'Enter') {
         e.preventDefault();
         this.toggleFullscreen();
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        this.stepMove(e.key === 'ArrowLeft' ? -1 : 1);
       } else if (e.key === ' ') {
         e.preventDefault();
         if (this.playing) this.pause();
@@ -471,7 +548,17 @@ export class CncSimulator extends HTMLElement {
   }
 
   private updatePlayButton() {
-    this.$('[data-act="play"]').textContent = this.playing ? '⏸ Pause' : '▶ Play';
+    this.$('[data-act="play"]').innerHTML = this.playing ? ICON.pause : ICON.play;
+  }
+
+  /** Go to the start of the previous / next move. */
+  private stepMove(dir: -1 | 1) {
+    if (!this.data) return;
+    this.pause();
+    const job = this.data.job;
+    const i = Math.max(0, moveAt(job.moves, job.count, this.t));
+    const k = Math.max(0, Math.min(job.count - 1, i + dir));
+    this.seek(dir > 0 ? job.moves[k * STRIDE + F.t0] + 1e-6 : job.moves[k * STRIDE + F.t0] + 1e-6);
   }
 
   private renderNote() {
@@ -648,8 +735,10 @@ export class CncSimulator extends HTMLElement {
       const o = i * STRIDE;
       const m = job.moves;
       const f = this.fracAt(i, this.t);
-      const z = m[o + F.z0] + (m[o + F.z1] - m[o + F.z0]) * f;
-      const x = m[o + F.x0] + (m[o + F.x1] - m[o + F.x0]) * f;
+      // rapids accelerate and brake (display only; times are unchanged)
+      const fe = m[o + F.type] === 0 ? f * f * (3 - 2 * f) : f;
+      const z = m[o + F.z0] + (m[o + F.z1] - m[o + F.z0]) * fe;
+      const x = m[o + F.x0] + (m[o + F.x1] - m[o + F.x0]) * fe;
       const setup = m[o + F.setup];
       if (scene.showSetup(setup, grid, this.playing)) this.flipAnim = 0;
       if (this.flipAnim < 1) {
@@ -672,13 +761,18 @@ export class CncSimulator extends HTMLElement {
       scene.placeTool(tool, op.name, z, x, retract);
       scene.showProgress(i, f, z, x);
       // spindle
+      // spindle: speeds up / slows down instead of jumping (visual speed capped)
       const rpm = m[o + F.rpm];
-      if (this.playing && rpm) {
-        const rps = Math.min(Math.abs(rpm) / 60, SIM_CONFIG.spinCap);
-        this.spinAngle += (rpm > 0 ? -1 : 1) * rps * 2 * Math.PI * dt;
+      const want =
+        this.playing && rpm ? (rpm > 0 ? -1 : 1) * Math.min(Math.abs(rpm) / 60, SIM_CONFIG.spinCap) : 0;
+      this.spinRate += (want - this.spinRate) * Math.min(1, dt * 2.5);
+      if (Math.abs(this.spinRate) > 1e-3) {
+        this.spinAngle += this.spinRate * 2 * Math.PI * dt;
+        busy = true;
       }
       const cutting = this.removedNow > 0 && m[o + F.type] !== 0;
-      if (scene.effects(dt, cutting, this.playing)) busy = true;
+      const rate = dt > 0 ? this.removedNow / dt : 0;
+      if (scene.effects(dt, cutting, this.playing, rate, true)) busy = true;
       if (!this.playing) this.removedNow = 0;
       const cutaway = this.$<HTMLInputElement>('.cutaway').checked;
       scene.spin(this.spinAngle, !cutaway);
@@ -705,11 +799,13 @@ export class CncSimulator extends HTMLElement {
     if (busy || this.dirty) {
       scene.render();
       this.dirty = false;
+      if (busy && this.autoQuality && dt > 0) this.tuneQuality(dt);
     }
     if (this.fpsOn) {
       this.fpsFrames++;
       if (now - this.fpsT > 500) {
-        this.$('.fps').textContent = `${Math.round((this.fpsFrames * 1000) / (now - this.fpsT))} fps`;
+        this.$('.fps').textContent =
+          `${Math.round((this.fpsFrames * 1000) / (now - this.fpsT))} fps · ${scene.qualityLevel}`;
         this.fpsFrames = 0;
         this.fpsT = now;
       }
@@ -718,6 +814,29 @@ export class CncSimulator extends HTMLElement {
     // keep looping while playing/animating/damping; otherwise sleep until the next event
     if (busy) this.raf = requestAnimationFrame(this.loop);
   };
+
+  /** Auto quality: under ~45 fps step down, steady 58+ fps step back up. */
+  private tuneQuality(dt: number) {
+    const scene = this.scene;
+    if (!scene) return;
+    this.qFrames++;
+    this.qTime += dt;
+    if (this.qTime < 2) return;
+    const fps = this.qFrames / this.qTime;
+    this.qFrames = 0;
+    this.qTime = 0;
+    const order: Quality[] = ['fast', 'balanced', 'high'];
+    const k = order.indexOf(scene.qualityLevel);
+    if (fps < 45 && k > 0) {
+      scene.setQuality(order[k - 1]);
+      this.qGood = 0;
+    } else if (fps > 58) {
+      if (++this.qGood >= 3 && k < order.length - 1) {
+        scene.setQuality(order[k + 1]);
+        this.qGood = 0;
+      }
+    } else this.qGood = 0;
+  }
 
   /** Cut forward from the applied state to time t (jumps through snapshots when far behind). */
   private advanceTo(t: number) {
@@ -760,16 +879,49 @@ export class CncSimulator extends HTMLElement {
     const tool = m[o + F.tool];
     const op = job.ops[opIndex];
     const setup = job.setups[m[o + F.setup]];
-    this.$('.hud').innerHTML =
-      `<b>${op.name}</b>  ·  ${setup.name}\n` +
-      `X ${x.toFixed(3).padStart(9)}   Z ${z.toFixed(3).padStart(9)}\n` +
-      `Feed ${feed >= 0 ? `${feed.toFixed(0)} mm/min` : '—'}   F ${m[o + F.feedRev] >= 0 ? m[o + F.feedRev].toFixed(2) : '—'}\n` +
-      `Spindle ${rpm ? `${Math.abs(rpm).toFixed(0)} rpm ${rpm > 0 ? 'CW' : 'CCW'}` : 'off'}\n` +
-      `Tool T${String(tool).padStart(2, '0')}   Line ${line}\n` +
-      `Time ${fmt(this.t)} / ${fmt(job.duration)} estimate`;
-    this.$('.time').textContent = `${fmt(this.t)} / ${fmt(job.duration)} estimate`;
+    // digital readout (text only, no re-layout)
+    const set = (id: string, v: string) => {
+      const el = this.root.getElementById(id);
+      if (el && el.textContent !== v) el.textContent = v;
+    };
+    const type = m[o + F.type];
+    set('op', op.name);
+    set('setup', setup.name);
+    const modeEl = this.root.getElementById('mode');
+    const modeTxt =
+      type === 0
+        ? 'Rapid'
+        : type === 1
+          ? 'Feed'
+          : type === 2
+            ? 'Thread'
+            : type === 3
+              ? 'Dwell'
+              : 'Tool change';
+    set('mode', modeTxt);
+    if (modeEl) modeEl.className = `chip ${type === 0 ? 'rapid' : type === 1 || type === 2 ? 'on' : 'off'}`;
+    set('x', x.toFixed(3));
+    set('z', z.toFixed(3));
+    set(
+      'feed',
+      feed >= 0
+        ? `${feed.toFixed(0)} mm/min${m[o + F.feedRev] >= 0 ? ` · ${m[o + F.feedRev].toFixed(2)}/rev` : ''}`
+        : '—',
+    );
+    set('rpm', rpm ? `${Math.abs(rpm).toFixed(0)} rpm` : '0 rpm');
+    set('tool', tool ? `T${String(tool).padStart(2, '0')}` : '—');
+    set('line', String(line));
+    set('dir', rpm ? (rpm > 0 ? 'M03 CW' : 'M04 CCW') : 'M05 STOP');
+    const spin = this.root.getElementById('spin');
+    if (spin) spin.className = `spin${rpm && this.playing ? ' run' : ''}${rpm < 0 ? ' ccw' : ''}`;
+    const cool = this.root.getElementById('cool');
+    const coolOn = !!rpm && type !== 3 && type !== 4;
+    set('cool', coolOn ? 'Coolant on' : 'Coolant off');
+    if (cool) cool.className = `chip ${coolOn ? 'on' : 'off'}`;
+    this.$('.time').innerHTML = `${fmt(this.t)}<small>/ ${fmt(job.duration)} estimate</small>`;
     const d = job.duration || 1;
     this.$('.head').style.left = `${(this.t / d) * 100}%`;
+    this.$('.done').style.width = `${(this.t / d) * 100}%`;
     // scale bar
     const mmpp = this.scene!.mmPerPixel();
     const nice = [0.5, 1, 2, 5, 10, 20, 50, 100, 200].find((v) => v / mmpp >= 60) ?? 200;
