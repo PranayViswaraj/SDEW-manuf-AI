@@ -392,8 +392,20 @@ export class CncSimulator extends HTMLElement {
     this.pause();
     this.$('.loading').style.display = 'flex';
     const extras = this.$<HTMLInputElement>('.extras').checked;
-    const data = await this.runner.run(this.text, { mode: this.mode, extras });
+    (this.$('.loading') as HTMLElement).textContent = 'Preparing simulation…';
+    let data: Precomputed;
+    try {
+      data = await this.runner.run(this.text, { mode: this.mode, extras });
+    } catch (e) {
+      this.$('.loading').textContent = `Could not simulate this program: ${(e as Error).message}`;
+      return;
+    }
     if (!this.scene) return;
+    if (data.job.count === 0) {
+      this.data = null;
+      this.$('.loading').textContent = 'Nothing to simulate: the program has no tool moves.';
+      return;
+    }
     this.data = data;
     this.$('.loading').style.display = 'none';
     this.scene.setJob(data.job);
@@ -780,7 +792,7 @@ export class CncSimulator extends HTMLElement {
       const fading = this.t - this.lastCutT < SIM_CONFIG.fadeSeconds + 0.5;
       if (
         (grid.version !== this.meshVersion || (fading && this.playing)) &&
-        now - this.lastMesh > 1000 / SIM_CONFIG.meshHz
+        now - this.lastMesh > 1000 / scene.meshHz
       ) {
         if (grid.version !== this.meshVersion) this.lastCutT = this.t;
         this.meshVersion = grid.version;

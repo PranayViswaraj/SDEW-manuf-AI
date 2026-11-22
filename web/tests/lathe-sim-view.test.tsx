@@ -2,18 +2,23 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { A11yProvider } from '../src/a11y/A11yContext';
 import LatheSimDemo from '../src/pages/LatheSimDemo';
 
-function renderDemo() {
-  return render(
+async function renderDemo() {
+  const r = render(
     <A11yProvider>
       <LatheSimDemo />
     </A11yProvider>,
   );
+  fireEvent.click(screen.getByRole('button', { name: 'Show the rule checks demo' }));
+  return r;
 }
 
 describe('3D lathe simulation (SIM Lathe demo)', () => {
-  it('plays the demo program clean and allows approval', async () => {
-    renderDemo();
-    expect(await screen.findByTestId('sim-verdict')).toHaveTextContent('No simulation errors or warnings');
+  it('plays the demo program clean and allows approval', { timeout: 40000 }, async () => {
+    await renderDemo();
+    // the demo is lazy-loaded on request: allow for the first (cold) load
+    expect(await screen.findByTestId('sim-verdict', {}, { timeout: 25000 })).toHaveTextContent(
+      'No simulation errors or warnings',
+    );
     expect(screen.getByTestId('demo-approve')).toBeEnabled();
     // Operations with times, the G-code pane, the disclaimer.
     for (const op of ['Face', 'Rough', 'Finish', 'Drill', 'Bore', 'Groove', 'Thread', 'Part-off'])
@@ -24,7 +29,7 @@ describe('3D lathe simulation (SIM Lathe demo)', () => {
   });
 
   it('shows the bad program errors on the scrub bar and keeps approval blocked', async () => {
-    renderDemo();
+    await renderDemo();
     await screen.findByTestId('sim-verdict');
     fireEvent.click(screen.getByRole('radio', { name: /deliberately bad/ }));
     await waitFor(() => expect(screen.getByTestId('sim-verdict')).toHaveTextContent('approval blocked'));

@@ -111,3 +111,19 @@ describe('<cnc-simulator> job for O0003', () => {
     expect(m.job.ops[0].name).toBe('CENTER');
   });
 });
+
+describe('<cnc-simulator> programs without setup markers', () => {
+  it('simulates the N4-N8 extract (no "(1ST OPN)" comments) instead of showing nothing', () => {
+    const text = readFileSync('../samples/programs/O0003_3227C07701', 'ascii');
+    const p = precompute(text, { mode: 'full', extras: false });
+    expect(p.job.setups).toHaveLength(1);
+    expect(p.job.count).toBeGreaterThan(50);
+    expect(p.job.ops.map((o) => o.name)).toEqual([
+      'CENTER',
+      '16.5 DRILL',
+      'FACING',
+      '12.0MM BB',
+      '3MM GROOVE',
+    ]);
+  });
+});

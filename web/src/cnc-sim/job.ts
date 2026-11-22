@@ -124,7 +124,8 @@ export function buildJob(text: string, opts: JobOptions): Job {
     const mark = lines.slice(s.line - 1, next - 1).find((ln) => SETUP_MARK.test(ln));
     return mark ? (mark.match(SETUP_MARK) as RegExpMatchArray)[1].toUpperCase() + ' OP' : null;
   });
-  const lastMarked = marked.reduce((a, m, k) => (m ? k : a), -1);
+  // No setup markers at all (e.g. an extract of one operation): every section is a real setup.
+  const lastMarked = marked.some(Boolean) ? marked.reduce((a, m, k) => (m ? k : a), -1) : sections.length - 1;
   const hasExtras = sections.some((_, k) => k > lastMarked);
 
   let chosen: { section: number; name: string; extra: boolean }[];
@@ -137,7 +138,11 @@ export function buildJob(text: string, opts: JobOptions): Job {
     if (!sec) warnings.push(`M99 P${m99Target}: N${m99Target} not found; nothing to run.`);
   } else {
     chosen = sections
-      .map((s, k) => ({ section: s.index, name: marked[k] ?? s.label, extra: k > lastMarked }))
+      .map((s, k) => ({
+        section: s.index,
+        name: marked[k] ?? (marked.some(Boolean) ? s.label : `SETUP ${k + 1}`),
+        extra: k > lastMarked,
+      }))
       .filter((c) => opts.extras || !c.extra);
   }
 

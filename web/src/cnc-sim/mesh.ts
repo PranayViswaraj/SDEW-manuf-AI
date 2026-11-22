@@ -57,6 +57,8 @@ export class PartMeshBuilder {
   private phiA = 0;
   private phiB = 0;
   private cutaway = true;
+  /** Revolve segments for a full turn (quality setting; at most SIM_CONFIG.segments). */
+  private baseSegs = SIM_CONFIG.segments;
   // scratch for band merging
   private openKey = new Int32Array(4096);
   private openStart = new Int32Array(4096);
@@ -242,9 +244,15 @@ export class PartMeshBuilder {
     this.v(p0, r1 * c, r1 * s, 0, ny, nz, -1, 0.5, 0.25);
   }
 
+  /** Fewer segments = lighter mesh (quality). */
+  setSegments(n: number) {
+    this.baseSegs = Math.max(24, Math.min(SIM_CONFIG.segments, Math.round(n / 4) * 4));
+    this.segs = 0; // recompute on the next build
+  }
+
   /** Rebuild from the grid. now = simulated seconds (for the fade). */
   build(g: Grid, now: number, cutaway: boolean, lines: boolean) {
-    const S = cutaway ? Math.round((SIM_CONFIG.segments * 3) / 4) : SIM_CONFIG.segments;
+    const S = cutaway ? Math.round((this.baseSegs * 3) / 4) : this.baseSegs;
     if (S !== this.segs || cutaway !== this.cutaway) {
       this.segs = S;
       this.cutaway = cutaway;

@@ -195,7 +195,8 @@ export class CncScene {
     arrow(new THREE.Vector3(0, 0, 1), '#22c55e', 'Y');
 
     this.setLook('real');
-    this.setQuality('balanced');
+    // start light; Auto steps up only when the frame rate shows there is headroom
+    this.setQuality('fast');
   }
 
   private createRenderer() {
@@ -239,12 +240,17 @@ export class CncScene {
       this.key.shadow.map = null as unknown as THREE.WebGLRenderTarget;
     }
     this.fx.setMaxChips(q === 'fast' ? 50 : q === 'balanced' ? 110 : 160);
+    this.builder.setSegments(q === 'high' ? 96 : q === 'balanced' ? 72 : 48);
+    this.meshHz = q === 'high' ? 30 : q === 'balanced' ? 20 : 12;
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh && m.material) (m.material as THREE.Material).needsUpdate = true;
     });
     this.renderer.setSize(this.width, this.height, false);
   }
+  /** How often the part mesh may be rebuilt while cutting (Hz). */
+  meshHz = 20;
+
   get qualityLevel() {
     return this.quality;
   }
