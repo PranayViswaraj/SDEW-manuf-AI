@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     # when no user with this name exists; the password is never changed afterwards.
     initial_admin_username: str | None = None
     initial_admin_password: str | None = Field(default=None, min_length=10)
+    # AI drawing reader (two agents: extractor + verifier). "off" = engineers enter every value.
+    # "claude" also needs ANTHROPIC_API_KEY in the environment and `pip install .[ai]`.
+    ai_reader: Literal["off", "claude"] = "off"
+    ai_model: str = "claude-opus-5-5"
+    ai_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
 
     @field_validator("database_url")
     @classmethod

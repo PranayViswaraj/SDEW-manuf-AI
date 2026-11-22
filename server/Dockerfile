@@ -12,7 +12,7 @@ WORKDIR /srv
 COPY pyproject.toml ./
 COPY app ./app
 COPY alembic.ini ./
-RUN pip install . \
+RUN pip install ".[ai]" \
     && useradd --system --uid 10001 --home /srv manufai \
     && chown -R manufai /srv
 

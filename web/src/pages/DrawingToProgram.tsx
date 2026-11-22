@@ -34,6 +34,7 @@ import type {
 import { useAuth } from '../auth/AuthContext';
 import CompareView from '../components/CompareView';
 import GcodeView from '../components/GcodeView';
+import AiReadPanel from '../components/AiReadPanel';
 import GeneratingCode from '../components/GeneratingCode';
 import { useA11y } from '../a11y/A11yContext';
 import { useToast } from '../components/Toast';
@@ -992,6 +993,15 @@ export default function DrawingToProgram() {
   }, [notice, toast]);
   const [tableReload, setTableReload] = useState(0);
   const [knownInfo, setKnownInfo] = useState<KnownDrawingInfo | null>(null);
+  // Two-agent AI read of a new drawing, running in the background (job id), and whether it is on.
+  const [aiJob, setAiJob] = useState<string | null>(null);
+  const [aiReader, setAiReader] = useState<{ enabled: boolean; model: string | null } | null>(null);
+  useEffect(() => {
+    api
+      .get<{ enabled: boolean; model: string | null }>('/drawings/ai-reader')
+      .then(setAiReader)
+      .catch(() => setAiReader(null));
+  }, []);
 
   const reloadMachines = useCallback(() => {
     api
@@ -1077,6 +1087,12 @@ export default function DrawingToProgram() {
     form.append('file', f);
     const d = await api.post<Drawing>('/drawings', form);
     const a = d.autofill;
+    if (a?.job_id) {
+      // the two AI agents work in the background; the panel shows them and reloads the table
+      setKnownInfo(null);
+      setAiJob(a.job_id);
+      return d;
+    }
     if (a) {
       setKnownInfo(a);
       if (a.filled) {
@@ -1769,12 +1785,43 @@ export default function DrawingToProgram() {
 
             {ft && data && schema && (
               <Step n={2} title="Values from the drawing" done={confirmed}>
+                {aiJob && (
+                  <AiReadPanel
+                    key={aiJob}
+                    jobId={aiJob}
+                    onDone={(info, ok) => {
+                      setKnownInfo(info);
+                      if (ok && info.filled) {
+                        setNotice(info.message);
+                        setTableReload((n) => n + 1);
+                      } else setError(info.message);
+                    }}
+                  />
+                )}
+                {!aiJob && aiReader && !aiReader.enabled && !knownInfo && (
+                  <p className="text-xs text-slate-500">
+                    AI drawing reading is off on this server, so drawings that are not known yet are filled in
+                    by hand. With it on, two AI agents read every new drawing: one extracts the features, the
+                    3D shape and a feature list, the second checks each value against the drawing.
+                  </p>
+                )}
                 {knownInfo && (
                   <Notice tone="info">
                     <p className="font-medium">
-                      Known drawing {knownInfo.part_number}: the values below were filled for you. Check each
-                      against the drawing, tick it, then press Confirm table.
+                      {knownInfo.ai
+                        ? `AI read drawing ${knownInfo.title}: one agent read it and a second checked it. Each value is only a suggestion: compare it with the drawing, press Use, tick it, then press Confirm table.`
+                        : `Known drawing ${knownInfo.part_number}: the values below were filled for you. Check each against the drawing, tick it, then press Confirm table.`}
                     </p>
+                    {knownInfo.questions && knownInfo.questions.length > 0 && (
+                      <>
+                        <p className="mt-1">The AI could not settle these; check them on the drawing:</p>
+                        <ul className="list-disc pl-5">
+                          {knownInfo.questions.map((x) => (
+                            <li key={x}>{x}</li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
                     {knownInfo.bar_estimate ? (
                       <p className="mt-1">
                         Bar diameter <b>Ø{knownInfo.bar_estimate.value}</b> is not on the drawing; it is

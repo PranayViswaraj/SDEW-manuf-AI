@@ -1,6 +1,8 @@
 """Part drawings: upload and view next to the feature table (stored byte for byte)."""
 
 import hashlib
+import time
+import uuid
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
@@ -9,7 +11,9 @@ from urllib.parse import quote
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
+    FastAPI,
     File,
     Form,
     HTTPException,
@@ -18,11 +22,13 @@ from fastapi import (
     Response,
     UploadFile,
 )
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.drawing_reader import DrawingReaderError, ai_reader_enabled, get_drawing_reader
 from app.ai.known_drawings import KnownDrawing, find_known, load_known
 from app.auth.deps import any_user, get_audit, require_roles
 from app.db.models import Drawing, FeatureTable, FeatureTableStatus, Role, User
@@ -175,6 +181,7 @@ async def identify_drawing(
 @router.post("", response_model=DrawingOut, status_code=201)
 async def upload_drawing(
     request: Request,
+    background: BackgroundTasks,
     part_number: str = Form(min_length=1, max_length=64),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -201,6 +208,8 @@ async def upload_drawing(
     if d is not None:  # the same file again: keep one copy
         out = _out(d)
         out.autofill = _autofill(request, db, user, audit, part, digest)
+        if out.autofill is None and ai_reader_enabled():
+            out.autofill = _start_ai_read(request, background, db, user, part, d, content)
         return out
     d = Drawing(
         part_number=part,
@@ -228,7 +237,155 @@ async def upload_drawing(
     )
     out = _out(d)
     out.autofill = _autofill(request, db, user, audit, part, digest)
+    if out.autofill is None and ai_reader_enabled():
+        out.autofill = _start_ai_read(request, background, db, user, part, d, content)
     return out
+
+
+def _ai_jobs(app: FastAPI) -> dict[str, dict[str, Any]]:
+    """AI read jobs of this server process (kept for an hour)."""
+    jobs: dict[str, dict[str, Any]] | None = getattr(app.state, "ai_jobs", None)
+    if jobs is None:
+        jobs = {}
+        app.state.ai_jobs = jobs
+    cutoff = time.time() - 3600
+    for k in [k for k, j in jobs.items() if j["started"] < cutoff]:
+        del jobs[k]
+    return jobs
+
+
+def _start_ai_read(
+    request: Request,
+    background: BackgroundTasks,
+    db: Session,
+    user: User,
+    part: str,
+    d: Drawing,
+    content: bytes,
+) -> dict[str, Any] | None:
+    """Not a known drawing: two AI agents read it into the EMPTY table, as a background job.
+
+    The upload answers at once with a job id; the screen polls /drawings/ai-jobs/{id} and shows
+    agent 1 (extract + 3D analysis + feature list) and agent 2 (verify) as they work."""
+    ft = db.scalar(select(FeatureTable).where(FeatureTable.part_number == part))
+    if ft is None or not _table_is_empty(ft):
+        return None
+    info: dict[str, Any] = {
+        "part_number": part,
+        "title": d.filename,
+        "read_by": "AI (extractor + verifier)",
+        "ai": True,
+        "not_on_drawing": [],
+        "not_in_table": [],
+        "questions": [],
+        "aliases": [],
+        "not_lathe": "",
+        "bar_estimate": None,
+        "back_note": "",
+        "filled": False,
+        "message": "Two AI agents are reading the drawing: one extracts, the second checks it.",
+    }
+    job_id = uuid.uuid4().hex
+    info["job_id"] = job_id
+    _ai_jobs(request.app)[job_id] = {
+        "id": job_id,
+        "part_number": part,
+        "status": "running",
+        "stage": "queued",
+        "round": 0,
+        "started": time.time(),
+        "updated": time.time(),
+        "info": info,
+    }
+    background.add_task(
+        _run_ai_read, request.app, job_id, user.id, part, d.filename, content, dict(info)
+    )
+    return info
+
+
+async def _run_ai_read(
+    app: FastAPI,
+    job_id: str,
+    user_id: int,
+    part: str,
+    filename: str,
+    content: bytes,
+    info: dict[str, Any],
+) -> None:
+    job = _ai_jobs(app)[job_id]
+
+    def progress(stage: str, n: int) -> None:
+        job["stage"], job["round"], job["updated"] = stage, n, time.time()
+
+    def finish(status: str, message: str) -> None:
+        info["message"] = message
+        job.update(status=status, stage=status, info=info, updated=time.time())
+
+    try:
+        result = await run_in_threadpool(
+            get_drawing_reader().read_report, content, filename, part, progress
+        )
+    except DrawingReaderError as e:
+        finish("failed", f"{e} Enter the values from the drawing by hand.")
+        return
+    notes = result.notes
+    info["not_in_table"] = notes.get("not_in_table", [])
+    info["questions"] = notes.get("questions", [])
+    for key in ("shape_3d", "feature_list", "check_counts", "verify_rounds", "verdict"):
+        info[key] = notes.get(key)
+    if notes.get("not_lathe"):
+        info["not_lathe"] = notes["not_lathe"]
+        finish("done", f"The AI reader says this is not a single lathe part: {notes['not_lathe']}")
+        return
+    factory = app.state.session_factory
+    with factory() as db:
+        ft = db.scalar(select(FeatureTable).where(FeatureTable.part_number == part))
+        user = db.get(User, user_id)
+        if ft is None or not _table_is_empty(ft) or user is None:
+            finish("done", "The table was filled meanwhile; the AI suggestions were not applied.")
+            return
+        data = normalise(result.table.model_dump())
+        for cell in [
+            *data["header"].values(),
+            *(c for f in data["features"] for c in f["fields"].values()),
+        ]:
+            cell["value"], cell["confirmed"] = None, False  # suggestions only (safety rule 3)
+        if data["header"]["bar_diameter"]["ai"] is None:
+            info["not_on_drawing"] = ["bar_diameter"]
+        ft.data = data
+        ft.status = FeatureTableStatus.DRAFT.value
+        ft.source = "drawing_reader"
+        db.commit()
+        AuditLogger(factory).record(
+            "feature_table_ai_read",
+            AuditResult.OK,
+            user=user,
+            payload={"part_number": part, "feature_table_id": ft.id, "ai": result.audit},
+        )
+    info["filled"] = True
+    finish(
+        "done",
+        "The AI read this drawing (one agent read it, a second checked and corrected it). Each "
+        "value is a suggestion: compare it with the drawing, press Use, tick it, then confirm.",
+    )
+
+
+@router.get("/ai-reader")
+def ai_reader_status(_: User = Depends(any_user)) -> dict[str, Any]:
+    """Is the two-agent AI reader switched on (server setting + API key)?"""
+    from app.config import get_settings
+
+    s = get_settings()
+    return {"enabled": ai_reader_enabled(), "model": s.ai_model if ai_reader_enabled() else None}
+
+
+@router.get("/ai-jobs/{job_id}")
+def ai_job(job_id: str, request: Request, _: User = Depends(any_user)) -> dict[str, Any]:
+    """Progress of a two-agent AI read: stage extract / verify (round) / done / failed."""
+    job = _ai_jobs(request.app).get(job_id)
+    if job is None:
+        raise HTTPException(404, "No such AI read (it may have finished more than an hour ago).")
+    return {**job, "elapsed": round(time.time() - job["started"], 1)}
 
 
 def _autofill(

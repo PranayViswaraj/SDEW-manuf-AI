@@ -368,6 +368,33 @@ export interface KnownDrawingInfo {
   not_lathe?: string;
   bar_estimate?: { value: number; note: string } | null;
   back_note?: string;
+  ai?: boolean; // values are AI suggestions (two agents), not a hand-checked drawing
+  questions?: string[];
+  /** AI read running in the background (poll /drawings/ai-jobs/{job_id}). */
+  job_id?: string;
+  /** Agent 1's 3D shape analysis, as checked by agent 2. */
+  shape_3d?: {
+    summary: string;
+    max_diameter: number | null;
+    length: number | null;
+    ends: string[];
+    non_turned: string[];
+  } | null;
+  feature_list?: string[];
+  check_counts?: { ok: number; wrong: number; unsupported: number; unclear: number } | null;
+  verify_rounds?: number | null;
+  verdict?: string | null;
+}
+
+/** Progress of a two-agent AI read of a drawing. */
+export interface AiJob {
+  id: string;
+  part_number: string;
+  status: 'running' | 'done' | 'failed';
+  stage: 'queued' | 'extract' | 'verify' | 'done' | 'failed';
+  round: number;
+  elapsed: number;
+  info: KnownDrawingInfo & { filled: boolean; message: string };
 }
 
 export interface Suggestion {

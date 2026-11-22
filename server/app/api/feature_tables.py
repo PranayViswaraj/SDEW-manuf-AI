@@ -4,11 +4,12 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.drawing_reader import get_drawing_reader
+from app.ai.drawing_reader import DrawingReaderError, get_drawing_reader
 from app.auth.deps import any_user, get_audit, require_roles
 from app.db.models import FeatureTable, FeatureTableStatus, Program, Role, User
 from app.db.session import get_db
@@ -50,6 +51,8 @@ class FeatureTableOut(BaseModel):
     confirmed_at: datetime | None
     updated_at: datetime
     programs: list[dict[str, Any]]
+    # Only on "from drawing": the AI reader's questions, evidence and items not in the table.
+    ai_notes: dict[str, Any] | None = None
 
 
 def _out(db: Session, ft: FeatureTable) -> FeatureTableOut:
@@ -163,11 +166,18 @@ async def create_from_drawing(
     user: User = Depends(engineers),
     audit: AuditLogger = Depends(get_audit),
 ) -> FeatureTableOut:
-    """Run the drawing reader (stub today). Its output only ever fills the "ai" fields."""
+    """Run the drawing reader (AI when switched on). Its output only ever fills the "ai" fields."""
     content = await file.read(MAX_DRAWING_BYTES + 1)
     if len(content) > MAX_DRAWING_BYTES:
         raise HTTPException(413, "Drawing file is larger than 20 MB.")
-    suggested = get_drawing_reader().read(content, file.filename or "").model_dump()
+    try:
+        # The AI agents take a while: keep them off the event loop.
+        result = await run_in_threadpool(
+            get_drawing_reader().read_report, content, file.filename or "", part_number
+        )
+    except DrawingReaderError as e:
+        raise HTTPException(503, f"{e} You can still create the table and enter values.") from e
+    suggested = result.table.model_dump()
     # Safety: whatever the reader returns, keep ONLY suggestions. Values/confirmations stay empty.
     for cell in suggested["header"].values():
         cell["value"], cell["confirmed"] = None, False
@@ -175,8 +185,10 @@ async def create_from_drawing(
         for cell in feature["fields"].values():
             cell["value"], cell["confirmed"] = None, False
     ft = _create(db, user, part_number, file.filename or "", normalise(suggested), "drawing_reader")
-    _audit(audit, "feature_table_from_drawing", user, ft, filename=file.filename)
-    return _out(db, ft)
+    _audit(audit, "feature_table_from_drawing", user, ft, filename=file.filename, ai=result.audit)
+    out = _out(db, ft)
+    out.ai_notes = result.notes or None
+    return out
 
 
 @router.get("/{table_id}", response_model=FeatureTableOut)

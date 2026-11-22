@@ -54,6 +54,8 @@ ROUTE_ROLES: dict[tuple[str, str], str | set[str]] = {
     ("POST", "/api/programs/{program_id}/retire"): {P, A},
     ("GET", "/api/drawings"): ANY_USER,
     ("GET", "/api/drawings/known"): ANY_USER,
+    ("GET", "/api/drawings/ai-reader"): ANY_USER,
+    ("GET", "/api/drawings/ai-jobs/{job_id}"): ANY_USER,
     ("POST", "/api/drawings/identify"): {E, P},
     ("POST", "/api/drawings"): {E, P},
     ("GET", "/api/drawings/{drawing_id}/file"): ANY_USER,
