@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import type { Point } from '../sim/lathe/types';
 import { cuttingShape } from './grid';
 import { brushedTexture, paintTexture } from './textures';
-import { AXIAL_GROOVE_TOOLS, toolFor } from './tools';
+import { toolFor } from './tools';
 
 // ---------------------------------------------------------------------------- materials
 
@@ -347,8 +347,17 @@ export function buildTool(tool: number, opName: string, mat: Materials): ToolMod
     shadows(group);
     return { group, axial: true, reach: dr.reach, axisY: 0 };
   }
-  if (role === 'bore' || AXIAL_GROOVE_TOOLS.has(tool)) {
-    const grooveTool = AXIAL_GROOVE_TOOLS.has(tool);
+  if (role === 'stopper') {
+    // bar stop: a round bar with a hardened pad, square to the bar face
+    const len = 70;
+    group.add(mesh(cylX(5, 5, 4, 32), mat.get('black'), 2));
+    group.add(mesh(cylX(8, 8, len, 32), mat.get('steel'), 4 + len / 2));
+    group.add(mesh(cylX(14, 14, 24, 32), mat.get('steelDark'), len - 6));
+    shadows(group);
+    return { group, axial: true, reach: len + 8, axisY: 0 };
+  }
+  if (role === 'bore' || def?.axial) {
+    const grooveTool = !!def?.axial;
     group.add(insertMesh(shape, mat));
     const bar = grooveTool ? 12 : (def?.barDiameter ?? 12);
     const yc = grooveTool ? (rMax + rMin) / 2 : def?.tipDirection === 2 ? -(bar / 2 + 0.8) : bar / 2 + 0.8;

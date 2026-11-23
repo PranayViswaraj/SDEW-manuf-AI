@@ -42,6 +42,7 @@ import UsbDownload from '../components/UsbDownload';
 import { MachineLiveBadge } from '../components/StatusBadge';
 import { useLiveStatus } from '../hooks/useLiveStatus';
 import ToolpathView from '../components/ToolpathView';
+import type { SimCheck } from '../cnc-sim/job';
 import { ErrorBox, Notice } from '../components/ui';
 
 /* ------------------------------------------------------------------ helpers */
@@ -993,6 +994,8 @@ export default function DrawingToProgram() {
   }, [notice, toast]);
   const [tableReload, setTableReload] = useState(0);
   const [knownInfo, setKnownInfo] = useState<KnownDrawingInfo | null>(null);
+  // 3D simulation safety checks of the program on screen (null until it has run)
+  const [simCheck, setSimCheck] = useState<{ text: string; checks: SimCheck[]; errors: number } | null>(null);
   // Two-agent AI read of a new drawing, running in the background (job id), and whether it is on.
   const [aiJob, setAiJob] = useState<string | null>(null);
   const [aiReader, setAiReader] = useState<{ enabled: boolean; model: string | null } | null>(null);
@@ -1496,6 +1499,19 @@ export default function DrawingToProgram() {
   const v = isEdited ? editCheck?.validation : preview?.validation;
   const writing = !!preview?.text && typedFor !== preview.text;
   const simText = preview?.ok && v?.ok && !writing ? (editText ?? preview.text) : null;
+  const simBar =
+    Number(data?.header?.bar_diameter?.value) > 0
+      ? Number(data?.header?.bar_diameter?.value)
+      : (knownInfo?.bar_estimate?.value ?? null);
+  const simLen =
+    Number(data?.header?.overall_length?.value) > 0 ? Number(data?.header?.overall_length?.value) : null;
+  const simResult = simCheck && simCheck.text === simText ? simCheck : null;
+  const onSimChecks = useCallback(
+    (checks: SimCheck[], errors: number) => {
+      if (simText) setSimCheck({ text: simText, checks, errors });
+    },
+    [simText],
+  );
   const accepted = program?.status === 'approved';
   const machineControlOk = !!machine && (machine.controller ?? '').toUpperCase().startsWith('FANUC');
   const acceptBlockers: string[] = [];
@@ -1507,6 +1523,10 @@ export default function DrawingToProgram() {
   else if (stale) acceptBlockers.push('You changed something: press "Generate live program" again.');
   else if (isEdited && (checking || !editCheck)) acceptBlockers.push('Checking your edit…');
   else if (v && !v.ok) acceptBlockers.push('The program has validation errors (see step 4).');
+  else if (simResult && simResult.errors > 0)
+    acceptBlockers.push(
+      `The 3D simulation found ${simResult.errors} safety ${simResult.errors === 1 ? 'alarm' : 'alarms'} (rapid through metal, spindle off or tool past centre): fix the program in step 4.`,
+    );
   const sendBlockers: string[] = [];
   if (!accepted) sendBlockers.push('The program must be accepted in step 5 first.');
   if (!isOperator) sendBlockers.push('Log in as Operator (or Sample) to send.');
@@ -2211,7 +2231,26 @@ export default function DrawingToProgram() {
                       <Suspense
                         fallback={<p className="text-sm text-slate-600">Loading the 3D simulation…</p>}
                       >
-                        <CncSimulatorView programText={simText} speed={10} height={720} />
+                        <CncSimulatorView
+                          programText={simText}
+                          speed={10}
+                          height={720}
+                          stock={{ diameter: simBar, length: simLen }}
+                          onChecks={onSimChecks}
+                        />
+                        {simResult && (
+                          <p
+                            className={`mt-2 text-sm ${simResult.errors ? 'font-semibold text-rose-800' : 'text-emerald-800'}`}
+                            role="status"
+                          >
+                            {simResult.errors
+                              ? `Safety alarms: ${simResult.checks
+                                  .filter((c) => c.severity === 'error')
+                                  .map((c) => `line ${c.line}: ${c.message}`)
+                                  .join(' · ')}`
+                              : `3D safety checks passed${simBar ? ` on a Ø${simBar} bar` : ''}: no rapid through metal, spindle on for every cut, no tool past centre.`}
+                          </p>
+                        )}
                       </Suspense>
                     ) : (
                       <p className="text-sm text-slate-600">

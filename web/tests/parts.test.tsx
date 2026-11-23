@@ -1,7 +1,13 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { FeatureSchema, FeatureTable } from '../src/api/types';
 import { makeUser, renderApp } from './helpers';
+
+// The routes are lazy: load the page modules once, up front, so a busy PC compiling them in
+// parallel with the other test files does not eat into a test's wait for the screen.
+beforeAll(async () => {
+  await Promise.all([import('../src/pages/PartDetail'), import('../src/pages/Parts')]);
+}, 60000);
 
 afterEach(() => {
   vi.unstubAllGlobals();

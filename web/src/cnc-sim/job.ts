@@ -5,10 +5,10 @@
 import { listSections, parseBlocks, interpret } from '../sim/lathe/gcode';
 import type { SimMove } from '../sim/lathe/types';
 import { SIM_CONFIG, SIM_MACHINE } from './config';
-import { AXIAL_GROOVE_TOOLS, TOOLS } from './tools';
+import { setUnknownDrill, toolFor } from './tools';
 
 /** Floats per move in `moves`. */
-export const STRIDE = 15;
+export const STRIDE = 16;
 export const F = {
   x0: 0, // diameter
   z0: 1,
@@ -25,6 +25,7 @@ export const F = {
   feedMin: 12, // mm/min, -1 = none
   feedRev: 13, // mm/rev, -1 = none
   known: 14,
+  coolant: 15, // 1 = M08 on
 } as const;
 export const MOVE_TYPE = { rapid: 0, feed: 1, thread: 2, dwell: 3, index: 4 } as const;
 const TYPE_OF: Record<SimMove['kind'], number> = MOVE_TYPE;
@@ -35,6 +36,8 @@ export interface JobOptions {
   mode: JobMode;
   /** Run the blocks after the last setup (N33, N34 in O0003). Off by default. */
   extras: boolean;
+  /** Bar stock for this part (diameter, length mm); the config default when not given. */
+  stock?: { diameter?: number | null; length?: number | null };
 }
 
 export interface JobOp {
@@ -80,6 +83,19 @@ export interface Job {
   /** First word of M99 P at the top (e.g. 4), if any. */
   m99Target: number | null;
   hasExtras: boolean;
+  /** Drill size used where a comment gives none ("U DRILL"): just under the smallest bore. */
+  drillGuess: number;
+  /** Safety checks found while cutting the whole job (see precompute). */
+  checks: SimCheck[];
+}
+
+export interface SimCheck {
+  severity: 'error' | 'warning';
+  code: 'rapid-into-material' | 'spindle-off' | 'past-centre';
+  message: string;
+  line: number;
+  move: number;
+  time: number;
 }
 
 export const OP_COLOURS = [
@@ -204,11 +220,11 @@ export function buildJob(text: string, opts: JobOptions): Job {
         set.add(label);
         usedFor.set(m.tool, set);
         minZ = Math.min(minZ, m.to[0], from[0]);
-        const tool = TOOLS[m.tool];
+        const tool = toolFor(m.tool, label);
         const negX = Math.min(m.to[1], from[1]) < -0.01;
-        if (negX && tool?.role !== 'drill')
+        if (negX && tool?.role !== 'drill' && tool?.role !== 'stopper')
           warnings.push(`Line ${m.line}: T${pad(m.tool)} goes to negative X (X${(m.to[1] * 2).toFixed(3)}).`);
-        if (negX && tool?.role === 'drill' && !AXIAL_GROOVE_TOOLS.has(m.tool))
+        if (negX && tool?.role === 'drill')
           warnings.push(
             `Line ${m.line}: T${pad(m.tool)} (${tool.name}) runs off centre at X${(Math.min(m.to[1], from[1]) * 2).toFixed(3)}: simulated as written.`,
           );
@@ -230,6 +246,7 @@ export function buildJob(text: string, opts: JobOptions): Job {
         m.feedMin ?? -1,
         m.feedRev ?? -1,
         m.known ? 1 : 0,
+        m.coolant ? 1 : 0,
       );
       t += dt;
       op.lastMove = rows.length / STRIDE - 1;
@@ -251,6 +268,19 @@ export function buildJob(text: string, opts: JobOptions): Job {
     if (c.extra)
       warnings.push(`${c.name}: extra block after M30; run in the last clamping (orientation assumed).`);
   }
+
+  // A drill with no size in its comment: just under the smallest bore the program finishes.
+  let minBore = Infinity;
+  for (let i = 0; i < rows.length / STRIDE; i++) {
+    const o = i * STRIDE;
+    if (rows[o + F.type] !== MOVE_TYPE.feed || !rows[o + F.tool]) continue;
+    const op = ops[rows[o + F.op]];
+    if (toolFor(rows[o + F.tool], op.name)?.role !== 'bore') continue;
+    const x = Math.min(rows[o + F.x0], rows[o + F.x1]);
+    if (x > 4) minBore = Math.min(minBore, x);
+  }
+  const drillGuess = Number.isFinite(minBore) ? Math.max(5, Math.floor(minBore - 1)) : 16;
+  setUnknownDrill(drillGuess);
 
   // M01 optional stops: at the first move after each M01 line.
   const moveLines = new Float32Array(rows.length / STRIDE);
@@ -287,6 +317,8 @@ export function buildJob(text: string, opts: JobOptions): Job {
     notices,
     m99Target,
     hasExtras,
+    drillGuess,
+    checks: [],
   };
 }
 

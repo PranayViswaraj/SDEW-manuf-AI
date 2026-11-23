@@ -3,9 +3,38 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FeatureSchema, FeatureTable, GenPlan, GenPreview, Machine } from '../src/api/types';
 import { makeUser, renderApp } from './helpers';
 
+// The 3D simulator needs WebGL (none in jsdom): a stub that reports its safety checks.
+const sim = vi.hoisted(() => ({ errors: 0, stock: null as unknown }));
+vi.mock('../src/cnc-sim/CncSimulatorView', async () => {
+  const { useEffect } = await import('react');
+  return {
+    default: function SimStub(props: {
+      programText?: string;
+      stock?: unknown;
+      onChecks?: (c: unknown[], e: number) => void;
+    }) {
+      const { programText, onChecks } = props;
+      sim.stock = props.stock;
+      useEffect(() => {
+        const checks = Array.from({ length: sim.errors }, (_, k) => ({
+          severity: 'error',
+          code: 'rapid-into-material',
+          message: 'Rapid move of T04 runs through material.',
+          line: 12 + k,
+          move: k,
+          time: k,
+        }));
+        onChecks?.(checks, sim.errors);
+      }, [programText, onChecks]);
+      return <div data-testid="sim-stub" />;
+    },
+  };
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.clear();
+  sim.errors = 0;
 });
 
 const done = (v: number | string) => ({ ai: null, value: v, confirmed: true });
@@ -248,6 +277,21 @@ describe('drawing to program', () => {
     );
     expect(screen.getByRole('button', { name: 'Send to LMW Lathe 1' })).toBeEnabled();
     expect(screen.getByText('192.168.1.20:8193')).toBeInTheDocument();
+  });
+
+  it('blocks acceptance while the 3D simulation reports a safety alarm', async () => {
+    sim.errors = 1;
+    renderApp(
+      '/make?table=4&machine=2',
+      makeUser(['engineer']),
+      routes(() => READY),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Generate live program' }));
+    await screen.findByLabelText('Generated program text');
+    expect(await screen.findByText(/Safety alarms: line 12: Rapid move of T04/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Accept program' })).toBeDisabled();
+    expect(screen.getByText(/The 3D simulation found 1 safety alarm/)).toBeInTheDocument();
+    expect(sim.stock).toEqual({ diameter: 40, length: 30 });
   });
 
   it('tells exactly what blocks acceptance on a machine whose control is not entered', async () => {

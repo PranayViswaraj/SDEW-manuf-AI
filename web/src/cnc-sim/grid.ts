@@ -8,7 +8,7 @@ import { hull, toolGeometry } from '../sim/lathe/tools';
 import type { Point } from '../sim/lathe/types';
 import { SIM_CONFIG } from './config';
 import { F, STRIDE, type Job, type JobSetup } from './job';
-import { AXIAL_GROOVE_TOOLS, toolFor } from './tools';
+import { getUnknownDrill, toolFor } from './tools';
 
 export interface GridState {
   occ: Uint8Array;
@@ -100,6 +100,25 @@ export class Grid {
     return removed;
   }
 
+  /** Solid at (p, r)? */
+  solid(p: number, r: number): boolean {
+    const j = Math.floor((p - this.pMin) / this.res);
+    const k = Math.floor(Math.abs(r) / this.res);
+    if (j < 0 || j >= this.np || k >= this.nr) return false;
+    return this.occ[j * this.nr + k] === 1;
+  }
+
+  /** Solid at (p, r) and everywhere within `d` of it (the point is at least d deep in metal). */
+  deepIn(p: number, r: number, d: number): boolean {
+    return (
+      this.solid(p, r) &&
+      this.solid(p - d, r) &&
+      this.solid(p + d, r) &&
+      this.solid(p, r - d) &&
+      this.solid(p, r + d)
+    );
+  }
+
   /** Outer radius of material at part position p (for the chuck jaws). */
   outerAt(p: number): number {
     const j = Math.min(this.np - 1, Math.max(0, Math.floor((p - this.pMin) / this.res)));
@@ -117,12 +136,14 @@ export function toPart(setup: Pick<JobSetup, 'orient'>, z: number): number {
 /** Cutting shape of a tool in an operation, (z, r) relative to the programmed point. */
 const shapeCache = new Map<string, Point[]>();
 export function cuttingShape(tool: number, opName: string): Point[] {
-  const key = `${tool}|${opName}`;
+  const key = `${tool}|${opName}|${getUnknownDrill()}`;
   const hit = shapeCache.get(key);
   if (hit) return hit;
   let poly: Point[];
   const def = toolFor(tool, opName);
-  if (AXIAL_GROOVE_TOOLS.has(tool) && def?.width) {
+  if (def?.role === 'stopper') {
+    poly = []; // the bar stop never cuts
+  } else if (def?.axial && def.width) {
     // Face groove blade: X is its outer edge, it cuts along -Z.
     const w = def.width;
     poly = [
@@ -139,6 +160,35 @@ export function cuttingShape(tool: number, opName: string): Point[] {
   return poly;
 }
 
+/**
+ * Where the tool tip of move i first passes at least `depth` deep through material (checked
+ * against the material before the move), or null. Part ends within the face allowances are left
+ * out: how much stock really sits there is an estimate.
+ */
+export function tipThroughMaterial(grid: Grid, job: Job, i: number, depth: number): number | null {
+  const o = i * STRIDE;
+  const mv = job.moves;
+  const setup = job.setups[mv[o + F.setup]];
+  const x0 = mv[o + F.x0] / 2;
+  const z0 = mv[o + F.z0];
+  const x1 = mv[o + F.x1] / 2;
+  const z1 = mv[o + F.z1];
+  const s = SIM_CONFIG.stock;
+  const lo = s.faceStockFront + depth;
+  const hi = s.length - s.faceStockBack - depth;
+  const len = Math.hypot(x1 - x0, z1 - z0);
+  const n = Math.max(1, Math.ceil(len / grid.res));
+  // the tip starts on the surface it has just cut: only what it travels into counts
+  const skip = Math.ceil(((depth + grid.res) / Math.max(len, 1e-9)) * n);
+  for (let k = skip; k <= n; k++) {
+    const f = k / n;
+    const p = toPart(setup, z0 + (z1 - z0) * f);
+    if (p < lo || p > hi) continue;
+    if (grid.deepIn(p, x0 + (x1 - x0) * f, depth)) return f;
+  }
+  return null;
+}
+
 /** Remove the material of move i (fraction f0..f1 of it). Returns cells removed. */
 export function cutMove(grid: Grid, job: Job, i: number, f0 = 0, f1 = 1): number {
   const o = i * STRIDE;
@@ -150,6 +200,7 @@ export function cutMove(grid: Grid, job: Job, i: number, f0 = 0, f1 = 1): number
   const setup = job.setups[mv[o + F.setup]];
   const op = job.ops[mv[o + F.op]];
   const shape = cuttingShape(tool, op.name);
+  if (!shape.length) return 0;
   const x0 = mv[o + F.x0] / 2;
   const z0 = mv[o + F.z0];
   const x1 = mv[o + F.x1] / 2;

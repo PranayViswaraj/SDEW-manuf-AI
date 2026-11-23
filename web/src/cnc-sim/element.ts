@@ -2,12 +2,13 @@
  * <cnc-simulator>: lathe machining animation as a Web Component (Shadow DOM, three.js).
  *   <cnc-simulator program-url="/samples/O0003.nc" speed="10" autoplay></cnc-simulator>
  *   el.loadProgram(text); el.play(); el.pause(); el.seek(s); el.jumpToEnd(); el.setSpeed(x)
- *   events: progress, line, operation, finished, warning
+ *   el.setStock({ diameter, length })  // the part's bar (also bar-diameter / part-length attributes)
+ *   events: progress, line, operation, finished, warning, checks
  */
 import { SIM_CONFIG } from './config';
 import { Grid, cutMove } from './grid';
-import { F, STRIDE, moveAt, type JobMode } from './job';
-import type { Precomputed } from './precompute';
+import { F, STRIDE, moveAt, type JobMode, type JobOptions, type SimCheck } from './job';
+import { applyStock, type Precomputed } from './precompute';
 import { Runner } from './runner';
 import { CncScene, type Look, type Quality, type Theme } from './scene';
 
@@ -64,6 +65,13 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-l
 .ibtn:hover{background:rgba(30,58,95,.85)}
 .note{position:absolute;left:50%;top:12px;transform:translateX(-50%);color:#fde68a;font-size:12px;padding:6px 10px;display:flex;gap:8px;align-items:center;max-width:56%}
 .note select{font-size:12px}
+.alarms{position:absolute;left:12px;bottom:12px;max-width:min(46%,420px);max-height:42%;overflow:auto;padding:8px 10px;font-size:12px;color:#fecaca;border-color:rgba(239,68,68,.45)}
+.alarms.ok{color:#bbf7d0;border-color:rgba(34,197,94,.4);padding:6px 10px}
+.alarms h4{margin:0 0 4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;display:flex;gap:6px;align-items:center}
+.alarms button{display:block;width:100%;text-align:left;background:none;border:0;color:inherit;font:inherit;padding:4px 6px;border-radius:6px;cursor:pointer}
+.alarms button:hover{background:rgba(239,68,68,.18)}
+.alarms b{font:11px ui-monospace,monospace;color:#fca5a5;margin-right:6px}
+.alarm{position:absolute;top:0;width:4px;height:22px;margin-left:-2px;background:#ef4444;border-radius:2px;box-shadow:0 0 0 2px rgba(239,68,68,.3);pointer-events:none}
 .fps{position:absolute;right:116px;top:14px;font:11px monospace;padding:3px 7px;color:#86efac;display:none}
 .loading{position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;color:#cbd5e1;font-size:13px;background:#12171e}
 .loading:before{content:"";width:34px;height:34px;border-radius:50%;border:3px solid rgba(148,163,184,.25);border-top-color:var(--sim-accent);animation:sp .8s linear infinite}
@@ -133,6 +141,7 @@ const HTML = `
    </div>
    <div class="fps glass"></div>
    <div class="note glass" hidden></div>
+   <div class="alarms glass" hidden></div>
    <div class="vtools"><div class="scale glass"><span></span><i></i></div><button class="ibtn fs" title="Full screen (Enter)">${ICON.full}<span>Full screen</span></button></div>
   </div>
   <div class="side">
@@ -181,7 +190,7 @@ const fmt = (s0: number) => {
 
 export class CncSimulator extends HTMLElement {
   static get observedAttributes() {
-    return ['program-url', 'speed'];
+    return ['program-url', 'speed', 'bar-diameter', 'part-length'];
   }
 
   private root: ShadowRoot;
@@ -214,6 +223,7 @@ export class CncSimulator extends HTMLElement {
   private fpsT = 0;
   private tab: 'text' | 'moves' = 'text';
   private mode: JobMode = 'full';
+  private stock: JobOptions['stock'];
   private cleanups: (() => void)[] = [];
   private ro: ResizeObserver | null = null;
   private io: IntersectionObserver | null = null;
@@ -289,6 +299,11 @@ export class CncSimulator extends HTMLElement {
     if (!this.scene) return;
     if (name === 'program-url' && value) void this.fetchProgram(value);
     if (name === 'speed' && Number(value) > 0) this.setSpeed(Number(value));
+    if (name === 'bar-diameter' || name === 'part-length')
+      this.setStock({
+        diameter: Number(this.getAttribute('bar-diameter')) || null,
+        length: Number(this.getAttribute('part-length')) || null,
+      });
   }
 
   private readTheme(): Theme {
@@ -315,6 +330,20 @@ export class CncSimulator extends HTMLElement {
     const head = text.split(/\r?\n/).slice(0, 6).join('\n');
     this.mode = /^\s*M99\s*P\d+/m.test(head) ? 'machine' : 'full';
     await this.compute();
+  }
+
+  /** The part's bar: diameter and finished length (mm). Face stock is added at both ends. */
+  setStock(stock: JobOptions['stock']) {
+    const same =
+      (stock?.diameter ?? null) === (this.stock?.diameter ?? null) &&
+      (stock?.length ?? null) === (this.stock?.length ?? null);
+    this.stock = stock ?? undefined;
+    if (!same && this.text && this.scene) void this.compute();
+  }
+
+  /** Safety checks of the loaded program (rapids through material, spindle off, past centre). */
+  get checks(): SimCheck[] {
+    return this.data?.job.checks ?? [];
   }
 
   play() {
@@ -395,7 +424,10 @@ export class CncSimulator extends HTMLElement {
     (this.$('.loading') as HTMLElement).textContent = 'Preparing simulation…';
     let data: Precomputed;
     try {
-      data = await this.runner.run(this.text, { mode: this.mode, extras });
+      // the main thread draws with the same bar the worker cuts
+      applyStock(this.stock);
+      this.grid = new Grid();
+      data = await this.runner.run(this.text, { mode: this.mode, extras, stock: this.stock });
     } catch (e) {
       this.$('.loading').textContent = `Could not simulate this program: ${(e as Error).message}`;
       return;
@@ -414,9 +446,16 @@ export class CncSimulator extends HTMLElement {
     this.renderSide();
     this.renderTimeline();
     this.renderNote();
+    this.renderAlarms();
     this.seek(0);
     for (const w of data.job.warnings)
       this.dispatchEvent(new CustomEvent('warning', { detail: { message: w } }));
+    const checks = data.job.checks;
+    this.dispatchEvent(
+      new CustomEvent('checks', {
+        detail: { checks, errors: checks.filter((c) => c.severity === 'error').length },
+      }),
+    );
     if (this.hasAttribute('autoplay')) this.play();
   }
 
@@ -592,15 +631,53 @@ export class CncSimulator extends HTMLElement {
     };
   }
 
+  private renderAlarms() {
+    const box = this.$('.alarms');
+    const job = this.data?.job;
+    if (!job) {
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+    const list = job.checks;
+    if (!list.length) {
+      box.className = 'alarms glass ok';
+      box.innerHTML =
+        '<h4>✓ Safety checks passed</h4>No rapid through metal · spindle on for every cut · no tool past centre';
+      return;
+    }
+    box.className = 'alarms glass';
+    const esc = (t: string) =>
+      t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c] as string);
+    box.innerHTML =
+      `<h4>⚠ ${list.length} safety ${list.length === 1 ? 'alarm' : 'alarms'}</h4>` +
+      list
+        .map(
+          (c, k) =>
+            `<button data-k="${k}" title="Go to this move"><b>Line ${c.line}</b>${esc(c.message)}</button>`,
+        )
+        .join('');
+    box.querySelectorAll('button').forEach((b) => {
+      b.onclick = () => {
+        const c = list[Number(b.dataset.k)];
+        this.pause();
+        this.seek(Math.max(0, c.time - 0.05));
+        this.kick();
+      };
+    });
+  }
+
   private renderTimeline() {
     const job = this.data!.job;
     const d = job.duration || 1;
     this.$('.tl').innerHTML = job.ops
       .map((o) => `<span style="width:${((o.t1 - o.t0) / d) * 100}%;background:${o.colour}"></span>`)
       .join('');
-    this.$('.ticks').innerHTML = job.toolChanges
-      .map((t) => `<i class="tick" style="left:${(t / d) * 100}%"></i>`)
-      .join('');
+    this.$('.ticks').innerHTML =
+      job.toolChanges.map((t) => `<i class="tick" style="left:${(t / d) * 100}%"></i>`).join('') +
+      job.checks
+        .map((c) => `<i class="alarm" style="left:${(c.time / d) * 100}%" title="Line ${c.line}"></i>`)
+        .join('');
   }
 
   private renderSide() {
@@ -784,7 +861,7 @@ export class CncSimulator extends HTMLElement {
       }
       const cutting = this.removedNow > 0 && m[o + F.type] !== 0;
       const rate = dt > 0 ? this.removedNow / dt : 0;
-      if (scene.effects(dt, cutting, this.playing, rate, true)) busy = true;
+      if (scene.effects(dt, cutting, this.playing, rate, m[o + F.coolant] === 1)) busy = true;
       if (!this.playing) this.removedNow = 0;
       const cutaway = this.$<HTMLInputElement>('.cutaway').checked;
       scene.spin(this.spinAngle, !cutaway);
@@ -927,7 +1004,7 @@ export class CncSimulator extends HTMLElement {
     const spin = this.root.getElementById('spin');
     if (spin) spin.className = `spin${rpm && this.playing ? ' run' : ''}${rpm < 0 ? ' ccw' : ''}`;
     const cool = this.root.getElementById('cool');
-    const coolOn = !!rpm && type !== 3 && type !== 4;
+    const coolOn = m[o + F.coolant] === 1;
     set('cool', coolOn ? 'Coolant on' : 'Coolant off');
     if (cool) cool.className = `chip ${coolOn ? 'on' : 'off'}`;
     this.$('.time').innerHTML = `${fmt(this.t)}<small>/ ${fmt(job.duration)} estimate</small>`;

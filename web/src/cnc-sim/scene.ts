@@ -15,6 +15,7 @@ import { F, MOVE_TYPE, STRIDE, type Job, type JobSetup } from './job';
 import { PartMeshBuilder } from './mesh';
 import { Effects } from './effects';
 import { Chuck, Materials, Turret, buildHeadstock, buildMachine, shadows } from './models';
+import { setUnknownDrill } from './tools';
 import { labelTexture, turnedTexture } from './textures';
 
 export type Look = 'real' | 'video' | 'enhanced';
@@ -338,6 +339,8 @@ export class CncScene {
 
   setJob(job: Job) {
     this.job = job;
+    // same drill size the worker cut with (a "U DRILL" comment gives none)
+    setUnknownDrill(job.drillGuess);
     this.setup = -1;
     this.tool = -1;
     for (const l of [this.ghost, this.feeds, this.rapids]) {
