@@ -6,7 +6,8 @@
  */
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-const MAX_EDGE = 2576;
+const MAX_EDGE = 2576; // zoomed tiles: full resolution
+const OVERVIEW_EDGE = 1568; // the whole sheet is for layout only: a third of the tokens
 const MAX_PAGES = 3;
 const OVERLAP = 0.08;
 const MAX_B64 = 1_600_000; // bigger PNGs are noisy scans: JPEG keeps them small
@@ -45,11 +46,11 @@ const POS: Record<string, string[]> = {
   '2x3': ['top-left', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-right'],
 };
 
-function encode(src: HTMLCanvasElement, box: [number, number, number, number]) {
+function encode(src: HTMLCanvasElement, box: [number, number, number, number], edge = MAX_EDGE) {
   const [x0, y0, x1, y1] = box;
   const w = x1 - x0;
   const h = y1 - y0;
-  const s = Math.min(1, MAX_EDGE / Math.max(w, h));
+  const s = Math.min(1, edge / Math.max(w, h));
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.round(w * s));
   c.height = Math.max(1, Math.round(h * s));
@@ -88,7 +89,7 @@ export async function renderTiles(pdf: ArrayBuffer): Promise<{ images: TileImage
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     await page.render({ canvasContext: ctx, viewport: vp }).promise;
     const label = `Page ${i} of ${doc.numPages}`;
-    const whole = encode(canvas, [0, 0, canvas.width, canvas.height]);
+    const whole = encode(canvas, [0, 0, canvas.width, canvas.height], OVERVIEW_EDGE);
     images.push({
       label: `${label}: whole sheet.`,
       described: `${label} whole sheet ${whole.size}`,

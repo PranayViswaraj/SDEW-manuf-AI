@@ -48,7 +48,13 @@ describe('Anthropic call from the browser (own key)', () => {
     const { impl, calls } = fakeFetch(
       200,
       sse([
-        { type: 'message_start', message: { id: 'm1' } },
+        {
+          type: 'message_start',
+          message: {
+            id: 'm1',
+            usage: { input_tokens: 900, cache_read_input_tokens: 31000, output_tokens: 1 },
+          },
+        },
         { type: 'content_block_start', index: 0, content_block: { type: 'thinking' } },
         { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'hmm' } },
         { type: 'content_block_start', index: 1, content_block: { type: 'text' } },
@@ -57,12 +63,17 @@ describe('Anthropic call from the browser (own key)', () => {
         { type: 'content_block_start', index: 3, content_block: { type: 'text' } },
         { type: 'content_block_delta', index: 3, delta: { type: 'text_delta', text: '{"verdict":' } },
         { type: 'content_block_delta', index: 3, delta: { type: 'text_delta', text: '"accept"}' } },
-        { type: 'message_delta', delta: { stop_reason: 'end_turn' } },
+        { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 5120 } },
         { type: 'message_stop' },
       ]),
     );
     const out = JSON.parse(await callAnthropic('sk-ant-test', '{"model":"m"}', impl, now));
-    expect(out).toEqual({ ok: true, stop_reason: 'end_turn', text: '{"verdict":"accept"}' });
+    expect(out).toEqual({
+      ok: true,
+      stop_reason: 'end_turn',
+      text: '{"verdict":"accept"}',
+      usage: { input_tokens: 900, cache_read_input_tokens: 31000, output_tokens: 5120 },
+    });
     expect(calls[0].url).toBe(API);
     const h = calls[0].init.headers as Record<string, string>;
     expect(h['x-api-key']).toBe('sk-ant-test');
@@ -104,7 +115,7 @@ describe('Anthropic call from the browser (own key)', () => {
     const cut = sse([{ type: 'content_block_start', index: 0, content_block: { type: 'text' } }]);
     const { impl, calls } = fakeFetch(200, cut, 'drop', [200, good()]);
     const out = JSON.parse(await callAnthropic('sk-ant-x', '{}', impl, now));
-    expect(out).toEqual({ ok: true, stop_reason: 'end_turn', text: '{}' });
+    expect(out).toMatchObject({ ok: true, stop_reason: 'end_turn', text: '{}' });
     expect(calls).toHaveLength(3);
   });
 

@@ -22,7 +22,8 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-MAX_EDGE = 2576  # the model's largest image (long edge, px)
+MAX_EDGE = 2576  # the model's largest image (long edge, px): the zoomed tiles
+OVERVIEW_EDGE = 1568  # the whole sheet is for layout only: a third of the tokens
 MAX_PAGES = 3
 OVERLAP = 0.08  # tiles overlap so no callout is cut in half
 MAX_IMAGE_BYTES = 1_200_000  # bigger PNGs are noisy scans: JPEG keeps them small
@@ -104,7 +105,7 @@ _POS = {
 
 def _page_blocks(out: DrawingImages, img: Any, label: str, cols: int, rows: int) -> None:
     out.blocks.append({"type": "text", "text": f"{label}: whole sheet."})
-    out.blocks.append(_block(_fit(img)))
+    out.blocks.append(_block(_fit(img, OVERVIEW_EDGE)))
     out.described.append(f"{label} whole sheet {img.size[0]}x{img.size[1]}")
     names = _POS.get((cols, rows)) or [f"tile {i + 1}" for i in range(cols * rows)]
     for name, box in zip(names, tile_boxes(img.size[0], img.size[1], cols, rows), strict=True):

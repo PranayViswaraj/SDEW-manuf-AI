@@ -90,6 +90,7 @@ class FakeClient:
         msg = SimpleNamespace(
             stop_reason=self.stop_reason,
             content=[SimpleNamespace(type="text", text=json.dumps(answer))],
+            usage=SimpleNamespace(**getattr(self, "usage", {})),
         )
 
         class Ctx:

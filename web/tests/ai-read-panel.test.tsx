@@ -50,6 +50,7 @@ describe('two-agent AI read panel', () => {
         },
         feature_list: ['Front face', 'Ø22.22 ±0.1 spigot, 34 long', 'Ø19 bore through'],
         callouts: 31,
+        usage: { calls: 2, input: 6000, output: 41000, cache_write: 30000, cache_read: 30000, cost_usd: 1.0 },
         balloons: 14,
         unaccounted: ['Balloon 9 not found on the drawing by the AI'],
       },
@@ -75,6 +76,9 @@ describe('two-agent AI read panel', () => {
       screen.getByText(/31 callouts read, balloons 1–14 · 1 to check on the drawing/),
     ).toBeInTheDocument();
     expect(screen.getByText('Balloon 9 not found on the drawing by the AI')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Used 2 AI calls · 66k tokens in \(30k from cache\) · 41k tokens out/),
+    ).toBeInTheDocument();
     vi.useRealTimers();
   });
 

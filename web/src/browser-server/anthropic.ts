@@ -13,8 +13,10 @@ export const API = 'https://api.anthropic.com/v1/messages';
 const RETRY_STATUS = new Set([0, 408, 409, 429, 500, 502, 503, 504, 529]);
 const ATTEMPTS = 3;
 
+type Usage = Record<string, number>;
 type Result =
-  { ok: true; stop_reason: string | null; text: string } | { ok: false; status: number; error: string };
+  | { ok: true; stop_reason: string | null; text: string; usage?: Usage }
+  | { ok: false; status: number; error: string; usage?: Usage };
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -69,6 +71,7 @@ async function once(aiKey: string, body: string, fetchImpl: typeof fetch): Promi
   let text: string[] = [];
   const kinds: string[] = [];
   let stop: string | null = null;
+  const usage: Usage = {}; // tokens, for the cost shown to the engineer
   let streamError: { status: number; error: string } | null = null;
   try {
     for (;;) {
@@ -87,6 +90,8 @@ async function once(aiKey: string, body: string, fetchImpl: typeof fetch): Promi
         } catch {
           continue;
         }
+        if (d.type === 'message_start' && d.message?.usage) Object.assign(usage, d.message.usage);
+        if (d.type === 'message_delta' && d.usage) Object.assign(usage, d.usage);
         if (d.type === 'content_block_start') {
           kinds[d.index] = d.content_block?.type;
           if (d.content_block?.type === 'fallback') text = []; // a fallback model took over
@@ -111,8 +116,8 @@ async function once(aiKey: string, body: string, fetchImpl: typeof fetch): Promi
       error: `The connection dropped during the answer: ${err?.message ?? err}`,
     };
   }
-  if (streamError) return { ok: false, ...streamError };
+  if (streamError) return { ok: false, ...streamError, usage };
   if (stop === null) return { ok: false, status: 0, error: 'The answer stopped before it was complete.' };
   const answer = text.filter((t, i) => t !== undefined && kinds[i] === 'text').join('');
-  return { ok: true, stop_reason: stop, text: answer };
+  return { ok: true, stop_reason: stop, text: answer, usage };
 }

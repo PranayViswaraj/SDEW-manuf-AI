@@ -214,3 +214,67 @@ def test_tests_never_run_the_real_reader() -> None:
     get_settings.cache_clear()
     assert not ai_reader_enabled()
     assert get_settings().anthropic_api_key is None
+
+
+# ------------------------------------------------------------------ token cost
+
+
+def _with_tiles(r: Any, monkeypatch: pytest.MonkeyPatch, numbers: list[str]) -> None:
+    from app.ai.drawing_images import DrawingImages
+
+    img = {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AA"}}
+
+    async def tiles(_file: bytes) -> DrawingImages:
+        return DrawingImages(blocks=[{"type": "text", "text": "tile"}, img], text_numbers=numbers)
+
+    monkeypatch.setattr(r, "_images", tiles)
+
+
+def test_a_scan_is_sent_once_cached_and_checked_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    cs = [callout("Ø22.22 ±0.1", 1)]
+    first = extraction() | {"callouts": cs}
+    check = {
+        "verdict": "accept",
+        "checks": ALL_OK,
+        "corrected": extraction(),
+        "callouts": cs,
+        "questions_for_engineer": [],
+    }
+    fake = FakeClient([first, check])
+    fake.usage = {
+        "input_tokens": 1000,
+        "output_tokens": 2000,
+        "cache_creation_input_tokens": 9000,
+        "cache_read_input_tokens": 0,
+    }
+    r = reader(fake)
+    _with_tiles(r, monkeypatch, numbers=[])
+    result = r.read_report(PDF)
+    content = fake.calls[0]["messages"][0]["content"]
+    assert [b["type"] for b in content] == ["text", "image", "text"]  # no PDF copy of a scan
+    assert content[1]["cache_control"] == {"type": "ephemeral"}  # agent 2 reads it from cache
+    assert len(fake.calls) == 2
+    u = result.notes["usage"]
+    assert u["calls"] == 2 and u["input"] == 2000 and u["output"] == 4000
+    assert u["cost_usd"] == round((2000 * 4 + 4000 * 20 + 18000 * 5) / 1e6, 2)
+
+
+def test_a_text_layer_number_alone_does_not_cost_a_second_round(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cs = [callout("Ø22.22 ±0.1", 1)]
+    first = extraction() | {"callouts": cs}
+    check = {
+        "verdict": "accept",
+        "checks": ALL_OK,
+        "corrected": extraction(),
+        "callouts": cs,
+        "questions_for_engineer": [],
+    }
+    fake = FakeClient([first, check])
+    r = reader(fake)
+    _with_tiles(r, monkeypatch, numbers=["99.9"])  # a CAD sheet: printed number nobody used
+    result = r.read_report(PDF)
+    assert fake.calls[0]["messages"][0]["content"][0]["type"] == "document"  # text layer: PDF kept
+    assert len(fake.calls) == 2  # no third call for it...
+    assert any("99.9" in x for x in result.notes["unaccounted"])  # ...the engineer checks it

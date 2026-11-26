@@ -366,6 +366,7 @@ async def _run_ai_read(
         "callouts",
         "balloons",
         "unaccounted",
+        "usage",
     ):
         info[key] = notes.get(key)
     if notes.get("not_lathe"):

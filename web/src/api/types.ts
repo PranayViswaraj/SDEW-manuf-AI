@@ -389,6 +389,15 @@ export interface KnownDrawingInfo {
   balloons?: number | null;
   /** Callouts, balloons and printed numbers the AI could not account for: check them. */
   unaccounted?: string[] | null;
+  /** Tokens this read used, and the approximate cost (US$, list price). */
+  usage?: {
+    calls: number;
+    input: number;
+    output: number;
+    cache_write: number;
+    cache_read: number;
+    cost_usd: number;
+  } | null;
   verdict?: string | null;
 }
 

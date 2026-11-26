@@ -246,6 +246,15 @@ export default function AiReadPanel({
                 ))}
               </div>
             )}
+            {info.usage && (
+              <p className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                Used {info.usage.calls} AI calls ·{' '}
+                {Math.round((info.usage.input + info.usage.cache_write + info.usage.cache_read) / 1000)}k
+                tokens in ({Math.round(info.usage.cache_read / 1000)}k from cache) ·{' '}
+                {Math.round(info.usage.output / 1000)}k tokens out · about{' '}
+                <b className="text-slate-800">${info.usage.cost_usd.toFixed(2)}</b>
+              </p>
+            )}
             {info.callouts != null && (
               <div
                 className={`rounded-xl border p-3 text-sm ${

@@ -73,9 +73,10 @@ class Settings(BaseSettings):
     # "claude" also needs an Anthropic API key and `pip install .[ai]`.
     ai_reader: Literal["off", "claude"] = "off"
     ai_model: str = "claude-opus-5-5"
-    # "xhigh": very careful reading that still finishes. At "max" a dense drawing made agent 1
-    # think until it ran out of answer room (measured on Wo-1047), so it is not the default.
-    ai_effort: Literal["low", "medium", "high", "xhigh", "max"] = "xhigh"
+    # "high": careful reading at a sensible token cost (thinking is most of the bill); agent 2,
+    # the callout inventories and the engineer's ticks back it up. "xhigh" thinks much longer
+    # for little gain on drawings; "max" ran out of answer room on Wo-1047.
+    ai_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
     # The key: ANTHROPIC_API_KEY from the environment or a .env file (never in git). A secret:
     # it never appears in logs, errors or settings dumps.
     anthropic_api_key: SecretStr | None = Field(

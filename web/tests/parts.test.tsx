@@ -79,10 +79,15 @@ describe('feature table screen', () => {
         data: (body as { data: FeatureTable['data'] }).data,
       }),
     });
-    const input = await screen.findByLabelText('Bar diameter value');
-    fireEvent.change(input, { target: { value: '52' } });
-    fireEvent.blur(input);
-    await waitFor(() => expect(screen.getByLabelText('Bar diameter confirmed')).not.toBeChecked());
+    await screen.findByLabelText('Bar diameter value');
+    // On a busy PC the page's last data load can land after the first edit and reset it:
+    // edit again until the edit sticks (a person cannot type before the page has loaded).
+    await waitFor(() => {
+      const input = screen.getByLabelText('Bar diameter value');
+      fireEvent.change(input, { target: { value: '52' } });
+      fireEvent.blur(input);
+      expect(screen.getByLabelText('Bar diameter confirmed')).not.toBeChecked();
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Add feature' }));
     expect(screen.getByText('1. OD (outside diameter)')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));

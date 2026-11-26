@@ -54,6 +54,7 @@ class BrowserClaudeReader(ClaudeDrawingReader):
             res = json.loads(str(raw))
         except Exception as e:  # noqa: BLE001 - a browser-side failure: say what it was
             raise DrawingReaderError(f"The browser could not reach the AI service: {e}") from e
+        self._count(res.get("usage") or {})
         if not res.get("ok"):
             status = int(res.get("status") or 0)
             msg = _HTTP_MESSAGES.get(status) or f"The AI service answered with an error ({status})."

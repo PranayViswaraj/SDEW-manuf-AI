@@ -42,6 +42,8 @@ MAX_VERIFY_ROUNDS = 2
 # The most the model can answer (thinking included). A careful read of a dense sheet thinks long:
 # at effort "max" agent 1 used all of 64,000 tokens on thinking and wrote no answer.
 MAX_TOKENS = 128000
+# Claude Opus 5.5 list prices, US$ per million tokens (for the cost shown to the engineer).
+PRICE = {"input": 4.0, "output": 20.0, "cache_write": 5.0, "cache_read": 0.20}
 # When an answer is still cut off, try once more one effort level lower.
 LOWER_EFFORT = {"max": "xhigh", "xhigh": "high", "high": "medium"}
 LOW_CONFIDENCE = 0.7
@@ -134,6 +136,24 @@ class ClaudeDrawingReader(DrawingReader):
             raise DrawingReaderError("The AI answer was not a JSON object.")
         return answer
 
+    def _count(self, usage: Any) -> None:
+        """Add one call's tokens to this read's total (shown to the engineer with the cost)."""
+        if not hasattr(self, "usage"):
+            self.usage = {"calls": 0, "input": 0, "output": 0, "cache_write": 0, "cache_read": 0}
+
+        def get(key: str) -> Any:
+            return usage.get(key) if isinstance(usage, dict) else getattr(usage, key, None)
+
+        self.usage["calls"] += 1
+        for key, field_name in (
+            ("input", "input_tokens"),
+            ("output", "output_tokens"),
+            ("cache_write", "cache_creation_input_tokens"),
+            ("cache_read", "cache_read_input_tokens"),
+        ):
+            v = get(field_name)
+            self.usage[key] += int(v) if isinstance(v, int | float) else 0
+
     def _ask(
         self, system: str, content: list[dict[str, Any]], schema: dict[str, Any]
     ) -> dict[str, Any]:
@@ -141,6 +161,7 @@ class ClaudeDrawingReader(DrawingReader):
             betas=[FALLBACK_BETA], **self._request(system, content, schema)
         ) as stream:
             msg = stream.get_final_message()
+        self._count(getattr(msg, "usage", None) or {})
         text = next((b.text for b in msg.content if b.type == "text"), "")
         return self._answer(msg.stop_reason, text)
 
@@ -215,19 +236,29 @@ class ClaudeDrawingReader(DrawingReader):
         part_number: str = "",
         progress: Progress | None = None,
     ) -> ReaderResult:
-        drawing = [drawing_block(file)]
+        self.usage = {"calls": 0, "input": 0, "output": 0, "cache_write": 0, "cache_read": 0}
         say = progress or (lambda stage, n: None)
         try:
             say("extract", 0)  # agent 1: features, 3D shape analysis, feature list, callouts
             images = await self._images(file)
-            drawing += images.blocks
+            # The PDF itself only when it adds something: a CAD sheet's text layer, or no tiles.
+            # A scan in the PDF is just one more copy of the picture the tiles already show.
+            drawing = [*images.blocks]
+            if not images.blocks or images.text_numbers:
+                drawing.insert(0, drawing_block(file))
+            # Cache the drawing: agent 2's rounds resend the same system prompt and drawing, and a
+            # cached prefix is read at a small fraction of the price.
+            drawing[-1] = {**drawing[-1], "cache_control": {"type": "ephemeral"}}
             first = await self.aextract(drawing, part_number)
             say("verify", 1)  # agent 2: checks every value, makes its own callout inventory
             gaps = completeness(first, None, images.text_numbers)
             rounds = [await self.averify(drawing, first, gaps.message(first_round=True))]
             gaps = completeness(first, rounds[-1], images.text_numbers)
-            if any(c["verdict"] == "wrong" for c in rounds[-1]["checks"]) or gaps.any():
-                say("verify", 2)  # corrected something or left gaps: one more independent look
+            # A second look only when it can change the result: agent 2 corrected values, or a
+            # callout / balloon is still not accounted for (a text-layer number alone is not
+            # worth a whole extra read: it is listed for the engineer instead).
+            if any(c["verdict"] == "wrong" for c in rounds[-1]["checks"]) or gaps.serious():
+                say("verify", 2)
                 rounds.append(
                     await self.averify(
                         drawing, rounds[-1]["corrected"], gaps.message(first_round=False)
@@ -257,6 +288,13 @@ class ClaudeDrawingReader(DrawingReader):
             "check_counts": {
                 v: sum(1 for c in checks if c.get("verdict") == v)
                 for v in ("ok", "wrong", "unsupported", "unclear")
+            },
+            "usage": self.usage
+            | {
+                "cost_usd": round(
+                    sum(self.usage[k] * PRICE[k] for k in PRICE) / 1_000_000,
+                    2,
+                )
             },
             "callouts": len(last.get("callouts") or []),
             "balloons": gaps.highest_balloon,
@@ -332,6 +370,10 @@ class Gaps:
 
     def any(self) -> bool:
         return bool(self.unaccounted or self.missing_balloons or self.first_only or self.text_only)
+
+    def serious(self) -> bool:
+        """Gaps worth a second checking round: a callout or balloon not found or not placed."""
+        return bool(self.unaccounted or self.missing_balloons or self.first_only)
 
     def message(self, *, first_round: bool) -> str:
         lines: list[str] = []
