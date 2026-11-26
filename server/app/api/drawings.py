@@ -375,7 +375,9 @@ async def _run_ai_read(
             *data["header"].values(),
             *(c for f in data["features"] for c in f["fields"].values()),
         ]:
-            cell["value"], cell["confirmed"] = None, False  # suggestions only (safety rule 3)
+            # filled in, never ticked: the engineer checks each value against the drawing and
+            # ticks it; the table cannot be confirmed (or a program made) before every tick
+            cell["value"], cell["confirmed"] = cell["ai"], False
         if data["header"]["bar_diameter"]["ai"] is None:
             info["not_on_drawing"] = ["bar_diameter"]
         ft.data = data
@@ -391,8 +393,8 @@ async def _run_ai_read(
     info["filled"] = True
     finish(
         "done",
-        "The AI read this drawing (one agent read it, a second checked and corrected it). Each "
-        "value is a suggestion: compare it with the drawing, press Use, tick it, then confirm.",
+        "The AI read this drawing (one agent read it, a second checked and corrected it) and "
+        "filled in the table. Check each value against the drawing and tick it, then confirm.",
     )
 
 

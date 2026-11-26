@@ -114,9 +114,20 @@ The table describes turned geometry from a FRONT FACE (Z0), measuring towards th
   dimensions: e.g. overall 62, shoulder at 34 from the small end, flange 6 thick ->
   Ø22.22 x 34, Ø31 x 22, Ø38 x 6. The step lengths of one clamping plus the other must add up to
   the overall length; if they do not, report the mismatch as a question instead of forcing it.
-- A chamfer/radius/cone feature comes IMMEDIATELY BEFORE the OD or bore it belongs to (it is the
-  corner at the front of that step). A concave fillet at the root of a shoulder (G02 into the
-  shoulder) cannot be expressed: put it in not_in_table.
+- A TAPERED outside section (a diameter that changes along the length: "2°", "1.5°",
+  "8.04X0.75°", or two end diameters over a length) is ONE "taper" feature: diameter_start at its
+  front end (the smaller one, nearer Z0), diameter_end toward the chuck, its own length, and the
+  angle per side exactly as drawn. Never describe a taper with "cone" features and never with an
+  OD plus a corner: "cone" is ONLY a countersink / cone at the mouth of a BORE.
+- A plain OD that carries on at a taper's end size (e.g. taper to Ø21.30, then Ø21.30 x 17) is
+  allowed right after that taper.
+- A chamfer/radius/cone feature comes IMMEDIATELY BEFORE the OD, taper or bore it belongs to (it
+  is the corner at the front of that step). Never two corner features in a row: one step has at
+  most one corner. A concave fillet at the root of a shoulder (G02 into the shoulder), an
+  undercut, or an undimensioned edge break cannot be expressed: put it in not_in_table.
+- Before answering, walk the profile from Z0 to the chuck and check the table is a valid chain:
+  each OD/taper starts at least as big as the step before it, corners only in front of a step,
+  step lengths (taper lengths included) add up to the overall length.
 - Bores: largest first going in, each "depth" measured from the front face to the end of that bore.
 - Drilled holes: diameter and depth (to the full diameter, not the drill point). If the drawing
   shows only a bore, do not invent the drill size; leave drill out or null with a question.
@@ -181,7 +192,11 @@ COMPLETENESS (the most important check)
 Then check the whole table:
 - Classification (turned part vs assembly/tube/other) is right.
 - Clamping order: OD steps grow towards the chuck within each clamping; a flip is present when the
-  part has to be turned around; feature order is valid (corner feature directly before its OD/bore).
+  part has to be turned around; feature order is valid (corner feature directly before its
+  OD/taper/bore, never two corner features in a row).
+- Every tapered outside section is ONE "taper" feature (diameter_start, diameter_end, length,
+  angle as drawn), never "cone" features or an OD with a corner; "cone" is only for a bore mouth.
+  Rebuild the table if the first reader did otherwise.
 - Step lengths add up to the overall length; bores/drills fit inside the part; groove positions lie
   on the diameter they cut.
 - Every tolerance either matches the drawing or the drawing's own general tolerance table (with the

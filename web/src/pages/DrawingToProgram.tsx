@@ -1902,7 +1902,7 @@ export default function DrawingToProgram() {
                   <Notice tone="info">
                     <p className="font-medium">
                       {knownInfo.ai
-                        ? `AI read drawing ${knownInfo.title}: one agent read it and a second checked it. Each value is only a suggestion: compare it with the drawing, press Use, tick it, then press Confirm table.`
+                        ? `AI read drawing ${knownInfo.title}: one agent read it and a second checked and corrected it, and the table below is filled in. Check each value against the drawing and tick it, then press Confirm table.`
                         : `Known drawing ${knownInfo.part_number}: the values below were filled for you. Check each against the drawing, tick it, then press Confirm table.`}
                     </p>
                     {knownInfo.questions && knownInfo.questions.length > 0 && (
@@ -1952,6 +1952,7 @@ export default function DrawingToProgram() {
                   drawingRef={selectedDrawing?.filename ?? ft.drawing_ref}
                   programText={writing ? null : (editText ?? preview?.text ?? null)}
                   aiOn={!!aiReader?.enabled}
+                  nonTurned={knownInfo?.shape_3d?.non_turned ?? []}
                 />
                 <h3 className="pt-2 font-semibold">
                   Feature table: enter, check against the drawing and tick

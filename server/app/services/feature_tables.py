@@ -33,6 +33,16 @@ FEATURE_TYPES: dict[str, tuple[str, list[tuple[str, str, Kind]]]] = {
         "OD (outside diameter)",
         [("diameter", "Diameter", "mm"), ("length", "Length", "mm"), *_TOL],
     ),
+    "taper": (
+        "Taper (OD)",
+        [
+            ("diameter_start", "Diameter at the front end", "mm"),
+            ("diameter_end", "Diameter at the end toward the chuck", "mm"),
+            ("length", "Length", "mm"),
+            ("angle", "Angle per side (as drawn)", "deg"),
+            *_TOL,
+        ],
+    ),
     "bore": ("ID / bore", [("diameter", "Diameter", "mm"), ("depth", "Depth", "mm"), *_TOL]),
     "face": ("Face", [("position", "Position from datum", "mm"), *_TOL]),
     "chamfer": ("Chamfer", [("size", "Size", "mm"), ("angle", "Angle", "deg"), *_TOL]),
@@ -287,8 +297,9 @@ def build_inspection_plan(data: dict[str, Any]) -> list[dict[str, Any]]:
                     }
                 )
             continue
-        tp, tm = _num(cells.get("tol_plus", {}).get("value")), _num(
-            cells.get("tol_minus", {}).get("value")
+        tp, tm = (
+            _num(cells.get("tol_plus", {}).get("value")),
+            _num(cells.get("tol_minus", {}).get("value")),
         )
         dims = [(k, flabel, kind) for k, flabel, kind in fields if kind in ("mm", "deg")]
         for i, (key, flabel, kind) in enumerate(dims):

@@ -17,6 +17,7 @@ TURNING = {"od_rough", "od_finish"}
 # Tool types a feature needs: each inner set = "at least one of these".
 REQUIRED_TOOLS: dict[str, list[set[str]]] = {
     "od": [TURNING],
+    "taper": [TURNING],
     "face": [TURNING],
     "chamfer": [TURNING | {"bore"}],
     "radius": [TURNING | {"bore"}],
@@ -121,6 +122,11 @@ def check_capability(feature_table: dict[str, Any], machine: Machine) -> Capabil
             d = _num(_value(f["fields"].get("diameter")))
             if d is not None:
                 diameters.append(d)
+        elif f.get("type") == "taper":
+            for k in ("diameter_start", "diameter_end"):
+                d = _num(_value(f["fields"].get(k)))
+                if d is not None:
+                    diameters.append(d)
     largest = max(diameters) if diameters else None
 
     _limit_check(reasons, "bar_diameter", bar, limits.get("max_bar_diameter"), "bar diameter")

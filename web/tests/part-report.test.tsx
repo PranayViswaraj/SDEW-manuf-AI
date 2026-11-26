@@ -72,3 +72,20 @@ describe('part report: before any value is entered', () => {
     expect(screen.queryByRole('table', { name: 'Characteristics' })).not.toBeInTheDocument();
   });
 });
+
+describe('part report: off-lathe features', () => {
+  it('lists what the lathe cannot make as OP30, from the AI 3D analysis', () => {
+    render(
+      <PartReport
+        model={buildPartModel(DATA)}
+        partNumber="P-1"
+        drawingRef="p1.pdf"
+        programText={null}
+        nonTurned={['Flat on the Ø27 head, 10.93 from the axis, 2X R3']}
+      />,
+    );
+    const op30 = screen.getByRole('list', { name: 'OP30 features' });
+    expect(op30).toHaveTextContent('Flat on the Ø27 head');
+    expect(screen.getByText('Off the lathe: milling or grinding')).toBeInTheDocument();
+  });
+});

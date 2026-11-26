@@ -1013,3 +1013,85 @@ def test_boss_suction_pipe_drawing_and_program_match() -> None:
     assert "N4(CENTER)" in first and "N8(3MM GROOVE)" in first
     assert "N3(" not in first and "N9(" not in first and "M99" not in first
     assert [p.name for p in match_part(lib, "1627C00501")] == ["O0003"]
+
+
+def core_pin() -> dict[str, Any]:
+    """A tapered core pin like Wo-1047 (tip first): tapers, a chamfer, a parallel and a head."""
+    return {
+        "header": {
+            "material_grade": cell("H13"),
+            "bar_diameter": cell(32.0),
+            "overall_length": cell(80.0),
+        },
+        "features": [
+            feat("face", position=0.0, tol_plus=0.0, tol_minus=-0.02),
+            feat(
+                "taper",
+                diameter_start=3.4,
+                diameter_end=3.5,
+                length=3.48,
+                angle=1.0,
+                tol_plus=0.0,
+                tol_minus=0.0,
+            ),
+            feat(
+                "taper",
+                diameter_start=8.35,
+                diameter_end=8.53,
+                length=8.04,
+                angle=0.64,
+                tol_plus=0.0,
+                tol_minus=0.0,
+            ),
+            feat("chamfer", size=1.0, angle=45.0, tol_plus=0.0, tol_minus=0.0),
+            feat(
+                "taper",
+                diameter_start=16.3,
+                diameter_end=21.3,
+                length=45.48,
+                angle=3.14,
+                tol_plus=0.0,
+                tol_minus=-0.02,
+            ),
+            feat("od", diameter=21.3, length=15.0, tol_plus=0.0, tol_minus=-0.02),
+            feat("od", diameter=27.0, length=8.0, tol_plus=0.0, tol_minus=-0.1),
+        ],
+    }
+
+
+def test_tapers_are_cut_as_straight_lines_to_the_end_diameter() -> None:
+    r = gen(core_pin())
+    assert r.problems == [], r.problems
+    lines = r.text.splitlines()
+    # finishing contour: the tip taper runs from X3.4 at Z0 to X3.5 at Z-3.48 in one G1
+    assert "G1X3.5Z-3.48" in lines
+    assert "G1X8.53Z-11.52" in lines
+    # a chamfer on a taper's front corner ends on the taper line, then the taper continues
+    i = lines.index("G1X14.29")  # 16.29 front (mid-tolerance) less 2 x 1.0 chamfer
+    assert lines[i + 1] == "G1X16.4Z-12.52"  # on the taper line, 1.0 behind its front
+    assert lines[i + 2] == "G1X21.29Z-57.0"
+    # the parallel carries on at the taper's end size, then the head
+    assert lines[i + 3 : i + 6] == ["G1X21.29", "G1Z-72.0", "G1X26.95"]
+    v = validate(r.text, MachineContext({t.tool_code for t in TOOLS}, None, 3000))
+    assert v.errors == []
+
+
+def test_taper_checks() -> None:
+    data = core_pin()
+    data["features"][1] = feat(
+        "taper",
+        diameter_start=3.5,
+        diameter_end=3.4,
+        length=3.48,
+        angle=1.0,
+        tol_plus=0.0,
+        tol_minus=0.0,
+    )
+    geo, problems = read_geometry(data)
+    assert geo is None and any("must grow toward the chuck" in x for x in problems)
+    # an angle that does not match the diameters is a note for the engineer, not a stop
+    data = core_pin()
+    data["features"][2]["fields"]["angle"] = cell(0.75)
+    geo, problems = read_geometry(data)
+    assert problems == [] and geo is not None
+    assert any("0.75° per side does not match" in n for n in geo.notes)

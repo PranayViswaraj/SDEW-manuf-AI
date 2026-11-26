@@ -69,6 +69,7 @@ export interface PartModel {
 
 const TYPE_LABEL: Record<string, string> = {
   od: 'OD turn',
+  taper: 'Taper turn',
   bore: 'Bore',
   face: 'Face',
   chamfer: 'Chamfer',
@@ -153,8 +154,8 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
     );
 
   // turned intervals, part coordinates (p from the front face), for the outline
-  const odSpans: { p0: number; p1: number; r: number }[] = [];
-  const holeSpans: { p0: number; p1: number; r: number }[] = [];
+  const odSpans: Span[] = [];
+  const holeSpans: Span[] = [];
 
   for (const side of sides) {
     const rows = side.op === 'OP10' ? out.op10 : out.op20;
@@ -275,6 +276,98 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
             c.angle,
           );
         pending = { row, axial: 0 };
+      } else if (f.type === 'taper') {
+        const d0 = num(c.diameter_start);
+        const d1 = num(c.diameter_end);
+        const ln = num(c.length) ?? 0;
+        const a = num(c.angle);
+        row.nominal =
+          d0 !== null && d1 !== null ? `Ø${d0} → Ø${d1}${a !== null ? `, ${a}°/side` : ''}, L ${ln}` : '';
+        if (d0 !== null && lastOd && lastOd.dia < d0 - 1e-9)
+          rows.push({
+            id: '',
+            feature: n,
+            type: 'shoulder',
+            typeLabel: 'Shoulder face',
+            nominal: `Ø${lastOd.dia} / Ø${d0}`,
+            tol: null,
+            zFrom: r3(-zOd),
+            zTo: r3(-zOd),
+            length: null,
+            drawing: '',
+            span: partSpan(-zOd, -zOd),
+            derived: true,
+          });
+        place(-zOd, -(zOd + ln));
+        const what = (end: string) => `Taper ${end} (row ${n})`;
+        if (d0 !== null)
+          addChar(
+            {
+              label: `Ø${f2(d0)}`,
+              what: what('front'),
+              op: side.op,
+              feature: n,
+              nominal: d0,
+              upper: tp,
+              lower: tm,
+              programmed: midTol(d0, tp, tm),
+              xWord: true,
+            },
+            c.diameter_start,
+          );
+        if (d1 !== null)
+          addChar(
+            {
+              label: `Ø${f2(d1)}`,
+              what: what('end'),
+              op: side.op,
+              feature: n,
+              nominal: d1,
+              upper: tp,
+              lower: tm,
+              programmed: midTol(d1, tp, tm),
+              xWord: true,
+            },
+            c.diameter_end,
+          );
+        if (ln)
+          addChar(
+            {
+              label: f2(ln),
+              what: `Taper length (row ${n})`,
+              op: side.op,
+              feature: n,
+              nominal: ln,
+              upper: null,
+              lower: null,
+              programmed: null,
+              xWord: false,
+            },
+            c.length,
+          );
+        if (a !== null)
+          addChar(
+            {
+              label: `${a}°`,
+              what: `Taper angle per side (row ${n})`,
+              op: side.op,
+              feature: n,
+              nominal: a,
+              upper: null,
+              lower: null,
+              programmed: null,
+              xWord: false,
+            },
+            c.angle,
+          );
+        if (d0 !== null && d1 !== null) {
+          odSpans.push(
+            span(toPart(-zOd), toPart(-(zOd + ln)), midTol(d0, tp, tm) / 2, midTol(d1, tp, tm) / 2),
+          );
+          out.maxDia = Math.max(out.maxDia ?? 0, d0, d1);
+          lastOd = { dia: d1, z: -(zOd + ln) };
+        }
+        zOd += ln;
       } else if (f.type === 'od') {
         const d = num(c.diameter);
         const ln = num(c.length) ?? 0;
@@ -467,13 +560,19 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
   return out;
 }
 
-function span(a: number, b: number, r: number) {
-  return { p0: Math.min(a, b), p1: Math.max(a, b), r };
+type Span = { p0: number; p1: number; r0: number; r1: number };
+
+/** A turned span from part position a (radius ra) to b (radius rb, default ra: a cylinder). */
+function span(a: number, b: number, ra: number, rb = ra): Span {
+  return a <= b ? { p0: a, p1: b, r0: ra, r1: rb } : { p0: b, p1: a, r0: rb, r1: ra };
 }
+
+const rAt = (s: Span, p: number) =>
+  s.p1 === s.p0 ? s.r0 : s.r0 + ((s.r1 - s.r0) * (p - s.p0)) / (s.p1 - s.p0);
 
 /** Stepped outline over the part length: turned spans, gaps at the bar (outer) or axis (inner). */
 function outline(
-  spans: { p0: number; p1: number; r: number }[],
+  spans: Span[],
   length: number | null,
   gap: number,
   side: 'outer' | 'inner',
@@ -490,10 +589,15 @@ function outline(
   for (let i = 0; i < ps.length - 1; i++) {
     const mid = (ps[i] + ps[i + 1]) / 2;
     const cover = spans.filter((s) => s.p0 <= mid && s.p1 >= mid);
-    let r = gap;
-    if (cover.length)
-      r = side === 'outer' ? Math.min(...cover.map((s) => s.r)) : Math.max(...cover.map((s) => s.r));
-    pts.push([ps[i], r], [ps[i + 1], r]);
+    if (!cover.length) {
+      pts.push([ps[i], gap], [ps[i + 1], gap]);
+      continue;
+    }
+    // the material left: the smallest outside / largest inside span over this interval
+    const pick = cover.reduce((a, b) =>
+      side === 'outer' ? (rAt(b, mid) < rAt(a, mid) ? b : a) : rAt(b, mid) > rAt(a, mid) ? b : a,
+    );
+    pts.push([ps[i], rAt(pick, ps[i])], [ps[i + 1], rAt(pick, ps[i + 1])]);
   }
   return pts;
 }

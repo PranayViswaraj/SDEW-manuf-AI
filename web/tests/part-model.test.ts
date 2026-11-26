@@ -76,3 +76,37 @@ describe('part model from the feature table', () => {
     expect(d2).toMatchObject({ nominal: 38, ai: 38, pending: true, span: [22, 32] });
   });
 });
+
+describe('tapers', () => {
+  const pin: FeatureTableData = {
+    header: { material_grade: c('H13'), bar_diameter: c(32), overall_length: c(132.24) },
+    features: [
+      { type: 'face', fields: { position: c(0) } },
+      {
+        type: 'taper',
+        fields: { diameter_start: c(3.4), diameter_end: c(3.5), length: c(3.48), angle: c(1) },
+      },
+      {
+        type: 'taper',
+        fields: { diameter_start: c(16.3), diameter_end: c(21.3), length: c(71.59), angle: c(2) },
+      },
+      { type: 'od', fields: { diameter: c(21.3), length: c(17) } },
+      { type: 'od', fields: { diameter: c(27), length: c(8), tol_plus: c(0), tol_minus: c(-0.1) } },
+    ],
+  };
+  const m = buildPartModel(pin);
+
+  it('plans a taper as one taper turn, with a shoulder where the size steps up', () => {
+    expect(m.op10.map((r) => r.type)).toEqual(['face', 'taper', 'shoulder', 'taper', 'od', 'shoulder', 'od']);
+    const t = m.op10[3];
+    expect(t).toMatchObject({ typeLabel: 'Taper turn', zFrom: -3.48, zTo: -75.07, length: 71.59 });
+    expect(t.nominal).toBe('Ø16.3 → Ø21.3, 2°/side, L 71.59');
+    expect(t.drawing).toBe('Ø16.30, Ø21.30, 71.59, 2°');
+  });
+
+  it('draws the taper as a slope in the outline (3D and section)', () => {
+    const at = (p: number) => m.outer.filter(([q]) => Math.abs(q - p) < 1e-9).map(([, r]) => r);
+    expect(at(3.48)).toEqual([1.75, 8.15]); // step up from the tip taper to the long taper
+    expect(at(75.07)).toEqual([10.65, 10.65]); // the taper ends at the parallel's size
+  });
+});

@@ -229,11 +229,24 @@ class Corner:
 
 @dataclass
 class Step:
-    dia: float  # the diameter cut (middle of the tolerance)
+    dia: float  # the diameter cut (middle of the tolerance); a taper's diameter at z_back
     z_front: float
     z_back: float
     corner: Corner = field(default_factory=Corner)
     nominal: float | None = None  # the drawing's nominal size
+    front: float | None = None  # a taper's diameter at z_front (None: a plain cylinder)
+
+    @property
+    def d0(self) -> float:
+        """Diameter at the front of the step (where its corner is)."""
+        return self.dia if self.front is None else self.front
+
+    def dia_at(self, z: float) -> float:
+        """Diameter at Z on this step (straight line along a taper)."""
+        if self.front is None or self.z_front == self.z_back:
+            return self.dia
+        t = (self.z_front - z) / (self.z_front - self.z_back)
+        return self.front + (self.dia - self.front) * min(1.0, max(0.0, t))
 
 
 @dataclass
@@ -353,7 +366,14 @@ Side = tuple[
 ]
 
 
-def _parse_side(feats: list[dict[str, Any]], first_n: int, p: list[str], *, back: bool) -> Side:
+def _parse_side(
+    feats: list[dict[str, Any]],
+    first_n: int,
+    p: list[str],
+    *,
+    back: bool,
+    notes: list[str] | None = None,
+) -> Side:
     """One clamping's features, measured from its own finished face (Z0)."""
     face_word = "back" if back else "front"
     od: list[Step] = []
@@ -394,11 +414,40 @@ def _parse_side(feats: list[dict[str, Any]], first_n: int, p: list[str], *, back
                 pending = Corner(cone=(mouth, ang, blend))
             continue
         corner, pending = (pending or Corner()), None
-        if t == "od":
+        if t == "taper":
+            n0 = _num(c.get("diameter_start"), f"{name} taper front diameter", p)
+            n1 = _num(c.get("diameter_end"), f"{name} taper end diameter", p)
+            d0, d1 = _mid(c, n0), _mid(c, n1)
+            ln = _num(c.get("length"), f"{name} taper length", p)
+            if not (math.isnan(d0) or math.isnan(d1)):
+                if d1 <= d0:
+                    p.append(
+                        f"{name}: the taper must grow toward the chuck (front {n0:g}, end {n1:g})."
+                        + ("" if back else " Turn the part around for a taper the other way.")
+                    )
+                if od and d0 < od[-1].dia - 1e-9:
+                    p.append(
+                        f"{name}: the taper starts at {n0:g}, smaller than the step before it "
+                        f"({od[-1].dia:g}). Diameters must grow towards the chuck in one clamping."
+                    )
+            ang = _val(c.get("angle"))
+            if isinstance(ang, int | float) and not math.isnan(ln) and ln > 0 and n1 > n0:
+                drawn = math.degrees(math.atan((n1 - n0) / 2 / ln))
+                if abs(drawn - float(ang)) > 0.05 and notes is not None:
+                    notes.append(
+                        f"{name}: the drawing's {float(ang):g}° per side does not match "
+                        f"Ø{n0:g} to Ø{n1:g} over {ln:g} ({drawn:.2f}°). The program cuts the "
+                        "diameters; check which governs with the designer."
+                    )
+            od.append(Step(d1, -z_od, -(z_od + ln), corner, n1, front=d0))
+            z_od += ln
+        elif t == "od":
             nom = _num(c.get("diameter"), f"{name} OD diameter", p)
             d = _mid(c, nom)
             ln = _num(c.get("length"), f"{name} OD length", p)
-            if od and d <= od[-1].dia:
+            # a plain step may carry on at a taper's end size; otherwise it must be bigger
+            continues = bool(od) and od[-1].front is not None and abs(d - od[-1].dia) < 1e-9
+            if od and d <= od[-1].dia and not continues:
                 p.append(
                     f"{name}: OD {d:g} is not bigger than the step before it ({od[-1].dia:g}). "
                     "Diameters must grow towards the chuck in one clamping"
@@ -441,7 +490,7 @@ def _parse_side(feats: list[dict[str, Any]], first_n: int, p: list[str], *, back
                 )
         elif t == "flip":
             continue
-        if (corner.chamfer or corner.radius or corner.cone) and t not in ("od", "bore"):
+        if (corner.chamfer or corner.radius or corner.cone) and t not in ("od", "bore", "taper"):
             p.append(
                 f"Feature {pending_n}: a chamfer/radius/cone must be followed by an OD or bore."
             )
@@ -478,12 +527,12 @@ def read_geometry(
     if len(flips) > 1:
         p.append("'Turn part around' can only be used once (two clampings).")
     cut = flips[0] if flips else len(feats)
-    front = _parse_side(feats[:cut], 1, p, back=False)
+    front = _parse_side(feats[:cut], 1, p, back=False, notes=notes)
     od, bores, drill, grooves, threads_raw = front
     back: BackSide | None = None
     if flips:
         b_od, b_bores, b_drill, b_grooves, b_threads = _parse_side(
-            feats[cut + 1 :], cut + 2, p, back=True
+            feats[cut + 1 :], cut + 2, p, back=True, notes=notes
         )
         if b_grooves or b_threads:
             p.append("Grooves and threads are only made in the first clamping.")
@@ -548,7 +597,7 @@ def read_geometry(
                 p.append("The smallest bore must be bigger than the drill.")
             if drill[1] < -bores[-1].z_back:
                 p.append("The drill must be at least as deep as the deepest bore.")
-        if od and bores[0].dia >= od[0].dia:
+        if od and bores[0].dia >= od[0].d0:
             p.append("The bore is not smaller than the front OD.")
         for i, s in enumerate(bores):
             outer = bores[i - 1].dia if i else (od[0].dia if od else limit_x)
@@ -605,7 +654,7 @@ def _check_back(b: BackSide, geo: Geometry, limit_x: float, p: list[str]) -> Non
             p.append(f"The smallest back bore is smaller than the hole ({hole:g}) it starts from.")
         if -b.bores[-1].z_back > geo.length + 1e-9:
             p.append("A back bore is deeper than the part is long.")
-        if b.od and b.bores[0].dia >= b.od[0].dia:
+        if b.od and b.bores[0].dia >= b.od[0].d0:
             p.append("The back bore is not smaller than the back OD.")
         for i, s in enumerate(b.bores):
             outer = b.bores[i - 1].dia if i else (b.od[0].dia if b.od else limit_x)
@@ -613,17 +662,17 @@ def _check_back(b: BackSide, geo: Geometry, limit_x: float, p: list[str]) -> Non
 
 
 def _check_corner(s: Step, other: float, what: str, p: list[str], *, external: bool) -> None:
-    room = abs(s.dia - other) / 2  # shoulder height available for the corner
+    room = abs(s.d0 - other) / 2  # shoulder height available for the corner
     span = s.z_front - s.z_back
     if s.corner.cone:
         mouth, ang, r = s.corner.cone
-        inward = mouth > s.dia if not external else mouth < s.dia
+        inward = mouth > s.d0 if not external else mouth < s.d0
         if not inward:
             side = "bigger" if not external else "smaller"
             p.append(f"Cone on {what} {s.dia:g}: the mouth must be {side} than the {what}.")
         elif math.isfinite(ang):
-            x1, z1, _, z2 = s.corner.cone_points(s.dia, s.z_front)
-            if (x1 - mouth) * (s.dia - mouth) < -1e-9:
+            x1, z1, _, z2 = s.corner.cone_points(s.d0, s.z_front)
+            if (x1 - mouth) * (s.d0 - mouth) < -1e-9:
                 p.append(f"Cone on {what} {s.dia:g}: the blend radius R{r:g} is too big.")
             if s.z_front - z2 >= span:
                 p.append(f"Cone on {what} {s.dia:g} is longer than the step it is on.")
@@ -648,7 +697,7 @@ def _corner_len(s: Step) -> float:
     if c.radius:
         return c.radius
     if c.cone:
-        return s.z_front - c.cone_points(s.dia, s.z_front)[3]
+        return s.z_front - c.cone_points(s.d0, s.z_front)[3]
     return 0.0
 
 
@@ -661,7 +710,13 @@ def drawing_profile(geo: Geometry) -> dict[str, Any]:
 
     def steps(ss: list[Step]) -> list[dict[str, float]]:
         return [
-            {"dia": s.dia, "z_front": s.z_front, "z_back": s.z_back, "corner": _corner_len(s)}
+            {
+                "dia": s.dia,
+                "dia_front": s.d0,
+                "z_front": s.z_front,
+                "z_back": s.z_back,
+                "corner": _corner_len(s),
+            }
             for s in ss
         ]
 
@@ -749,7 +804,8 @@ def generate(
             full = bool(geo.od) and -geo.od[-1].z_back >= geo.length - 1e-9
             kept = [s for s in geo.od if s.z_front > limit + 1e-9]
             if kept and kept[-1].z_back < limit - 1e-9:
-                kept[-1] = Step(kept[-1].dia, kept[-1].z_front, limit, kept[-1].corner)
+                k = kept[-1]
+                kept[-1] = Step(k.dia_at(limit), k.z_front, limit, k.corner, k.nominal, k.front)
                 geo.notes.append(
                     f"Cut blank held in the chuck: the OD is turned to Z{fmt(limit)} in this "
                     f"clamping, as in {geo.max_turn_source}; the rest is turned after turning the "
@@ -1091,11 +1147,11 @@ def _starts(steps: list[Step], external: bool) -> list[float]:
     sign = 1 if external else -1
     out: list[float] = []
     for s in steps:
-        out.append(s.dia)
+        out += [s.dia, s.d0]
         if s.corner.chamfer:
-            out.append(s.dia - sign * 2 * s.corner.chamfer[1])
+            out.append(s.d0 - sign * 2 * s.corner.chamfer[1])
         if s.corner.radius:
-            out.append(s.dia - sign * 2 * s.corner.radius)
+            out.append(s.d0 - sign * 2 * s.corner.radius)
         if s.corner.cone:
             out.append(s.corner.cone[0])
     return out
@@ -1141,12 +1197,12 @@ def _profile(
 
     def corner_start(s: Step) -> float:
         if s.corner.chamfer:
-            return s.dia - sign * 2 * s.corner.chamfer[1]
+            return s.d0 - sign * 2 * s.corner.chamfer[1]
         if s.corner.radius:
-            return s.dia - sign * 2 * s.corner.radius
+            return s.d0 - sign * 2 * s.corner.radius
         if s.corner.cone:
             return s.corner.cone[0]
-        return s.dia
+        return s.d0
 
     w.raw(f"N{p}G0X{fmt(corner_start(steps[0]))}")
     w.raw(f"G1Z{fmt(steps[0].z_front)}F{fmt(feed)}")
@@ -1154,19 +1210,23 @@ def _profile(
         if i:
             w.raw(f"G1X{fmt(corner_start(s))}")
         if s.corner.chamfer:
-            w.raw(f"G1X{fmt(s.dia)}Z{fmt(s.z_front - s.corner.chamfer[0])}")
+            z = s.z_front - s.corner.chamfer[0]
+            w.raw(f"G1X{fmt(s.dia_at(z))}Z{fmt(z)}")
         elif s.corner.radius:
             r = s.corner.radius
-            w.raw(f"{arc}X{fmt(s.dia)}Z{fmt(s.z_front - r)}R{fmt(r)}")
+            w.raw(f"{arc}X{fmt(s.dia_at(s.z_front - r))}Z{fmt(s.z_front - r)}R{fmt(r)}")
         elif s.corner.cone:
-            x1, z1, x2, z2 = s.corner.cone_points(s.dia, s.z_front)
+            x1, z1, x2, z2 = s.corner.cone_points(s.d0, s.z_front)
             blend = s.corner.cone[2]
             if blend > 0:
                 w.raw(f"G1X{fmt(x1)}Z{fmt(z1)}")
                 w.raw(f"{arc}X{fmt(x2)}Z{fmt(z2)}R{fmt(blend)}")
             else:
                 w.raw(f"G1X{fmt(x2)}Z{fmt(z2)}")
-        w.raw(f"G1Z{fmt(s.z_back)}")
+        if s.front is None:
+            w.raw(f"G1Z{fmt(s.z_back)}")
+        else:  # taper: one straight line to the end diameter
+            w.raw(f"G1X{fmt(s.dia)}Z{fmt(s.z_back)}")
     w.raw(f"N{q}G1X{fmt(x_exit)}")
 
 

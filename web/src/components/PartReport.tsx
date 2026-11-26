@@ -14,6 +14,7 @@ const signed = (v: number | null, d = 3) =>
 
 const TYPE_TONE: Record<string, string> = {
   od: 'bg-sky-50 text-sky-800 ring-sky-200',
+  taper: 'bg-indigo-50 text-indigo-800 ring-indigo-200',
   bore: 'bg-violet-50 text-violet-800 ring-violet-200',
   drill: 'bg-violet-50 text-violet-800 ring-violet-200',
   chamfer: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
@@ -404,6 +405,7 @@ export default function PartReport({
   drawingRef,
   programText,
   aiOn = false,
+  nonTurned = [],
 }: {
   model: PartModel;
   partNumber: string;
@@ -411,6 +413,8 @@ export default function PartReport({
   programText: string | null;
   /** The AI reader is switched on (it fills the table when it reads a drawing). */
   aiOn?: boolean;
+  /** Features a lathe alone cannot make (flats, cross holes…), from the AI's 3D analysis. */
+  nonTurned?: string[];
 }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [planPick, setPlanPick] = useState<PlanRow | null>(null);
@@ -585,6 +589,30 @@ export default function PartReport({
                 setSelected(null);
               }}
             />
+          )}
+          {nonTurned.length > 0 && (
+            <div className="overflow-hidden rounded-xl border border-violet-200 bg-white shadow-sm">
+              <div className="flex items-center gap-3 border-b border-violet-200 bg-violet-50/70 px-4 py-3">
+                <span className="rounded-lg bg-violet-700 px-2 py-1 text-xs font-bold text-white">OP30</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-slate-900">Off the lathe: milling or grinding</p>
+                  <p className="text-xs text-slate-600">
+                    From the AI&apos;s 3D analysis of the drawing · not cut by the lathe program
+                  </p>
+                </div>
+                <span className="rounded-full bg-white px-2.5 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">
+                  {nonTurned.length} feature{nonTurned.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <ol className="divide-y divide-slate-100 text-sm" aria-label="OP30 features">
+                {nonTurned.map((x, k) => (
+                  <li key={x} className="flex gap-4 px-4 py-2">
+                    <span className="font-mono text-xs text-slate-500">N{k + 1}</span>
+                    <span className="text-slate-800">{x}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
           )}
         </div>
       )}

@@ -159,6 +159,7 @@ def test_schema_lists_all_feature_types(client: TestClient, role_headers: H) -> 
     types = {t["type"] for t in s["feature_types"]}
     assert types == {
         "od",
+        "taper",
         "bore",
         "face",
         "chamfer",

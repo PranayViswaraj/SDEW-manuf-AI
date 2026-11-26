@@ -254,7 +254,7 @@ def test_drawing_upload_fills_empty_table_with_ai_suggestions(
     assert ft["source"] == "drawing_reader" and ft["status"] == "draft"
     assert ft["data"]["features"][0]["fields"]["diameter"] == {
         "ai": 22.22,
-        "value": None,
+        "value": 22.22,  # filled in for the engineer to check, never ticked
         "confirmed": False,
     }
 

@@ -87,6 +87,15 @@ export interface DrawingStep {
   z_back: number;
   /** Axial length of the corner at the front of the step: skipped by the compare. */
   corner?: number;
+  /** A taper's diameter at z_front (dia is then its diameter at z_back). */
+  dia_front?: number;
+}
+
+/** Diameter of a drawing step at Z (straight line along a taper). */
+export function stepDiaAt(s: DrawingStep, z: number): number {
+  if (s.dia_front === undefined || s.dia_front === s.dia || s.z_front === s.z_back) return s.dia;
+  const t = Math.min(1, Math.max(0, (s.z_front - z) / (s.z_front - s.z_back)));
+  return s.dia_front + (s.dia - s.dia_front) * t;
 }
 
 export interface DrawingProfile {

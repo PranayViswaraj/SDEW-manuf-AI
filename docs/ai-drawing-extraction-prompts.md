@@ -50,6 +50,17 @@ SDEW receives drawings as PDFs only (no STEP model), most of them scans. Three m
 
 Accuracy is measured, not assumed: `python -m app.ai.evaluate <drawings folder>` (section 6).
 
+### Tapers and autofill (from the first live read, Wo-1047)
+
+- The feature table has a **Taper (OD)** type (front diameter, end diameter, length, angle per side
+  as drawn). The program generator cuts it as one straight `G1 X.. Z..` from the front to the end
+  diameter; when the drawn angle does not match the diameters and length, the program follows the
+  diameters and the mismatch is a note for the engineer, not a stop.
+- The AI **fills the table in** (`value` = the AI's reading) but never ticks anything: the engineer
+  checks and ticks each value; the table cannot be confirmed, nor a program made, before that.
+- Features a lathe cannot make (flats, cross holes) come from the 3D analysis and are listed as
+  OP30 (milling or grinding) in the process plan.
+
 ## Why the drawing must be read as an image
 
 Sampling the reference drawings in the shared Drive folder (about 255 TAFE drawings) showed the
@@ -162,9 +173,16 @@ The table describes turned geometry from a FRONT FACE (Z0), measuring towards th
   dimensions: e.g. overall 62, shoulder at 34 from the small end, flange 6 thick ->
   Ø22.22 x 34, Ø31 x 22, Ø38 x 6. The step lengths of one clamping plus the other must add up to
   the overall length; if they do not, report the mismatch instead of forcing it.
-- A chamfer/radius/cone feature comes IMMEDIATELY BEFORE the OD or bore it belongs to (it is the
-  corner at the front of that step). A concave fillet at the root of a shoulder (G02 into the
-  shoulder) cannot be expressed: put it in not_in_table.
+- A TAPERED outside section (a diameter that changes along the length: "2°", "1.5°",
+  "8.04X0.75°", or two end diameters over a length) is ONE "taper" feature: diameter_start at its
+  front end (the smaller one, nearer Z0), diameter_end toward the chuck, its own length, and the
+  angle per side exactly as drawn. Never describe a taper with "cone" features and never with an
+  OD plus a corner: "cone" is ONLY a countersink / cone at the mouth of a BORE.
+- A plain OD that carries on at a taper's end size is allowed right after that taper.
+- A chamfer/radius/cone feature comes IMMEDIATELY BEFORE the OD, taper or bore it belongs to.
+  Never two corner features in a row. A concave fillet at the root of a shoulder, an undercut or
+  an undimensioned edge break cannot be expressed: put it in not_in_table.
+- Before answering, walk the profile from Z0 to the chuck and check the table is a valid chain.
 - Bores: largest first going in, each "depth" measured from the front face to the end of that bore.
 - Drilled holes: diameter and depth (to the full diameter, not the drill point). If the drawing shows
   only a bore, do not invent the drill size; leave drill out or null with a question.

@@ -10,6 +10,7 @@ import { Stock, radial, spanAt, type CutMode } from './stock';
 import { angleOf, hull, insideWedge, toolGeometry, type ToolGeometry } from './tools';
 import {
   OP_KINDS,
+  stepDiaAt,
   type CheckCode,
   type MaterialSnapshot,
   type OpGroup,
@@ -478,7 +479,7 @@ export function compareDrawing(
       const step = dwg.od.find((s) => z <= s.z_front && z >= s.z_back);
       if (step && !near(z, s0(step), step.z_back, step.corner ?? 0)) {
         state[i] = 2;
-        note('deep', 'OD', z, step.dia / 2, step.dia);
+        note('deep', 'OD', z, stepDiaAt(step, z) / 2, stepDiaAt(step, z));
       }
       continue;
     }
@@ -489,8 +490,11 @@ export function compareDrawing(
     const groove = grooves.find((g) => z <= g.z_front && z >= g.z_back);
     const thread = threads.find((th) => z <= th.z_front && z >= th.z_back);
     if (step && !near(z, s0(step), step.z_back, step.corner ?? 0)) {
-      let want = step.dia / 2;
-      let where = `OD Ø${step.dia}`;
+      let want = stepDiaAt(step, z) / 2;
+      let where =
+        step.dia_front !== undefined && step.dia_front !== step.dia
+          ? `taper Ø${step.dia_front}–Ø${step.dia}`
+          : `OD Ø${step.dia}`;
       if (groove) {
         if (z > groove.z_front - SHOULDER_SKIP || z < groove.z_back + SHOULDER_SKIP) want = NaN;
         else {
