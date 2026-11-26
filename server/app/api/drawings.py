@@ -6,7 +6,7 @@ import uuid
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 
 from fastapi import (
@@ -28,9 +28,15 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.drawing_reader import DrawingReaderError, ai_reader_enabled, get_drawing_reader
+from app.ai.drawing_reader import (
+    AI_MODELS,
+    DrawingReaderError,
+    ai_reader_enabled,
+    get_drawing_reader,
+)
 from app.ai.known_drawings import KnownDrawing, find_known, load_known
 from app.auth.deps import any_user, get_audit, require_roles
+from app.config import get_settings
 from app.db.models import Drawing, FeatureTable, FeatureTableStatus, Role, User
 from app.db.session import get_db
 from app.services.audit_log import AuditLogger, AuditResult
@@ -278,6 +284,7 @@ def _start_ai_read(
     part: str,
     d: Drawing,
     content: bytes,
+    model: str | None = None,
 ) -> dict[str, Any] | None:
     """Not a known drawing: two AI agents read it into the EMPTY table, as a background job.
 
@@ -316,7 +323,8 @@ def _start_ai_read(
         "updated": time.time(),
         "info": info,
     }
-    args = (request.app, job_id, user.id, part, d.filename, content, dict(info))
+    info["model"] = model or get_settings().ai_model
+    args = (request.app, job_id, user.id, part, d.filename, content, dict(info), model)
     # The in-browser server (GitHub Pages) runs the job as a task on its own event loop, so the
     # app keeps answering while the agents read; a normal server uses a background task.
     schedule = getattr(request.app.state, "ai_scheduler", None)
@@ -335,6 +343,7 @@ async def _run_ai_read(
     filename: str,
     content: bytes,
     info: dict[str, Any],
+    model: str | None = None,
 ) -> None:
     job = _ai_jobs(app)[job_id]
 
@@ -346,7 +355,7 @@ async def _run_ai_read(
         job.update(status=status, stage=status, info=info, updated=time.time())
 
     try:
-        reader = get_drawing_reader()
+        reader = get_drawing_reader(model) if model else get_drawing_reader()
         if getattr(reader, "runs_in_event_loop", False):
             result = await reader.aread_report(content, filename, part, progress)  # type: ignore[attr-defined]
         else:
@@ -413,6 +422,9 @@ def ai_read_drawing(
     drawing_id: int,
     request: Request,
     background: BackgroundTasks,
+    model: Literal["sonnet", "opus"] | None = Query(
+        None, description="Which model reads it: sonnet (everyday) or opus (more thorough)."
+    ),
     db: Session = Depends(get_db),
     user: User = Depends(uploaders),
 ) -> dict[str, Any]:
@@ -424,7 +436,16 @@ def ai_read_drawing(
     d = db.get(Drawing, drawing_id)
     if d is None:
         raise HTTPException(404, "Drawing not found.")
-    info = _start_ai_read(request, background, db, user, d.part_number, d, d.content)
+    info = _start_ai_read(
+        request,
+        background,
+        db,
+        user,
+        d.part_number,
+        d,
+        d.content,
+        AI_MODELS[model] if model else None,
+    )
     if info is None:
         raise HTTPException(
             409,

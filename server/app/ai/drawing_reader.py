@@ -58,11 +58,15 @@ def ai_reader_enabled() -> bool:
     return get_settings().ai_reader == "claude"
 
 
-def get_drawing_reader() -> DrawingReader:
+# Models an engineer may pick for one read: the everyday reader and the more thorough one.
+AI_MODELS = {"sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}
+
+
+def get_drawing_reader(model: str | None = None) -> DrawingReader:
     s = get_settings()
     if s.ai_reader == "claude":
         from app.ai.claude_reader import ClaudeDrawingReader
 
         key = s.anthropic_api_key.get_secret_value() if s.anthropic_api_key else None
-        return ClaudeDrawingReader(model=s.ai_model, effort=s.ai_effort, api_key=key)
+        return ClaudeDrawingReader(model=model or s.ai_model, effort=s.ai_effort, api_key=key)
     return StubDrawingReader()

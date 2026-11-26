@@ -11,7 +11,7 @@ model (Claude). Built in `server/app/ai/claude_reader.py` (pipeline) and `server
 pip install ".[ai]"                 # in server/
 MANUFAI_AI_READER=claude
 ANTHROPIC_API_KEY=<key>             # server environment only, never in git
-MANUFAI_AI_MODEL=claude-opus-5-5    # default
+MANUFAI_AI_MODEL=claude-sonnet-5-5  # default; "Read with Opus" on the page for difficult drawings
 MANUFAI_AI_EFFORT=xhigh             # default (max ran out of answer room on a dense drawing)
 ```
 

@@ -1885,39 +1885,54 @@ export default function DrawingToProgram() {
                       <span className="flex-1 text-sky-950">
                         {tableEmpty ? 'Let the two AI agents read' : 'Read again with the two AI agents:'}{' '}
                         <b>{selectedDrawing.filename}</b>. Agent 1 extracts every feature and dimension, agent
-                        2 checks each one against the drawing (most careful setting: about 20–30 minutes; keep
-                        this tab open).{!tableEmpty && ' It replaces the values the AI filled in before.'}
+                        2 checks each one against the drawing. Keep this tab open while they work.
+                        {!tableEmpty && ' It replaces the values the AI filled in before.'}
+                        <span className="mt-1 block text-xs text-sky-900/80">
+                          Read with AI: Sonnet, about 5 minutes and well under $1 a drawing. Read with Opus:
+                          more thorough for dense or poor drawings, about 10 minutes and about $2.
+                        </span>
                       </span>
-                      <button
-                        type="button"
-                        className="btn-primary"
-                        disabled={aiStarting}
-                        onClick={async () => {
-                          if (
-                            !tableEmpty &&
-                            !window.confirm(
-                              'Read the drawing again with AI? The values the AI filled in before are replaced.',
+                      {(['sonnet', 'opus'] as const).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          className={m === 'sonnet' ? 'btn-primary' : 'btn'}
+                          disabled={aiStarting}
+                          onClick={async () => {
+                            if (
+                              !tableEmpty &&
+                              !window.confirm(
+                                'Read the drawing again with AI? The values the AI filled in before are replaced.',
+                              )
                             )
-                          )
-                            return;
-                          setAiStarting(true);
-                          try {
-                            const info = await api.post<KnownDrawingInfo>(
-                              `/drawings/${selectedDrawing.id}/ai-read`,
-                            );
-                            if (info.job_id) {
-                              setKnownInfo(null);
-                              setAiJob(info.job_id);
+                              return;
+                            setAiStarting(true);
+                            try {
+                              const info = await api.post<KnownDrawingInfo>(
+                                `/drawings/${selectedDrawing.id}/ai-read${m === 'opus' ? '?model=opus' : ''}`,
+                              );
+                              if (info.job_id) {
+                                setKnownInfo(null);
+                                setAiJob(info.job_id);
+                              }
+                            } catch (e) {
+                              setError((e as Error).message);
+                            } finally {
+                              setAiStarting(false);
                             }
-                          } catch (e) {
-                            setError((e as Error).message);
-                          } finally {
-                            setAiStarting(false);
-                          }
-                        }}
-                      >
-                        {aiStarting ? 'Starting…' : tableEmpty ? 'Read with AI' : 'Read again with AI'}
-                      </button>
+                          }}
+                        >
+                          {aiStarting
+                            ? 'Starting…'
+                            : m === 'opus'
+                              ? tableEmpty
+                                ? 'Read with Opus (more thorough)'
+                                : 'Read again with Opus'
+                              : tableEmpty
+                                ? 'Read with AI'
+                                : 'Read again with AI'}
+                        </button>
+                      ))}
                     </div>
                   )}
                 {knownInfo && (

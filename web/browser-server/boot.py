@@ -98,9 +98,9 @@ from app.ai.browser_reader import BrowserClaudeReader, key_set  # noqa: E402
 from app.config import get_settings  # noqa: E402
 
 
-def _browser_reader() -> BrowserClaudeReader:
+def _browser_reader(model: str | None = None) -> BrowserClaudeReader:
     s = get_settings()
-    return BrowserClaudeReader(model=s.ai_model, effort=s.ai_effort)
+    return BrowserClaudeReader(model=model or s.ai_model, effort=s.ai_effort)
 
 
 _drawings.ai_reader_enabled = key_set

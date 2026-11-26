@@ -160,3 +160,30 @@ def test_a_browser_side_failure_is_explained(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(sys.modules["js"], "manufaiAnthropic", boom)
     with pytest.raises(DrawingReaderError, match="could not reach the AI service: TypeError"):
         asyncio.run(BrowserClaudeReader(model="m").aread_report(PDF))
+
+
+def test_read_again_with_opus(
+    client: TestClient, role_headers: dict[str, dict[str, str]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api import drawings as api_mod
+
+    eng = role_headers["engineer"]
+    client.post("/api/feature-tables", json={"part_number": "AI-10"}, headers=eng)
+    did = client.post(
+        "/api/drawings",
+        data={"part_number": "AI-10"},
+        files={"file": ("ai-10.pdf", PDF, "application/pdf")},
+        headers=eng,
+    ).json()["id"]
+    used: list[str | None] = []
+
+    def factory(model: str | None = None) -> Any:
+        used.append(model)
+        return reader(FakeClient([extraction(), verdict(extraction())]))
+
+    monkeypatch.setattr(api_mod, "ai_reader_enabled", lambda: True)
+    monkeypatch.setattr(api_mod, "get_drawing_reader", factory)
+    assert client.post(f"/api/drawings/{did}/ai-read?model=gpt", headers=eng).status_code == 422
+    r = client.post(f"/api/drawings/{did}/ai-read?model=opus", headers=eng)
+    assert r.status_code == 200 and r.json()["model"] == "claude-opus-5-5"
+    assert used == ["claude-opus-5-5"]

@@ -389,6 +389,8 @@ export interface KnownDrawingInfo {
   balloons?: number | null;
   /** Callouts, balloons and printed numbers the AI could not account for: check them. */
   unaccounted?: string[] | null;
+  /** The model that read it (claude-sonnet-5-5, claude-opus-5-5). */
+  model?: string | null;
   /** Tokens this read used, and the approximate cost (US$, list price). */
   usage?: {
     calls: number;

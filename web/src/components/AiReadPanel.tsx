@@ -167,7 +167,18 @@ export default function AiReadPanel({
       aria-label="AI drawing reader"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-semibold">Two AI agents are reading the drawing</h3>
+        <h3 className="font-semibold">
+          Two AI agents are reading the drawing
+          {info?.model && (
+            <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+              {info.model.includes('opus')
+                ? 'Opus 5.5'
+                : info.model.includes('sonnet')
+                  ? 'Sonnet 5.5'
+                  : info.model}
+            </span>
+          )}
+        </h3>
         <span className="rounded-full bg-slate-900 px-2.5 py-1 font-mono text-xs text-white tabular-nums">
           {job?.status === 'running' || !job ? `${secs}s` : job.status === 'done' ? 'Done' : 'Stopped'}
         </span>

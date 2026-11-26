@@ -72,11 +72,12 @@ class Settings(BaseSettings):
     # AI drawing reader (two agents: extractor + verifier). "off" = engineers enter every value.
     # "claude" also needs an Anthropic API key and `pip install .[ai]`.
     ai_reader: Literal["off", "claude"] = "off"
-    ai_model: str = "claude-opus-5-5"
-    # "high": careful reading at a sensible token cost (thinking is most of the bill); agent 2,
-    # the callout inventories and the engineer's ticks back it up. "xhigh" thinks much longer
-    # for little gain on drawings; "max" ran out of answer room on Wo-1047.
-    ai_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
+    # Sonnet 5.5 reads Wo-1047 correctly at about a quarter of Opus' cost and 3x faster;
+    # "Read again with Opus" is offered on the page for difficult drawings.
+    ai_model: str = "claude-sonnet-5-5"
+    # "xhigh" with Sonnet: careful reading at a fraction of Opus' price (thinking is most of the
+    # bill). "max" ran out of answer room on Wo-1047 (Opus).
+    ai_effort: Literal["low", "medium", "high", "xhigh", "max"] = "xhigh"
     # The key: ANTHROPIC_API_KEY from the environment or a .env file (never in git). A secret:
     # it never appears in logs, errors or settings dumps.
     anthropic_api_key: SecretStr | None = Field(
