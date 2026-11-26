@@ -122,9 +122,29 @@ def test_read_with_ai_for_an_uploaded_drawing(
     assert r.status_code == 200, r.text
     job = client.get(f"/api/drawings/ai-jobs/{r.json()['job_id']}", headers=eng).json()
     assert job["status"] == "done" and job["info"]["filled"], job
-    # read once: a second press does not spend credits reading it again
+    # nobody has touched the AI's values yet: uploading the drawing again reads it again
+    fake2 = FakeClient([extraction(diameter=22.0), verdict(extraction(diameter=22.0))])
+    monkeypatch.setattr(api_mod, "get_drawing_reader", lambda: reader(fake2))
+    up2 = client.post(
+        "/api/drawings",
+        data={"part_number": "AI-9"},
+        files={"file": ("ai-9.pdf", PDF, "application/pdf")},
+        headers=eng,
+    )
+    job2 = client.get(f"/api/drawings/ai-jobs/{up2.json()['autofill']['job_id']}", headers=eng)
+    assert job2.json()["info"]["filled"], job2.json()
+    ft_id = client.get("/api/feature-tables", headers=eng).json()[0]["id"]
+    ft = client.get(f"/api/feature-tables/{ft_id}", headers=eng).json()
+    assert ft["data"]["features"][0]["fields"]["diameter"]["value"] == 22.0  # the new reading
+    # once an engineer has ticked a value, the AI never touches the table again
+    data = ft["data"]
+    data["features"][0]["fields"]["diameter"]["confirmed"] = True
+    assert (
+        client.put(f"/api/feature-tables/{ft_id}", json={"data": data}, headers=eng).status_code
+        == 200
+    )
     again = client.post(f"/api/drawings/{did}/ai-read", headers=eng)
-    assert again.status_code == 409 and "already read" in again.json()["detail"]
+    assert again.status_code == 409 and "never overwrites" in again.json()["detail"]
     assert (
         client.post(f"/api/drawings/{did}/ai-read", headers=role_headers["operator"]).status_code
         == 403

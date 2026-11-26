@@ -142,11 +142,20 @@ def _other_part_in_name(request: Request, db: Session, filename: str, part: str)
     return None
 
 
-def _has_ai_suggestions(ft: FeatureTable) -> bool:
+def _ai_untouched(ft: FeatureTable) -> bool:
+    """Filled by the AI reader and not touched since: no value ticked or changed by an engineer,
+    table not confirmed. Such a table may be read again (and replaced) by the AI."""
+    if ft.source != "drawing_reader" or ft.status != FeatureTableStatus.DRAFT.value:
+        return False
     cells = list(ft.data.get("header", {}).values()) + [
         c for f in ft.data.get("features", []) for c in f.get("fields", {}).values()
     ]
-    return any(c.get("ai") not in (None, "") for c in cells)
+    return all(not c.get("confirmed") and c.get("value") in (None, "", c.get("ai")) for c in cells)
+
+
+def _ai_may_fill(ft: FeatureTable) -> bool:
+    """Empty, or only what the AI itself filled in: the AI never overwrites an engineer's work."""
+    return _table_is_empty(ft) or _ai_untouched(ft)
 
 
 def _table_is_empty(ft: FeatureTable) -> bool:
@@ -275,7 +284,7 @@ def _start_ai_read(
     The upload answers at once with a job id; the screen polls /drawings/ai-jobs/{id} and shows
     agent 1 (extract + 3D analysis + feature list) and agent 2 (verify) as they work."""
     ft = db.scalar(select(FeatureTable).where(FeatureTable.part_number == part))
-    if ft is None or not _table_is_empty(ft):
+    if ft is None or not _ai_may_fill(ft):
         return None
     for job in _ai_jobs(request.app).values():  # already reading this part: show that job
         if job["part_number"] == part and job["status"] == "running":
@@ -367,7 +376,7 @@ async def _run_ai_read(
     with factory() as db:
         ft = db.scalar(select(FeatureTable).where(FeatureTable.part_number == part))
         user = db.get(User, user_id)
-        if ft is None or not _table_is_empty(ft) or user is None:
+        if ft is None or not _ai_may_fill(ft) or user is None:
             finish("done", "The table was filled meanwhile; the AI suggestions were not applied.")
             return
         data = normalise(result.table.model_dump())
@@ -406,26 +415,21 @@ def ai_read_drawing(
     db: Session = Depends(get_db),
     user: User = Depends(uploaders),
 ) -> dict[str, Any]:
-    """Read an uploaded drawing with the two AI agents. Fills only an EMPTY feature table, as
-    suggestions the engineer checks and ticks; answers at once with the job to poll."""
+    """Read an uploaded drawing with the two AI agents into an empty feature table, or again into
+    a table the AI filled that nobody has touched. Nothing is ticked: the engineer checks every
+    value. Answers at once with the job to poll."""
     if not ai_reader_enabled():
         raise HTTPException(409, "The AI reader is off. Switch it on (API key) and try again.")
     d = db.get(Drawing, drawing_id)
     if d is None:
         raise HTTPException(404, "Drawing not found.")
-    ft = db.scalar(select(FeatureTable).where(FeatureTable.part_number == d.part_number))
-    if ft is not None and _has_ai_suggestions(ft):
-        raise HTTPException(
-            409,
-            f"The AI has already read a drawing of part {d.part_number}: its suggestions are in "
-            "the table. Check and tick them, or clear the table to read again.",
-        )
     info = _start_ai_read(request, background, db, user, d.part_number, d, d.content)
     if info is None:
         raise HTTPException(
             409,
-            f"The feature table of part {d.part_number} already has values. The AI only fills an "
-            "empty table, so it never overwrites what an engineer entered.",
+            f"An engineer has already entered or ticked values in the feature table of part "
+            f"{d.part_number}. The AI never overwrites an engineer's work: it reads only into an "
+            "empty table, or again into a table it filled itself that nobody has touched.",
         )
     return info
 

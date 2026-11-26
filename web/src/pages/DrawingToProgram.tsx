@@ -1525,6 +1525,21 @@ export default function DrawingToProgram() {
   );
   const accepted = program?.status === 'approved';
   const partModel = useMemo(() => buildPartModel(data), [data]);
+  // The table holds only what the AI filled in, untouched: the AI may read the drawing again.
+  const aiUntouched =
+    !!ft &&
+    !!data &&
+    !dirty &&
+    ft.source === 'drawing_reader' &&
+    ft.status === 'draft' &&
+    [...Object.values(data.header), ...data.features.flatMap((f) => Object.values(f.fields))].every(
+      (c) => !c.confirmed && (c.value === null || c.value === '' || c.value === c.ai),
+    );
+  const tableEmpty =
+    !!data &&
+    [...Object.values(data.header), ...data.features.flatMap((f) => Object.values(f.fields))].every(
+      (c) => c.value === null || c.value === '',
+    );
   const machineControlOk = !!machine && (machine.controller ?? '').toUpperCase().startsWith('FANUC');
   const acceptBlockers: string[] = [];
   if (!isEngineer && !isProgrammer) acceptBlockers.push('Log in as Engineer (or Sample).');
@@ -1865,19 +1880,26 @@ export default function DrawingToProgram() {
                   aiReader?.enabled &&
                   selectedDrawing &&
                   isEngineer &&
-                  partModel.chars.length === 0 &&
-                  data.features.length === 0 && (
+                  (tableEmpty || aiUntouched) && (
                     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-sky-200 bg-sky-50/70 px-4 py-3 text-sm">
                       <span className="flex-1 text-sky-950">
-                        Let the two AI agents read <b>{selectedDrawing.filename}</b>: agent 1 extracts every
-                        feature and dimension, agent 2 checks each one against the drawing. It takes a few
-                        minutes; you can keep working meanwhile.
+                        {tableEmpty ? 'Let the two AI agents read' : 'Read again with the two AI agents:'}{' '}
+                        <b>{selectedDrawing.filename}</b>. Agent 1 extracts every feature and dimension, agent
+                        2 checks each one against the drawing (most careful setting: about 20–30 minutes; keep
+                        this tab open).{!tableEmpty && ' It replaces the values the AI filled in before.'}
                       </span>
                       <button
                         type="button"
                         className="btn-primary"
                         disabled={aiStarting}
                         onClick={async () => {
+                          if (
+                            !tableEmpty &&
+                            !window.confirm(
+                              'Read the drawing again with AI? The values the AI filled in before are replaced.',
+                            )
+                          )
+                            return;
                           setAiStarting(true);
                           try {
                             const info = await api.post<KnownDrawingInfo>(
@@ -1894,7 +1916,7 @@ export default function DrawingToProgram() {
                           }
                         }}
                       >
-                        {aiStarting ? 'Starting…' : 'Read with AI'}
+                        {aiStarting ? 'Starting…' : tableEmpty ? 'Read with AI' : 'Read again with AI'}
                       </button>
                     </div>
                   )}

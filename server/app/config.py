@@ -73,7 +73,8 @@ class Settings(BaseSettings):
     # "claude" also needs an Anthropic API key and `pip install .[ai]`.
     ai_reader: Literal["off", "claude"] = "off"
     ai_model: str = "claude-opus-5-5"
-    ai_effort: Literal["low", "medium", "high", "xhigh", "max"] = "xhigh"
+    # "max": the most careful reading the API offers (accuracy over time and cost)
+    ai_effort: Literal["low", "medium", "high", "xhigh", "max"] = "max"
     # The key: ANTHROPIC_API_KEY from the environment or a .env file (never in git). A secret:
     # it never appears in logs, errors or settings dumps.
     anthropic_api_key: SecretStr | None = Field(

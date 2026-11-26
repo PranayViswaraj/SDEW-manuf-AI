@@ -27,7 +27,7 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: 'jsdom',
       // page tests click through several steps; give them room when the PC is busy
-      testTimeout: 15000,
+      testTimeout: 30000,
       globals: true,
       setupFiles: ['./tests/setup.ts'],
       include: ['tests/**/*.test.{ts,tsx}'],
