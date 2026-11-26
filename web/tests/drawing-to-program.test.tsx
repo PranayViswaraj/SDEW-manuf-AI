@@ -31,6 +31,8 @@ vi.mock('../src/cnc-sim/CncSimulatorView', async () => {
   };
 });
 
+vi.mock('../src/components/PartPreview3D', () => ({ default: () => <div data-testid="part-3d" /> }));
+
 afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.clear();

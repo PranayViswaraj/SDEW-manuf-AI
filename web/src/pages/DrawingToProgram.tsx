@@ -42,6 +42,8 @@ import UsbDownload from '../components/UsbDownload';
 import { MachineLiveBadge } from '../components/StatusBadge';
 import { useLiveStatus } from '../hooks/useLiveStatus';
 import ToolpathView from '../components/ToolpathView';
+import PartReport from '../components/PartReport';
+import { buildPartModel } from '../lib/partModel';
 import type { SimCheck } from '../cnc-sim/job';
 import { ErrorBox, Notice } from '../components/ui';
 
@@ -674,9 +676,14 @@ function Progress({ steps }: { steps: { label: string; done: boolean }[] }) {
         aria-hidden="true"
       >
         <span>
+          <strong className="text-slate-900">
+            Step {reached + 1} of {steps.length}
+          </strong>{' '}
+          · {steps[reached]?.label}
+        </span>
+        <span className="tabular-nums">
           {doneCount} of {steps.length} done
         </span>
-        <span className="tabular-nums">{Math.round((doneCount / steps.length) * 100)}%</span>
       </div>
       <div className="relative">
         <div
@@ -1513,6 +1520,7 @@ export default function DrawingToProgram() {
     [simText],
   );
   const accepted = program?.status === 'approved';
+  const partModel = useMemo(() => buildPartModel(data), [data]);
   const machineControlOk = !!machine && (machine.controller ?? '').toUpperCase().startsWith('FANUC');
   const acceptBlockers: string[] = [];
   if (!isEngineer && !isProgrammer) acceptBlockers.push('Log in as Engineer (or Sample).');
@@ -1528,7 +1536,7 @@ export default function DrawingToProgram() {
       `The 3D simulation found ${simResult.errors} safety ${simResult.errors === 1 ? 'alarm' : 'alarms'} (rapid through metal, spindle off or tool past centre): fix the program in step 4.`,
     );
   const sendBlockers: string[] = [];
-  if (!accepted) sendBlockers.push('The program must be accepted in step 5 first.');
+  if (!accepted) sendBlockers.push('The program must be accepted in step 6 first.');
   if (!isOperator) sendBlockers.push('Log in as Operator (or Sample) to send.');
   if (machine && !machine.ip_address)
     sendBlockers.push(`Enter the CNC IP address of ${machine.name} in step 3.`);
@@ -1602,13 +1610,26 @@ export default function DrawingToProgram() {
           </>
         ),
       };
-    if (!accepted)
+    if (!accepted && simResult && simResult.errors > 0)
       return {
         step: 5,
         text: (
           <>
-            Read the program in step 4 and play its tool path. If it is right, the engineer presses{' '}
-            <strong>Accept program</strong> in step 5.
+            The 3D simulation in step 5 found{' '}
+            <strong>
+              {simResult.errors} safety {simResult.errors === 1 ? 'alarm' : 'alarms'}
+            </strong>
+            : fix the program in step 4, then generate it again.
+          </>
+        ),
+      };
+    if (!accepted)
+      return {
+        step: 6,
+        text: (
+          <>
+            Read the program in step 4 and play it in the 3D simulation in step 5. If it is right, the
+            engineer presses <strong>Accept program</strong> in step 6.
           </>
         ),
       };
@@ -1637,10 +1658,10 @@ export default function DrawingToProgram() {
         ),
       };
     return {
-      step: 6,
+      step: 7,
       text: (
         <>
-          Press <strong>Send to {machine.name}</strong> in step 6. On the run screen: pick the bar, tick the 6
+          Press <strong>Send to {machine.name}</strong> in step 7. On the run screen: pick the bar, tick the 6
           safety checks, press <strong>Send program</strong>. Then press <strong>Cycle Start</strong> at the
           machine.
         </>
@@ -1652,21 +1673,29 @@ export default function DrawingToProgram() {
     <ActiveStep.Provider value={nextAction.step}>
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold">Drawing to program</h1>
-          <p className="text-base text-slate-700">
-            Upload the drawing, check its values, choose the machine, then approve and send. A part that
-            already has a proven program uses that program. Otherwise a program is written by fixed rules from
-            the drawing values: never by AI, never with invented numbers.
+          <h1 className="flex flex-wrap items-center gap-3 text-2xl font-semibold tracking-tight">
+            Lathe: drawing to program
+            <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-800 ring-1 ring-sky-200">
+              Lathe · {machine?.controller || 'FANUC 0i-TF'}
+            </span>
+          </h1>
+          <p className="max-w-4xl text-base text-slate-700">
+            Drawing in, checked lathe program out. The engineer confirms every dimension of the drawing; the
+            program is written live by fixed rules from those values (OP10, and OP20 when the part is turned
+            round), checked, and played in the 3D simulation before it is accepted. A part with a proven
+            program uses that program. No AI writes or edits programs. The machine is always started at its
+            own control.
           </p>
         </div>
         <Progress
           steps={[
             { label: 'Drawing', done: !!selectedDrawing },
-            { label: 'Values confirmed', done: confirmed },
-            { label: 'Machine', done: !!machine },
-            { label: 'Program generated', done: !!preview?.ok && !stale },
-            { label: 'Accepted by engineer', done: program?.status === 'approved' },
-            { label: 'Sent to machine', done: false },
+            { label: 'Features confirmed', done: confirmed },
+            { label: 'Lathe chosen', done: !!machine },
+            { label: 'Code generated', done: !!preview?.ok && !stale && !writing },
+            { label: '3D simulation', done: !!simResult && simResult.errors === 0 },
+            { label: 'Accepted', done: program?.status === 'approved' },
+            { label: 'Files', done: false },
           ]}
         />
         <DoThisNow action={nextAction} />
@@ -1804,7 +1833,7 @@ export default function DrawingToProgram() {
             </Step>
 
             {ft && data && schema && (
-              <Step n={2} title="Values from the drawing" done={confirmed}>
+              <Step n={2} title="Features and dimensions (engineer verifies and confirms)" done={confirmed}>
                 {aiJob && (
                   <AiReadPanel
                     key={aiJob}
@@ -1873,6 +1902,17 @@ export default function DrawingToProgram() {
                     )}
                   </Notice>
                 )}
+                {(partModel.outer.length >= 2 || partModel.chars.length > 0) && (
+                  <PartReport
+                    model={partModel}
+                    partNumber={ft.part_number}
+                    drawingRef={selectedDrawing?.filename ?? ft.drawing_ref}
+                    programText={writing ? null : (editText ?? preview?.text ?? null)}
+                  />
+                )}
+                <h3 className="pt-2 font-semibold">
+                  Feature table: enter, check against the drawing and tick
+                </h3>
                 <details className="text-xs text-slate-600">
                   <summary className="cursor-pointer font-medium">How to enter the values</summary>
                   <ul className="mt-1 list-disc space-y-0.5 pl-5">
@@ -1952,7 +1992,7 @@ export default function DrawingToProgram() {
             )}
 
             {ft && (
-              <Step n={3} title="Choose the machine" done={!!machine}>
+              <Step n={3} title="Choose the lathe" done={!!machine}>
                 {!anyReady && (
                   <Notice tone="warn">
                     No machine can receive a program yet. Each card lists what is still missing. Enter it on
@@ -2020,7 +2060,11 @@ export default function DrawingToProgram() {
             )}
 
             {ft && machine && plan && (
-              <Step n={4} title="Generate the program" done={!!preview?.ok && !stale}>
+              <Step
+                n={4}
+                title="Bar, tools and cutting values, then generate live code"
+                done={!!preview?.ok && !stale && !writing}
+              >
                 {library.length > 0 && fromLib && (
                   <Notice tone="info">
                     Step 4 shows <strong className="font-mono">{fromLib.name}</strong>, your proven program
@@ -2215,55 +2259,67 @@ export default function DrawingToProgram() {
                       ) : (
                         <GcodeView text={preview.text} />
                       ))}
-                    {!writing &&
-                      (() => {
-                        const path = isEdited ? editCheck?.toolpath : preview.toolpath;
-                        return path ? (
-                          <>
-                            <ToolpathView key={isEdited ? 'edit' : 'gen'} preview={path} />
-                            {library.length > 0 && (
-                              <CompareView generated={path} provenName={library[0].name} />
-                            )}
-                          </>
-                        ) : null;
-                      })()}
-                    {writing ? null : simText ? (
-                      <Suspense
-                        fallback={<p className="text-sm text-slate-600">Loading the 3D simulation…</p>}
-                      >
-                        <CncSimulatorView
-                          programText={simText}
-                          speed={10}
-                          height={720}
-                          stock={{ diameter: simBar, length: simLen }}
-                          onChecks={onSimChecks}
-                        />
-                        {simResult && (
-                          <p
-                            className={`mt-2 text-sm ${simResult.errors ? 'font-semibold text-rose-800' : 'text-emerald-800'}`}
-                            role="status"
-                          >
-                            {simResult.errors
-                              ? `Safety alarms: ${simResult.checks
-                                  .filter((c) => c.severity === 'error')
-                                  .map((c) => `line ${c.line}: ${c.message}`)
-                                  .join(' · ')}`
-                              : `3D safety checks passed${simBar ? ` on a Ø${simBar} bar` : ''}: no rapid through metal, spindle on for every cut, no tool past centre.`}
-                          </p>
-                        )}
-                      </Suspense>
-                    ) : (
-                      <p className="text-sm text-slate-600">
-                        The 3D simulation runs once the program passes the checks above.
-                      </p>
-                    )}
                   </>
                 )}
               </Step>
             )}
 
+            {ft && machine && preview?.ok && (
+              <Step n={5} title="3D simulation" done={!!simResult && simResult.errors === 0}>
+                {writing ? (
+                  <p className="text-sm text-slate-600">
+                    The simulation starts as soon as the program is written.
+                  </p>
+                ) : simText ? (
+                  <Suspense fallback={<p className="text-sm text-slate-600">Loading the 3D simulation…</p>}>
+                    <CncSimulatorView
+                      programText={simText}
+                      speed={10}
+                      height={720}
+                      stock={{ diameter: simBar, length: simLen }}
+                      onChecks={onSimChecks}
+                    />
+                    {simResult && (
+                      <p
+                        className={`text-sm ${simResult.errors ? 'font-semibold text-rose-800' : 'text-emerald-800'}`}
+                        role="status"
+                      >
+                        {simResult.errors
+                          ? `Safety alarms: ${simResult.checks
+                              .filter((c) => c.severity === 'error')
+                              .map((c) => `line ${c.line}: ${c.message}`)
+                              .join(' · ')}`
+                          : `3D safety checks passed${simBar ? ` on a Ø${simBar} bar` : ''}: no rapid through metal, spindle on for every cut, no tool past centre.`}
+                      </p>
+                    )}
+                  </Suspense>
+                ) : (
+                  <p className="text-sm text-slate-600">
+                    The 3D simulation runs once the program passes the checks in step 4.
+                  </p>
+                )}
+                {!writing &&
+                  (() => {
+                    const path = isEdited ? editCheck?.toolpath : preview.toolpath;
+                    return path ? (
+                      <details className="rounded-xl border border-slate-200 p-3">
+                        <summary className="cursor-pointer text-sm font-medium">
+                          2D tool path{library.length > 0 ? ` and comparison with ${library[0].name}` : ''}
+                        </summary>
+                        <div className="mt-3 space-y-3">
+                          <ToolpathView key={isEdited ? 'edit' : 'gen'} preview={path} />
+                          {library.length > 0 && (
+                            <CompareView generated={path} provenName={library[0].name} />
+                          )}
+                        </div>
+                      </details>
+                    ) : null;
+                  })()}
+              </Step>
+            )}
+
             {ft && machine && (preview?.ok || program) && (
-              <Step n={5} title="Engineer accepts the program" done={accepted}>
+              <Step n={6} title="Engineer accepts the program" done={accepted}>
                 {accepted ? (
                   <p className="text-base">
                     <span className="badge-green">Accepted</span>{' '}
@@ -2276,8 +2332,9 @@ export default function DrawingToProgram() {
                 ) : (
                   <>
                     <p className="text-sm text-slate-700">
-                      The engineer reads the program and plays the tool path in step 4, then accepts it.
-                      Accepting saves the program for {machine.name} and approves it in one step.
+                      The engineer reads the program in step 4 and plays it in the 3D simulation in step 5,
+                      then accepts it. Accepting saves the program for {machine.name} and approves it in one
+                      step.
                     </p>
                     <button
                       className="btn-primary min-h-12 px-6 text-base"
@@ -2299,7 +2356,7 @@ export default function DrawingToProgram() {
             )}
 
             {ft && machine && accepted && (
-              <Step n={6} title={`Send to ${machine.name}`} done={false}>
+              <Step n={7} title={`Files and sending to ${machine.name}`} done={false}>
                 <p className="text-sm text-slate-700">
                   Opens the run screen for {machine.name}. There you pick the bar and tick the 6 safety
                   checks; then <strong>Send program</strong> transfers it over Ethernet through the bridge PC.

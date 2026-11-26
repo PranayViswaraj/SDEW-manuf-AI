@@ -13,11 +13,31 @@ describe('program being written out', () => {
     });
     const box = screen.getByLabelText('Generated program text');
     expect(box.textContent).not.toContain('M30');
-    expect(screen.getByRole('status')).toHaveTextContent('Writing program');
+    expect(screen.getByRole('status')).toHaveTextContent('Generating');
+    expect(screen.getByLabelText('Program sections')).toHaveTextContent('Rough');
     await act(async () => {
       vi.advanceTimersByTime(2000);
     });
     expect(box).toHaveTextContent('M30');
+    expect(done).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('pauses and resumes', async () => {
+    vi.useFakeTimers();
+    const done = vi.fn();
+    render(<GeneratingCode text={TEXT} onDone={done} />);
+    fireEvent.click(screen.getByRole('button', { name: /Pause/ }));
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(done).not.toHaveBeenCalled();
+    expect(screen.getByRole('status')).toHaveTextContent('Paused');
+    fireEvent.click(screen.getByRole('button', { name: /Resume/ }));
+    fireEvent.click(screen.getByRole('button', { name: '2x' }));
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+    });
     expect(done).toHaveBeenCalled();
     vi.useRealTimers();
   });
