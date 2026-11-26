@@ -4,6 +4,7 @@ The schema is built ONCE per test session by running the real Alembic migrations
 triggers exist exactly as in production), then each test gets its own copy of that file.
 """
 
+import os
 import shutil
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -15,7 +16,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.auth.security import create_access_token, hash_password
+# Tests never call the real AI: a developer's .env may hold an API key and MANUFAI_AI_READER=claude.
+# Environment variables win over .env files.
+os.environ["MANUFAI_AI_READER"] = "off"
+os.environ["ANTHROPIC_API_KEY"] = ""
+
+from app.auth.security import create_access_token, hash_password  # noqa: E402
 from app.config import Settings
 from app.db.models import Role, User
 from app.main import create_app

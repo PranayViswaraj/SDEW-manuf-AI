@@ -63,5 +63,6 @@ def get_drawing_reader() -> DrawingReader:
     if s.ai_reader == "claude":
         from app.ai.claude_reader import ClaudeDrawingReader
 
-        return ClaudeDrawingReader(model=s.ai_model, effort=s.ai_effort)
+        key = s.anthropic_api_key.get_secret_value() if s.anthropic_api_key else None
+        return ClaudeDrawingReader(model=s.ai_model, effort=s.ai_effort, api_key=key)
     return StubDrawingReader()

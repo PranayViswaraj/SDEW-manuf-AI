@@ -179,3 +179,38 @@ def test_score_flags_an_invented_bar_size_and_a_wrong_lathe_call() -> None:
     s = score(KNOWN, table, {"not_lathe": "Looks like a tube assembly."})
     assert s.lathe_call == "called not a lathe part"
     assert any("bar_diameter" in w for w in s.wrong)
+
+
+# ------------------------------------------------------------------ the API key
+
+
+def test_api_key_comes_from_a_dotenv_file_and_stays_secret(tmp_path: Any, monkeypatch: Any) -> None:
+    from app.config import Settings
+
+    env = tmp_path / ".env"
+    env.write_text(
+        "MANUFAI_AI_READER=claude\nANTHROPIC_API_KEY=sk-ant-test-123\n", encoding="utf-8"
+    )
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("MANUFAI_AI_READER", raising=False)
+    s = Settings(_env_file=env)
+    assert s.ai_reader == "claude"
+    assert s.anthropic_api_key is not None
+    assert s.anthropic_api_key.get_secret_value() == "sk-ant-test-123"
+    assert "sk-ant-test-123" not in repr(s) and "sk-ant-test-123" not in str(s.model_dump())
+
+
+def test_a_blank_key_counts_as_no_key(monkeypatch: Any) -> None:
+    from app.config import Settings
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "  ")
+    assert Settings(_env_file=None).anthropic_api_key is None
+
+
+def test_tests_never_run_the_real_reader() -> None:
+    from app.ai.drawing_reader import ai_reader_enabled
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    assert not ai_reader_enabled()
+    assert get_settings().anthropic_api_key is None

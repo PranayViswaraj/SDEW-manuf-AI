@@ -68,7 +68,12 @@ def drawing_block(content: bytes) -> dict[str, Any]:
 
 class ClaudeDrawingReader(DrawingReader):
     def __init__(
-        self, model: str, effort: str = "high", client: Any = None, tiles: bool = True
+        self,
+        model: str,
+        effort: str = "high",
+        client: Any = None,
+        tiles: bool = True,
+        api_key: str | None = None,
     ) -> None:
         self.model = model
         self.effort = effort
@@ -76,7 +81,8 @@ class ClaudeDrawingReader(DrawingReader):
         if client is None:
             import anthropic  # optional dependency: pip install "manufai-server[ai]"
 
-            client = anthropic.Anthropic()
+            # the key from the settings (.env), else the SDK's own lookup (environment)
+            client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
         self.client = client
 
     # ------------------------------------------------------------------ calls

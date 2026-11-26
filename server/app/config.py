@@ -7,7 +7,7 @@ misconfigured server never comes up quietly.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV_JWT_PREFIX = "dev-only"
@@ -16,7 +16,11 @@ DEV_BRIDGE_KEY = "dev-bridge-signing-key-not-secret"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="MANUFAI_", env_file=".env", extra="ignore")
+    # .env next to .env.example (project root) or in server/; both are git-ignored. Real
+    # environment variables win over either file.
+    model_config = SettingsConfigDict(
+        env_prefix="MANUFAI_", env_file=("../.env", ".env"), extra="ignore"
+    )
 
     env: Literal["dev", "test", "production"] = "dev"
     database_url: str = "sqlite:///./manufai.db"
@@ -66,10 +70,21 @@ class Settings(BaseSettings):
     initial_admin_username: str | None = None
     initial_admin_password: str | None = Field(default=None, min_length=10)
     # AI drawing reader (two agents: extractor + verifier). "off" = engineers enter every value.
-    # "claude" also needs ANTHROPIC_API_KEY in the environment and `pip install .[ai]`.
+    # "claude" also needs an Anthropic API key and `pip install .[ai]`.
     ai_reader: Literal["off", "claude"] = "off"
     ai_model: str = "claude-opus-5-5"
     ai_effort: Literal["low", "medium", "high", "xhigh", "max"] = "xhigh"
+    # The key: ANTHROPIC_API_KEY from the environment or a .env file (never in git). A secret:
+    # it never appears in logs, errors or settings dumps.
+    anthropic_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("ANTHROPIC_API_KEY", "MANUFAI_ANTHROPIC_API_KEY"),
+    )
+
+    @field_validator("anthropic_api_key", mode="before")
+    @classmethod
+    def _blank_key(cls, v: object) -> object:
+        return None if isinstance(v, str) and not v.strip() else v
 
     @field_validator("database_url")
     @classmethod

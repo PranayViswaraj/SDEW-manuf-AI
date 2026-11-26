@@ -187,7 +187,8 @@ def main(argv: list[str] | None = None) -> int:
     from app.config import get_settings
 
     st = get_settings()
-    reader = ClaudeDrawingReader(model=st.ai_model, effort=st.ai_effort)
+    key = st.anthropic_api_key.get_secret_value() if st.anthropic_api_key else None
+    reader = ClaudeDrawingReader(model=st.ai_model, effort=st.ai_effort, api_key=key)
     known = load_known(a.known)
     scores: list[DrawingScore] = []
     for pdf in sorted(Path(a.folder).rglob("*.pdf")):
