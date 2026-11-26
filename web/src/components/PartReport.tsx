@@ -1,5 +1,5 @@
-import { Check, CircleAlert, Minus, Sparkles } from 'lucide-react';
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { Check, CircleAlert, FileSearch, Minus, Sparkles } from 'lucide-react';
+import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { type Characteristic, type PartModel, type PlanRow, xWords } from '../lib/partModel';
 
 const PartPreview3D = lazy(() => import('./PartPreview3D'));
@@ -424,115 +424,128 @@ export default function PartReport({
   const highlight = sel?.span ?? planPick?.span ?? null;
   const selFeature = sel?.feature ?? planPick?.feature ?? null;
 
-  return (
-    <div className="space-y-6">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
-        <div className="space-y-3">
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-linear-to-b from-slate-50 to-slate-100">
-            {has3d ? (
-              <Suspense fallback={<div className="h-[260px]" />}>
-                <PartPreview3D outer={model.outer} inner={model.inner} height={260} />
-              </Suspense>
-            ) : (
-              <p className="flex h-[160px] items-center justify-center p-4 text-sm text-slate-500">
-                Enter the overall length and the OD steps to see the part.
-              </p>
-            )}
-            {has3d && (
-              <p className="px-3 pb-2 text-xs text-slate-500">
-                Built from the table · L {model.length?.toFixed(3) ?? '?'} · Ø
-                {model.maxDia?.toFixed(3) ?? '?'} max · drag to turn
-              </p>
-            )}
-          </div>
-          {has3d && (
-            <div className="rounded-xl border border-slate-200 bg-white p-2">
-              <ProfileSvg model={model} highlight={highlight} />
-              <p className="px-1 pb-0.5 text-xs text-slate-500" aria-live="polite">
-                {sel
-                  ? `${sel.tag} ${sel.label}: ${sel.what}, ${sel.op}`
-                  : planPick
-                    ? `${planPick.id} ${planPick.typeLabel} ${planPick.nominal}`
-                    : 'Select a dimension or a plan row to see where it is.'}
-              </p>
-            </div>
-          )}
-        </div>
-        <dl className="grid grid-cols-2 content-start gap-x-6 gap-y-4 rounded-xl border border-slate-200 bg-white p-5 text-sm shadow-sm">
-          <div>
-            <dt className="text-xs text-slate-500">Part</dt>
-            <dd className="text-base font-medium">{partNumber}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-slate-500">Drawing</dt>
-            <dd className="font-medium break-words">{drawingRef || '–'}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-slate-500">Overall length</dt>
-            <dd className="text-base font-medium">{model.length !== null ? `${model.length} mm` : '–'}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-slate-500">Largest diameter</dt>
-            <dd className="text-base font-medium">{model.maxDia !== null ? `Ø${model.maxDia} mm` : '–'}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-slate-500">Drawing dimensions</dt>
-            <dd className="font-medium">
-              {model.chars.length} · {toleranced} toleranced
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-slate-500">Features</dt>
-            <dd className="font-medium">
-              {turned} turned
-              {model.op20.length ? ` · ${model.op10.length} OP10 · ${model.op20.length} OP20` : ''}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-slate-500">Read by the AI</dt>
-            <dd className={`font-medium ${differ ? 'text-rose-700' : ''}`}>
-              {aiRead
-                ? `${aiRead} / ${model.chars.length}${differ ? ` · ${differ} differ` : ' · all agree'}`
-                : 'not yet (entered by hand)'}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-slate-500">Checked by the engineer</dt>
-            <dd
-              className={`font-medium ${ticked === model.chars.length ? 'text-emerald-700' : 'text-amber-700'}`}
-            >
-              {ticked} / {model.chars.length}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-slate-500">Bar</dt>
-            <dd className="font-medium">{model.bar !== null ? `Ø${model.bar} mm` : 'not entered'}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-slate-500">Material</dt>
-            <dd className="font-medium">{model.material ?? '–'}</dd>
-          </div>
-        </dl>
-      </div>
+  const empty = model.chars.length === 0 && !has3d;
+  const stat = (label: string, value: ReactNode, tone = '') => (
+    <div className="min-w-0">
+      <dt className="text-xs text-slate-500">{label}</dt>
+      <dd className={`mt-0.5 font-medium [overflow-wrap:anywhere] ${tone}`}>{value}</dd>
+    </div>
+  );
 
-      {
+  return (
+    <div className="@container space-y-6">
+      {empty ? (
+        <div className="flex flex-col gap-4 rounded-xl border border-dashed border-slate-300 bg-linear-to-br from-slate-50 to-white p-5 @xl:flex-row @xl:items-center">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm ring-1 ring-slate-200">
+            <FileSearch className="h-6 w-6" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-slate-900">Nothing read from this drawing yet</p>
+            <p className="mt-0.5 text-sm text-slate-600">
+              {aiOn
+                ? 'The two AI agents fill the dimensions when they read the drawing; then the part, every dimension and the process plan appear here.'
+                : 'The AI reader is off on this server. Enter the values in the feature table below; the part, every dimension and the process plan build up here as you type.'}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full bg-white px-2.5 py-1 text-slate-700 ring-1 ring-slate-200 [overflow-wrap:anywhere]">
+                Part <b className="font-semibold">{partNumber}</b>
+              </span>
+              {drawingRef && (
+                <span className="rounded-full bg-white px-2.5 py-1 text-slate-700 ring-1 ring-slate-200 [overflow-wrap:anywhere]">
+                  Drawing <b className="font-semibold">{drawingRef}</b>
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-4 @4xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+          <div className="min-w-0 space-y-3">
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-linear-to-b from-slate-50 to-slate-100">
+              {has3d ? (
+                <Suspense fallback={<div className="h-[260px]" />}>
+                  <PartPreview3D outer={model.outer} inner={model.inner} height={260} />
+                </Suspense>
+              ) : (
+                <p className="flex h-[120px] items-center justify-center p-4 text-sm text-slate-500">
+                  Enter the overall length and the OD steps to see the part.
+                </p>
+              )}
+              {has3d && (
+                <p className="px-3 pb-2 text-xs text-slate-500">
+                  Built from the table · L {model.length?.toFixed(3) ?? '?'} · Ø
+                  {model.maxDia?.toFixed(3) ?? '?'} max · drag to turn
+                </p>
+              )}
+            </div>
+            {has3d && (
+              <div className="rounded-xl border border-slate-200 bg-white p-2">
+                <ProfileSvg model={model} highlight={highlight} />
+                <p className="px-1 pb-0.5 text-xs text-slate-500" aria-live="polite">
+                  {sel
+                    ? `${sel.tag} ${sel.label}: ${sel.what}, ${sel.op}`
+                    : planPick
+                      ? `${planPick.id} ${planPick.typeLabel} ${planPick.nominal}`
+                      : 'Select a dimension or a plan row to see where it is.'}
+                </p>
+              </div>
+            )}
+          </div>
+          <dl className="grid min-w-0 grid-cols-2 content-start gap-x-6 gap-y-4 rounded-xl border border-slate-200 bg-white p-5 text-sm shadow-sm @2xl:grid-cols-3 @4xl:grid-cols-2">
+            <div className="col-span-full min-w-0 border-b border-slate-100 pb-3">
+              <dt className="text-xs text-slate-500">Part</dt>
+              <dd className="mt-0.5 text-lg font-semibold [overflow-wrap:anywhere]">{partNumber}</dd>
+              {drawingRef && (
+                <dd className="mt-0.5 text-xs text-slate-600 [overflow-wrap:anywhere]">{drawingRef}</dd>
+              )}
+            </div>
+            {stat('Overall length', model.length !== null ? `${model.length} mm` : '–')}
+            {stat('Largest diameter', model.maxDia !== null ? `Ø${model.maxDia} mm` : '–')}
+            {stat('Dimensions', `${model.chars.length} · ${toleranced} toleranced`)}
+            {stat(
+              'Features',
+              `${turned} turned${model.op20.length ? ` · OP10 ${model.op10.length} · OP20 ${model.op20.length}` : ''}`,
+            )}
+            {stat(
+              'Read by the AI',
+              aiRead
+                ? `${aiRead} / ${model.chars.length}${differ ? ` · ${differ} differ` : ' · all agree'}`
+                : 'not yet',
+              differ ? 'text-rose-700' : aiRead ? '' : 'text-slate-500',
+            )}
+            {stat(
+              'Checked by the engineer',
+              `${ticked} / ${model.chars.length}`,
+              model.chars.length && ticked === model.chars.length ? 'text-emerald-700' : 'text-amber-700',
+            )}
+            {stat(
+              'Bar',
+              model.bar !== null ? `Ø${model.bar} mm` : 'not entered',
+              model.bar === null ? 'text-slate-500' : '',
+            )}
+            {stat('Material', model.material ?? '–')}
+          </dl>
+        </div>
+      )}
+
+      {!empty && (
         <Characteristics
           chars={model.chars}
           programText={programText}
           selected={selected}
           empty={
-            aiOn
-              ? 'No dimensions yet. The two AI agents fill this table when they read the drawing (upload it, or upload a new revision).'
-              : 'No dimensions yet. The AI reader is off on this server, so enter the values in the feature table below: each dimension then appears here with its tolerance band, the size the program cuts and its check result.'
+            empty
+              ? 'No dimensions yet: each one appears here with its tolerance band, the size the program cuts and its check result.'
+              : 'No dimensions in the table yet.'
           }
           onSelect={(no) => {
             setSelected(no);
             setPlanPick(null);
           }}
         />
-      }
+      )}
 
-      {turned === 0 && (
+      {turned === 0 && !empty && (
         <div className="space-y-3">
           <h3 className="font-semibold">Process plan: every feature in an operation</h3>
           <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-500">

@@ -59,7 +59,7 @@ describe('part report: characteristics read twice', () => {
 });
 
 describe('part report: before any value is entered', () => {
-  it('still shows the characteristics table and the plan, and says what fills them', () => {
+  it('shows one clear empty state that says what fills the report', () => {
     const empty: FeatureTableData = {
       header: { material_grade: c(null), bar_diameter: c(null), overall_length: c(null) },
       features: [],
@@ -67,9 +67,8 @@ describe('part report: before any value is entered', () => {
     render(
       <PartReport model={buildPartModel(empty)} partNumber="P-2" drawingRef="p2.pdf" programText={null} />,
     );
-    const table = screen.getByRole('table', { name: 'Characteristics' });
-    expect(within(table).getByText(/The AI reader is off on this server/)).toBeInTheDocument();
-    expect(within(table).getByText('AI read')).toBeInTheDocument();
-    expect(screen.getByText(/OP10 \(front side\) and OP20/)).toBeInTheDocument();
+    expect(screen.getByText('Nothing read from this drawing yet')).toBeInTheDocument();
+    expect(screen.getByText(/The AI reader is off on this server/)).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Characteristics' })).not.toBeInTheDocument();
   });
 });
