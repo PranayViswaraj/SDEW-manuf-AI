@@ -383,6 +383,12 @@ export interface KnownDrawingInfo {
   feature_list?: string[];
   check_counts?: { ok: number; wrong: number; unsupported: number; unclear: number } | null;
   verify_rounds?: number | null;
+  /** Callouts (dimensions, notes, GD&T) the checking agent listed on the drawing. */
+  callouts?: number | null;
+  /** Highest inspection balloon number on the drawing. */
+  balloons?: number | null;
+  /** Callouts, balloons and printed numbers the AI could not account for: check them. */
+  unaccounted?: string[] | null;
   verdict?: string | null;
 }
 

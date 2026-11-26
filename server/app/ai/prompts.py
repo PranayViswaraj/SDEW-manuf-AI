@@ -16,9 +16,13 @@ into a feature table that a program generator uses. You only SUGGEST values; an 
 every one. A wrong number is worse than a missing one: never guess.
 
 INPUTS
-- The drawing (PDF pages or an image). Read what is DRAWN. Any text layer of a PDF is unreliable
-  (Ø often appears as 0, 6g as 69, stacked tolerances are lost, GD&T symbols vanish): use it
-  only to help read a value you can also see on the drawing.
+- The drawing: the PDF itself, then each page as a whole-sheet image followed by ZOOMED TILES
+  (labelled top-left, top-right, ...; neighbouring tiles overlap). Use the whole sheet for the
+  layout, views and title block; read EVERY number from the tiles, where small text (stacked
+  tolerances like 0/-0.1, superscripts, chamfer sizes, GD&T frames) is large and sharp. A value
+  cut at a tile edge appears whole in the neighbouring tile. Read what is DRAWN. Any text layer
+  of a PDF is unreliable (Ø often appears as 0, 6g as 69, stacked tolerances are lost, GD&T
+  symbols vanish): use it only to help read a value you can also see on the drawing.
 - Optionally the part number the user typed.
 
 WORK IN THIS ORDER. Think it through before writing the JSON.
@@ -84,6 +88,22 @@ measures. Conventions:
 - Surface finish symbols and their N-grade per surface: not_in_table.
 - Heat treatment, plating (e.g. zinc 12-15 µm, passivation) and other notes: not_in_table.
 
+STEP 4b - Callout inventory (callouts): nothing may be missed
+List EVERY callout on the drawing, tile by tile, before building the table: each dimension (with
+its tolerance), chamfer, radius, thread, GD&T frame, surface finish symbol, datum, note and
+title-block value (material, heat treatment, drawing number, issue). Do not list the cells of the
+general-tolerance and surface-finish TABLES in the title block (those go in general_tolerances).
+- text: exactly as written, e.g. "Ø44.45 0/-0.1", "23±0.25", "⊥ 0.05 A", "CH 0.5X45", "N6".
+- balloon: inspection drawings number each characteristic with a circled number (often added
+  by hand, e.g. (14) next to Ø44.45). Give that number, or null if the callout has none. Balloon
+  numbers run 1..N: if a number seems to be missing, look for it again - it is a characteristic
+  you have not found yet.
+- view and where: the view, and the tile it is in.
+- accounted_for: where it went: a table path ("features[2].fields.diameter",
+  "header.overall_length"), "not_in_table: <the line you wrote there>", "reference dimension",
+  "title block", or "duplicate of <path>". A callout you cannot account for is a feature you
+  missed: add it to the table or to not_in_table before answering.
+
 STEP 5 - Choose the clamping order and build the profile
 The table describes turned geometry from a FRONT FACE (Z0), measuring towards the chuck:
 - First clamping: start at the end that is turned first. Prefer the end with the SMALLER outside
@@ -145,6 +165,19 @@ For EVERY header value and EVERY feature field:
    (nothing on the drawing backs it - remove it or set null), or "unclear" (you cannot settle it -
    keep null and write a question).
 
+COMPLETENESS (the most important check)
+- Make your OWN callout inventory ("callouts", same rules as the first reader's STEP 4b: every
+  dimension, tolerance, chamfer, radius, thread, GD&T frame, finish symbol, note and title-block
+  value; inspection balloon numbers 1..N; the tile it is in) from the drawing, tile by tile, and
+  account for each one in YOUR corrected table. Paths in accounted_for point into your corrected
+  table.
+- Compare it with the first reader's callouts: anything one of you saw and the other did not is
+  checked on the drawing and either added or explained.
+- If the message lists callouts or text-layer numbers that are not accounted for, find EACH one
+  on the drawing and account for it (add the feature, put it in not_in_table, or say why it is
+  not a callout, e.g. "title block tolerance table", "drawing number", "date").
+- Every balloon number from 1 to the highest must be present; find any that is missing.
+
 Then check the whole table:
 - Classification (turned part vs assembly/tube/other) is right.
 - Clamping order: OD steps grow towards the chuck within each clamping; a flip is present when the
@@ -163,6 +196,7 @@ Then check the whole table:
 
 OUTPUT
 - "corrected" is the full table with your corrections applied, in the same format as the claim.
+- "callouts" is YOUR own inventory (see COMPLETENESS), accounted against your corrected table.
 - One entry in "checks" for EVERY value in YOUR corrected table. "path" points into the corrected
   table: "header.overall_length", "features[2].fields.diameter" (features counted from 0).
   "claimed" is the first reader's value as text ("" if it had none); "correct" is your value.
@@ -208,6 +242,17 @@ _NULLABLE_STR = {"anyOf": [_STR, {"type": "null"}]}
 _SCALAR = {"anyOf": [{"type": "number"}, _STR, {"type": "null"}]}
 _NULLABLE_NUM = {"anyOf": [{"type": "number"}, {"type": "null"}]}
 
+_CALLOUT = _obj(
+    {
+        "text": _STR,
+        "balloon": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+        "view": _STR,
+        "where": _STR,
+        "accounted_for": _STR,
+    }
+)
+_CALLOUTS = {"type": "array", "items": {"$ref": "#/$defs/callout"}}
+
 _VALUE_PROPS = {
     "v": _SCALAR,
     "evidence": _STR,
@@ -217,6 +262,7 @@ _VALUE_PROPS = {
 
 EXTRACTION_DEFS: dict[str, Any] = {
     "value": _obj(_VALUE_PROPS),
+    "callout": _CALLOUT,
     "extraction": _obj(
         {
             "drawing": _obj(
@@ -239,6 +285,7 @@ EXTRACTION_DEFS: dict[str, Any] = {
                 }
             ),
             "feature_list": _STR_LIST,
+            "callouts": _CALLOUTS,
             "general_tolerances": _STR_LIST,
             "header": _obj({k: {"$ref": "#/$defs/value"} for k, _, _ in HEADER_FIELDS}),
             "features": {
@@ -262,7 +309,7 @@ EXTRACTION_DEFS: dict[str, Any] = {
 }
 
 EXTRACTION_SCHEMA: dict[str, Any] = {
-    "$defs": {"value": EXTRACTION_DEFS["value"]},
+    "$defs": {"value": EXTRACTION_DEFS["value"], "callout": EXTRACTION_DEFS["callout"]},
     **EXTRACTION_DEFS["extraction"],
 }
 
@@ -287,6 +334,7 @@ VERIFICATION_SCHEMA: dict[str, Any] = {
                 ),
             },
             "corrected": {"$ref": "#/$defs/extraction"},
+            "callouts": _CALLOUTS,
             "questions_for_engineer": _STR_LIST,
         }
     ),

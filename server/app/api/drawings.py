@@ -331,7 +331,16 @@ async def _run_ai_read(
     notes = result.notes
     info["not_in_table"] = notes.get("not_in_table", [])
     info["questions"] = notes.get("questions", [])
-    for key in ("shape_3d", "feature_list", "check_counts", "verify_rounds", "verdict"):
+    for key in (
+        "shape_3d",
+        "feature_list",
+        "check_counts",
+        "verify_rounds",
+        "verdict",
+        "callouts",
+        "balloons",
+        "unaccounted",
+    ):
         info[key] = notes.get(key)
     if notes.get("not_lathe"):
         info["not_lathe"] = notes["not_lathe"]

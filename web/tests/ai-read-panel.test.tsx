@@ -49,6 +49,9 @@ describe('two-agent AI read panel', () => {
           non_turned: [],
         },
         feature_list: ['Front face', 'Ø22.22 ±0.1 spigot, 34 long', 'Ø19 bore through'],
+        callouts: 31,
+        balloons: 14,
+        unaccounted: ['Balloon 9 not found on the drawing by the AI'],
       },
     });
     const replies = [job({}), job({ stage: 'verify', round: 1, elapsed: 40 }), done];
@@ -68,6 +71,10 @@ describe('two-agent AI read panel', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Ø22.22 ±0.1 spigot, 34 long')).toBeInTheDocument();
     expect(screen.getByText('Corrected')).toBeInTheDocument();
+    expect(
+      screen.getByText(/31 callouts read, balloons 1–14 · 1 to check on the drawing/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Balloon 9 not found on the drawing by the AI')).toBeInTheDocument();
     vi.useRealTimers();
   });
 

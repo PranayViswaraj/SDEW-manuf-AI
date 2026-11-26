@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     # "claude" also needs ANTHROPIC_API_KEY in the environment and `pip install .[ai]`.
     ai_reader: Literal["off", "claude"] = "off"
     ai_model: str = "claude-opus-5-5"
-    ai_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
+    ai_effort: Literal["low", "medium", "high", "xhigh", "max"] = "xhigh"
 
     @field_validator("database_url")
     @classmethod

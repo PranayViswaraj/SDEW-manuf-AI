@@ -1,5 +1,13 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Box, CheckCircle2, CircleAlert, ListChecks, ScanSearch, ShieldCheck } from 'lucide-react';
+import {
+  Box,
+  CheckCircle2,
+  CircleAlert,
+  ListChecks,
+  ScanSearch,
+  ShieldCheck,
+  TriangleAlert,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type { AiJob, KnownDrawingInfo } from '../api/types';
@@ -170,7 +178,13 @@ export default function AiReadPanel({
           title="Extract & analyse"
           icon={ScanSearch}
           state={s1}
-          does={['Title block & views', '3D shape analysis', 'Dimensions & tolerances', 'Feature list']}
+          does={[
+            'Zoomed tiles',
+            'Every callout listed',
+            '3D shape analysis',
+            'Dimensions & tolerances',
+            'Feature list',
+          ]}
           detail={
             s1 === 'working'
               ? 'Reading the drawing as an image: views, every dimension, the 3D shape.'
@@ -184,7 +198,13 @@ export default function AiReadPanel({
           title="Verify & correct"
           icon={ShieldCheck}
           state={s2}
-          does={['Every value vs the drawing', 'Clamping order & lengths', 'Tolerances', 'Nothing lost']}
+          does={[
+            'Every value vs the drawing',
+            'Own callout list',
+            'Balloons 1..N',
+            'Clamping order & lengths',
+            'Nothing lost',
+          ]}
           detail={
             s2 === 'working'
               ? `Checking every value against the drawing${job && job.round > 1 ? ` (second look, round ${job.round})` : ''}.`
@@ -224,6 +244,35 @@ export default function AiReadPanel({
                     <p className="text-xs text-slate-600">{label}</p>
                   </div>
                 ))}
+              </div>
+            )}
+            {info.callouts != null && (
+              <div
+                className={`rounded-xl border p-3 text-sm ${
+                  info.unaccounted && info.unaccounted.length
+                    ? 'border-amber-300 bg-amber-50'
+                    : 'border-emerald-300 bg-emerald-50'
+                }`}
+              >
+                <p className="flex items-center gap-1.5 font-semibold">
+                  {info.unaccounted && info.unaccounted.length ? (
+                    <TriangleAlert className="h-4 w-4 text-amber-600" aria-hidden="true" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+                  )}
+                  Completeness: {info.callouts} callouts read
+                  {info.balloons ? `, balloons 1–${info.balloons}` : ''}
+                  {info.unaccounted && info.unaccounted.length
+                    ? ` · ${info.unaccounted.length} to check on the drawing`
+                    : ' · every one accounted for'}
+                </p>
+                {info.unaccounted && info.unaccounted.length > 0 && (
+                  <ul className="mt-1 list-disc pl-5 text-amber-900">
+                    {info.unaccounted.map((u) => (
+                      <li key={u}>{u}</li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
             {shape && (

@@ -474,7 +474,7 @@ def preview(
             stock=stock_outline(float(bar) if isinstance(bar, int | float) else None, plot)
         )
         # Finished shape for the 3D simulation's compare with the drawing (advisory only).
-        geo, _ = read_geometry(ft.data, _fallback(_part_ctx(request, ft.part_number)))
+        geo, _problems = read_geometry(ft.data, _fallback(_part_ctx(request, ft.part_number)))
         out["drawing"] = drawing_profile(geo) if geo is not None else None
     return out
 

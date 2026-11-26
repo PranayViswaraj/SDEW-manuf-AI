@@ -12,7 +12,7 @@ pip install ".[ai]"                 # in server/
 MANUFAI_AI_READER=claude
 ANTHROPIC_API_KEY=<key>             # server environment only, never in git
 MANUFAI_AI_MODEL=claude-opus-5-5    # default
-MANUFAI_AI_EFFORT=high              # default
+MANUFAI_AI_EFFORT=xhigh             # default: accuracy first
 ```
 
 Where it runs: drawing upload on the Drawing → Program page (only when the drawing is not a known
@@ -29,6 +29,26 @@ Two agents run on every drawing:
    for the engineer, never guesses.
 
 The engineer still ticks and confirms every value (safety rule: AI only suggests).
+
+## Precision and completeness (what makes the read trustworthy)
+
+SDEW receives drawings as PDFs only (no STEP model), most of them scans. Three measures:
+
+1. **Zoomed tiles.** Every page goes to both agents as the PDF, a whole-sheet image and 2x2 (3x2
+   for A2/A1) overlapping tiles at the model's full resolution (2576 px long edge,
+   `server/app/ai/drawing_images.py`). On a scanned A3 sheet this makes a 0.1 stacked tolerance
+   about 3-4x larger than in the whole-sheet view. Scans go as grey JPEG, CAD sheets as grey PNG:
+   1.4-4.7 MB per drawing on the local SDEW set.
+2. **Callout inventory, twice.** Both agents list every callout on the sheet (dimension with
+   tolerance, chamfer, radius, thread, GD&T frame, finish, note, title-block value), with its
+   **inspection balloon number** when the drawing has one, and where it went in the table.
+3. **Program check of the inventories** (`completeness()` in `claude_reader.py`, no AI): callouts
+   with no place in the table, balloon numbers missing from 1..N, callouts the first reader saw
+   that the checker's list lost, and numbers printed in the PDF text layer (CAD sheets) that no
+   reader accounted for. Any gap forces the checker's second round, with the gaps listed; whatever
+   is still open after it is shown to the engineer as "check these on the drawing".
+
+Accuracy is measured, not assumed: `python -m app.ai.evaluate <drawings folder>` (section 6).
 
 ## Why the drawing must be read as an image
 
@@ -59,9 +79,13 @@ into a feature table that a program generator uses. You only SUGGEST values; an 
 every one. A wrong number is worse than a missing one: never guess.
 
 INPUTS
-- One or more page images of the drawing (the source of truth).
-- Optionally an OCR text layer. It is unreliable (Ø often appears as 0, 6g as 69, stacked
-  tolerances are lost). Use it only to help read a value you can also see in the image.
+- The drawing: the PDF itself, then each page as a whole-sheet image followed by ZOOMED TILES
+  (labelled top-left, top-right, ...; neighbouring tiles overlap). Use the whole sheet for the
+  layout, views and title block; read EVERY number from the tiles, where small text (stacked
+  tolerances like 0/-0.1, superscripts, chamfer sizes, GD&T frames) is large and sharp. A value
+  cut at a tile edge appears whole in the neighbouring tile. Read what is DRAWN. Any text layer
+  of a PDF is unreliable (Ø often appears as 0, 6g as 69, stacked tolerances are lost, GD&T
+  symbols vanish): use it only to help read a value you can also see on the drawing.
 - Optionally the part number the user typed.
 
 WORK IN THIS ORDER. Think it through before writing the JSON.
@@ -112,6 +136,22 @@ measures. Conventions:
 - Surface finish symbols and their N-grade per surface: not_in_table.
 - Heat treatment, plating (e.g. zinc 12-15 µm, passivation) and other notes: not_in_table.
 
+STEP 4b - Callout inventory (callouts): nothing may be missed
+List EVERY callout on the drawing, tile by tile, before building the table: each dimension (with
+its tolerance), chamfer, radius, thread, GD&T frame, surface finish symbol, datum, note and
+title-block value (material, heat treatment, drawing number, issue). Do not list the cells of the
+general-tolerance and surface-finish TABLES in the title block (those go in general_tolerances).
+- text: exactly as written, e.g. "Ø44.45 0/-0.1", "23±0.25", "⊥ 0.05 A", "CH 0.5X45", "N6".
+- balloon: inspection drawings number each characteristic with a circled number (often added
+  by hand, e.g. (14) next to Ø44.45). Give that number, or null if the callout has none. Balloon
+  numbers run 1..N: if a number seems to be missing, look for it again - it is a characteristic
+  you have not found yet.
+- view and where: the view, and the tile it is in.
+- accounted_for: where it went: a table path ("features[2].fields.diameter",
+  "header.overall_length"), "not_in_table: <the line you wrote there>", "reference dimension",
+  "title block", or "duplicate of <path>". A callout you cannot account for is a feature you
+  missed: add it to the table or to not_in_table before answering.
+
 STEP 5 - Choose the clamping order and build the profile
 The table describes turned geometry from a FRONT FACE (Z0), measuring towards the chuck:
 - First clamping: start at the end that is turned first. Prefer the end with the SMALLER outside
@@ -157,6 +197,16 @@ For EVERY header value and EVERY feature field:
    (nothing on the drawing backs it - remove it or set null), or "unclear" (you cannot settle it -
    keep null and write a question).
 
+COMPLETENESS (the most important check)
+- Make your OWN callout inventory ("callouts", same rules as the first reader's STEP 4b) from the
+  drawing, tile by tile, and account for each one in YOUR corrected table.
+- Compare it with the first reader's callouts: anything one of you saw and the other did not is
+  checked on the drawing and either added or explained.
+- If the message lists callouts or text-layer numbers that are not accounted for, find EACH one
+  on the drawing and account for it (add the feature, put it in not_in_table, or say why it is
+  not a callout, e.g. "title block tolerance table", "drawing number", "date").
+- Every balloon number from 1 to the highest must be present; find any that is missing.
+
 Then check the whole table:
 - Classification (turned part vs assembly/tube/other) is right.
 - Clamping order: OD steps grow towards the chuck within each clamping; a flip is present when the
@@ -183,8 +233,11 @@ OUTPUT JSON:
 
 1. Extractor -> JSON A.
 2. Verifier(drawing, A) -> verdict, checks, corrected table B.
-3. If any check is "wrong", run the Verifier once more on B (a second, independent look). Stop after
-   two verification rounds.
+3. The program compares the inventories (`completeness()`): callouts not placed, balloon numbers
+   missing from 1..N, callouts the first reader saw that the checker lost, text-layer numbers no
+   one accounted for. If any check is "wrong" or any gap is open, run the Verifier once more on B
+   with the gaps listed (a second, independent look). Stop after two verification rounds; open
+   gaps are shown to the engineer.
 4. A value enters the feature table as a suggestion (`"ai"` cell, never `"value"` or `"confirmed"`)
    only if the last Verifier round marked it "ok" or supplied the correction. "unclear" ->
    empty cell plus the question shown next to it. Confidence below 0.7 -> shown highlighted.
@@ -255,6 +308,15 @@ programs and recorded in `samples/drawings/known_drawings.json`:
   `drawings/drive_reference_index.json` in the project folder - **outside the git repository**,
   because the folder link and drawings are confidential.
 - Most file names are only part numbers, so classification must come from the drawing (step 1).
-- When the API is enabled: run both agents over the set, compare with the hand-checked drawings
-  above, and track per-field accuracy (diameters, lengths, tolerances, thread data, not_in_table
-  recall) before turning the reader on for users.
+- When the API is enabled, measure before turning the reader on for users:
+
+  ```text
+  cd server
+  python -m app.ai.evaluate "<project>/drawings" --out ai-eval.json
+  ```
+
+  It reads every PDF that matches a hand-checked drawing (by fingerprint or part number in the
+  file name) and reports, per drawing and overall: **precision** (suggested values that are right:
+  must stay near 100 %, a wrong number is the worst outcome), **recall** (recorded values found),
+  missed and invented features, an invented bar size, wrong lathe / not-lathe calls, and what was
+  left for the engineer to check. About 3-4 model calls per drawing.
