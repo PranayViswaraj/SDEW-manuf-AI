@@ -42,8 +42,12 @@ MAX_VERIFY_ROUNDS = 2
 # The most the model can answer (thinking included). A careful read of a dense sheet thinks long:
 # at effort "max" agent 1 used all of 64,000 tokens on thinking and wrote no answer.
 MAX_TOKENS = 128000
-# Claude Opus 5.5 list prices, US$ per million tokens (for the cost shown to the engineer).
-PRICE = {"input": 4.0, "output": 20.0, "cache_write": 5.0, "cache_read": 0.20}
+# List prices, US$ per million tokens (for the cost shown to the engineer).
+PRICES = {
+    "claude-opus-5-5": {"input": 4.0, "output": 20.0, "cache_write": 5.0, "cache_read": 0.20},
+    "claude-sonnet-5-5": {"input": 2.0, "output": 10.0, "cache_write": 2.5, "cache_read": 0.10},
+}
+PRICE = PRICES["claude-opus-5-5"]
 # When an answer is still cut off, try once more one effort level lower.
 LOWER_EFFORT = {"max": "xhigh", "xhigh": "high", "high": "medium"}
 LOW_CONFIDENCE = 0.7
@@ -292,7 +296,8 @@ class ClaudeDrawingReader(DrawingReader):
             "usage": self.usage
             | {
                 "cost_usd": round(
-                    sum(self.usage[k] * PRICE[k] for k in PRICE) / 1_000_000,
+                    sum(self.usage[k] * PRICES.get(self.model, PRICE)[k] for k in PRICE)
+                    / 1_000_000,
                     2,
                 )
             },
