@@ -203,10 +203,16 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:  # noqa: BLE001 - report and continue with the next drawing
             sc = DrawingScore(part_number=k.part_number, file=pdf.name, error=str(e))
         scores.append(sc)
-        print(
-            f"  precision {sc.precision:.1%}  recall {sc.recall:.1%}  wrong {len(sc.wrong)}  "
-            f"missed features {len(sc.missed_features)}  {sc.error}"
-        )
+        if sc.error:
+            print(f"  FAILED, not scored: {sc.error}")
+            if "Authentication" in sc.error:
+                print("  The API key was rejected: stopping (fix the key, then run again).")
+                break
+        else:
+            print(
+                f"  precision {sc.precision:.1%}  recall {sc.recall:.1%}  wrong {len(sc.wrong)}  "
+                f"missed features {len(sc.missed_features)}  to check {len(sc.unaccounted)}"
+            )
     report = {
         "summary": summary(scores),
         "drawings": [asdict(s) | {"precision": s.precision, "recall": s.recall} for s in scores],
