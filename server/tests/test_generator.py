@@ -1076,6 +1076,18 @@ def test_tapers_are_cut_as_straight_lines_to_the_end_diameter() -> None:
     assert v.errors == []
 
 
+def test_a_parallel_at_the_taper_end_size_continues_it_without_a_step() -> None:
+    # Wo-1047: the 2° taper ends at nominal Ø21.30 (no tolerance: cut 21.3), the parallel is
+    # Ø21.30 0/-0.02 (cut 21.29). The taper ends at 21.29, the parallel carries on.
+    data = core_pin()
+    data["features"][4]["fields"]["tol_minus"] = cell(0.0)  # taper itself untoleranced
+    r = gen(data)
+    assert r.problems == [], r.problems
+    lines = r.text.splitlines()
+    i = lines.index("G1X21.29Z-57.0")
+    assert lines[i + 1 : i + 3] == ["G1X21.29", "G1Z-72.0"]
+
+
 def test_taper_checks() -> None:
     data = core_pin()
     data["features"][1] = feat(

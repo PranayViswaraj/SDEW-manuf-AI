@@ -30,7 +30,7 @@ How the table is read (shown on screen as well):
 
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 # ------------------------------------------------------------------ operations and settings
@@ -445,8 +445,19 @@ def _parse_side(
             nom = _num(c.get("diameter"), f"{name} OD diameter", p)
             d = _mid(c, nom)
             ln = _num(c.get("length"), f"{name} OD length", p)
-            # a plain step may carry on at a taper's end size; otherwise it must be bigger
-            continues = bool(od) and od[-1].front is not None and abs(d - od[-1].dia) < 1e-9
+            # A plain step may carry on at a taper's end size (same nominal on the drawing,
+            # e.g. a 2° taper to Ø21.30, then Ø21.30 0/-0.02 x 17): the taper then ends at the
+            # step's cut size, so the contour has no step down (G71 needs it monotonic).
+            prev = od[-1] if od else None
+            continues = (
+                prev is not None
+                and prev.front is not None
+                and prev.nominal is not None
+                and not math.isnan(nom)
+                and abs(nom - prev.nominal) < 0.011
+            )
+            if continues and prev is not None and d < prev.dia:
+                od[-1] = replace(prev, dia=max(d, prev.d0))
             if od and d <= od[-1].dia and not continues:
                 p.append(
                     f"{name}: OD {d:g} is not bigger than the step before it ({od[-1].dia:g}). "
