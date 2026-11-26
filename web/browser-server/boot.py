@@ -91,6 +91,35 @@ APP = create_app()
 APP.state.loop = asyncio.get_event_loop()
 
 
+# ---- AI drawing reader in the browser: on only when the user entered an API key in THIS browser.
+# The key stays in JavaScript (worker.ts); the agents' calls are made with the browser's fetch.
+import app.api.drawings as _drawings  # noqa: E402
+from app.ai.browser_reader import BrowserClaudeReader, key_set  # noqa: E402
+from app.config import get_settings  # noqa: E402
+
+
+def _browser_reader() -> BrowserClaudeReader:
+    s = get_settings()
+    return BrowserClaudeReader(model=s.ai_model, effort=s.ai_effort)
+
+
+_drawings.ai_reader_enabled = key_set
+_drawings.get_drawing_reader = _browser_reader
+
+
+async def _run_then_save(job) -> None:  # type: ignore[no-untyped-def]
+    """An AI read runs beside the requests; when it has written the table, save the database."""
+    import js  # type: ignore[import-not-found]
+
+    try:
+        await job
+    finally:
+        await js.manufaiPersist()
+
+
+APP.state.ai_scheduler = lambda job: asyncio.ensure_future(_run_then_save(job))
+
+
 async def handle(method: str, path: str, query: str, headers: list, body: bytes) -> tuple:
     """One HTTP request through the ASGI app. Returns (status, [[name, value]...], body)."""
     scope = {

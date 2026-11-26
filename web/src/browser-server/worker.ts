@@ -25,6 +25,8 @@ type Req = {
   body: ArrayBuffer;
 };
 
+import { callAnthropic } from './anthropic';
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 let py: any;
 let handle: any;
@@ -61,8 +63,40 @@ async function boot(zipUrl: string) {
 let ready: Promise<void> | null = null;
 let chain: Promise<unknown> = Promise.resolve();
 
+// ---- AI drawing reader (bring your own key). The key is set by the page from THIS browser's
+// storage; it stays here, in JavaScript: the Python server asks for calls, never sees the key.
+let aiKey: string | null = null;
+const g = self as any;
+g.manufaiAiKeySet = () => !!aiKey;
+g.manufaiPersist = () => persist();
+g.manufaiAnthropic = (body: string): Promise<string> => callAnthropic(aiKey, body);
+
+// Zoomed tiles are drawn by the page (PDF.js needs a canvas): ask it, wait for the answer.
+const tileWaits = new Map<number, (json: string) => void>();
+let tileId = 1;
+g.manufaiRenderTiles = (pdf: Uint8Array): Promise<string> =>
+  new Promise((resolve) => {
+    const id = tileId++;
+    tileWaits.set(id, resolve);
+    const copy = pdf.slice().buffer;
+    postMessage({ type: 'render-tiles', id, pdf: copy }, [copy]);
+    setTimeout(() => {
+      if (tileWaits.delete(id)) resolve('{}');
+    }, 120_000);
+  });
+
 self.onmessage = (e: MessageEvent) => {
   const msg = e.data;
+  if (msg.type === 'ai-key') {
+    aiKey = typeof msg.key === 'string' && msg.key.trim() ? msg.key.trim() : null;
+    return;
+  }
+  if (msg.type === 'render-tiles-done') {
+    const done = tileWaits.get(msg.id);
+    tileWaits.delete(msg.id);
+    done?.(typeof msg.result === 'string' ? msg.result : '{}');
+    return;
+  }
   if (msg.type === 'boot') {
     ready = boot(msg.zipUrl);
     ready.then(

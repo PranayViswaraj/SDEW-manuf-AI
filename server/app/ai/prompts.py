@@ -195,7 +195,10 @@ Then check the whole table:
 - feature_list names every feature with its key size; add what is missing, fix what is wrong.
 
 OUTPUT
-- "corrected" is the full table with your corrections applied, in the same format as the claim.
+- "corrected" is the full table with your corrections applied, written as ONE JSON TEXT (a
+  string) in exactly the same format as the claim: an object with drawing, feature_list,
+  callouts, general_tolerances, header, features, not_in_table and questions_for_engineer.
+  Write it first: your callouts and checks point into it.
 - "callouts" is YOUR own inventory (see COMPLETENESS), accounted against your corrected table.
 - One entry in "checks" for EVERY value in YOUR corrected table. "path" points into the corrected
   table: "header.overall_length", "features[2].fields.diameter" (features counted from 0).
@@ -313,11 +316,19 @@ EXTRACTION_SCHEMA: dict[str, Any] = {
     **EXTRACTION_DEFS["extraction"],
 }
 
+# The corrected table travels as JSON text: a second strict copy of the whole extraction format
+# inside this schema makes the compiled output grammar too large for the API. The program parses
+# and checks it (claude_reader.corrected_table).
 VERIFICATION_SCHEMA: dict[str, Any] = {
-    "$defs": EXTRACTION_DEFS,
+    "$defs": {"callout": EXTRACTION_DEFS["callout"]},
     **_obj(
         {
             "verdict": {"type": "string", "enum": ["accept", "corrected", "needs_engineer"]},
+            "corrected": {
+                "type": "string",
+                "description": "The full corrected table as JSON text, same format as the claim.",
+            },
+            "callouts": _CALLOUTS,
             "checks": {
                 "type": "array",
                 "items": _obj(
@@ -333,8 +344,6 @@ VERIFICATION_SCHEMA: dict[str, Any] = {
                     }
                 ),
             },
-            "corrected": {"$ref": "#/$defs/extraction"},
-            "callouts": _CALLOUTS,
             "questions_for_engineer": _STR_LIST,
         }
     ),

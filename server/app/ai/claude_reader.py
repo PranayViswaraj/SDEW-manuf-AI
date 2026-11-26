@@ -17,6 +17,7 @@ Only values the last Verifier round accepted or corrected become suggestions ("a
 Off unless MANUFAI_AI_READER=claude and an Anthropic credential (ANTHROPIC_API_KEY) is set.
 """
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -87,30 +88,35 @@ class ClaudeDrawingReader(DrawingReader):
 
     # ------------------------------------------------------------------ calls
 
-    def _ask(
+    # True for readers that must run inside the caller's event loop (the in-browser server).
+    runs_in_event_loop = False
+
+    def _request(
         self, system: str, content: list[dict[str, Any]], schema: dict[str, Any]
     ) -> dict[str, Any]:
-        with self.client.beta.messages.stream(
-            model=self.model,
-            max_tokens=64000,
-            betas=[FALLBACK_BETA],
-            fallbacks="default",
-            thinking={"type": "adaptive"},
-            output_config={
+        """The Messages API request (both agents): adaptive thinking, structured JSON output, and
+        server-side fallback if the model declines."""
+        return {
+            "model": self.model,
+            "max_tokens": 64000,
+            "fallbacks": "default",
+            "thinking": {"type": "adaptive"},
+            "output_config": {
                 "effort": self.effort,
                 "format": {"type": "json_schema", "schema": schema},
             },
-            system=system,
-            messages=[{"role": "user", "content": content}],
-        ) as stream:
-            msg = stream.get_final_message()
-        if msg.stop_reason == "refusal":
+            "system": system,
+            "messages": [{"role": "user", "content": content}],
+        }
+
+    @staticmethod
+    def _answer(stop_reason: str | None, text: str) -> dict[str, Any]:
+        if stop_reason == "refusal":
             raise DrawingReaderError(
                 "The AI declined to read this drawing. Enter the values by hand."
             )
-        if msg.stop_reason == "max_tokens":
+        if stop_reason == "max_tokens":
             raise DrawingReaderError("The AI answer was cut off. Enter the values by hand.")
-        text = next((b.text for b in msg.content if b.type == "text"), "")
         try:
             answer = json.loads(text)
         except json.JSONDecodeError as e:
@@ -119,9 +125,30 @@ class ClaudeDrawingReader(DrawingReader):
             raise DrawingReaderError("The AI answer was not a JSON object.")
         return answer
 
-    def extract(self, drawing: list[dict[str, Any]], part_number: str) -> dict[str, Any]:
+    def _ask(
+        self, system: str, content: list[dict[str, Any]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        with self.client.beta.messages.stream(
+            betas=[FALLBACK_BETA], **self._request(system, content, schema)
+        ) as stream:
+            msg = stream.get_final_message()
+        text = next((b.text for b in msg.content if b.type == "text"), "")
+        return self._answer(msg.stop_reason, text)
+
+    async def _aask(
+        self, system: str, content: list[dict[str, Any]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        """One agent call. The server reader blocks (it already runs in a worker thread); the
+        in-browser reader overrides this with a non-blocking fetch."""
+        return self._ask(system, content, schema)
+
+    async def _images(self, file: bytes) -> DrawingImages:
+        """Whole-sheet view and zoomed tiles of the drawing (see drawing_images)."""
+        return render(file) if self.tiles else DrawingImages()
+
+    async def aextract(self, drawing: list[dict[str, Any]], part_number: str) -> dict[str, Any]:
         hint = f"Part number typed by the user: {part_number}." if part_number else ""
-        return self._ask(
+        return await self._aask(
             extractor_system(),
             [
                 *drawing,
@@ -130,7 +157,7 @@ class ClaudeDrawingReader(DrawingReader):
             EXTRACTION_SCHEMA,
         )
 
-    def verify(
+    async def averify(
         self, drawing: list[dict[str, Any]], claim: dict[str, Any], gaps: str = ""
     ) -> dict[str, Any]:
         text = "The first reader's JSON for the attached drawing (a claim to test):\n" + json.dumps(
@@ -138,9 +165,11 @@ class ClaudeDrawingReader(DrawingReader):
         )
         if gaps:
             text += "\n\n" + gaps
-        return self._ask(
+        answer = await self._aask(
             VERIFIER_SYSTEM, [*drawing, {"type": "text", "text": text}], VERIFICATION_SCHEMA
         )
+        answer["corrected"] = corrected_table(answer.get("corrected"))
+        return answer
 
     # ------------------------------------------------------------------ pipeline
 
@@ -151,20 +180,32 @@ class ClaudeDrawingReader(DrawingReader):
         part_number: str = "",
         progress: Progress | None = None,
     ) -> ReaderResult:
-        images = render(file) if self.tiles else DrawingImages()
-        drawing = [drawing_block(file), *images.blocks]
+        return asyncio.run(self.aread_report(file, filename, part_number, progress))
+
+    async def aread_report(
+        self,
+        file: bytes,
+        filename: str = "",
+        part_number: str = "",
+        progress: Progress | None = None,
+    ) -> ReaderResult:
+        drawing = [drawing_block(file)]
         say = progress or (lambda stage, n: None)
         try:
             say("extract", 0)  # agent 1: features, 3D shape analysis, feature list, callouts
-            first = self.extract(drawing, part_number)
+            images = await self._images(file)
+            drawing += images.blocks
+            first = await self.aextract(drawing, part_number)
             say("verify", 1)  # agent 2: checks every value, makes its own callout inventory
             gaps = completeness(first, None, images.text_numbers)
-            rounds = [self.verify(drawing, first, gaps.message(first_round=True))]
+            rounds = [await self.averify(drawing, first, gaps.message(first_round=True))]
             gaps = completeness(first, rounds[-1], images.text_numbers)
             if any(c["verdict"] == "wrong" for c in rounds[-1]["checks"]) or gaps.any():
                 say("verify", 2)  # corrected something or left gaps: one more independent look
                 rounds.append(
-                    self.verify(drawing, rounds[-1]["corrected"], gaps.message(first_round=False))
+                    await self.averify(
+                        drawing, rounds[-1]["corrected"], gaps.message(first_round=False)
+                    )
                 )
                 gaps = completeness(first, rounds[-1], images.text_numbers)
         except DrawingReaderError:
@@ -194,10 +235,12 @@ class ClaudeDrawingReader(DrawingReader):
             "callouts": len(last.get("callouts") or []),
             "balloons": gaps.highest_balloon,
             "unaccounted": gaps.for_engineer(),
+            # the last checking round's questions replace earlier ones (they reword the same
+            # points); fall back to its corrected table's, then to the first reader's
             "questions": _unique(
-                first.get("questions_for_engineer", [])
-                + last["corrected"].get("questions_for_engineer", [])
-                + last.get("questions_for_engineer", [])
+                last.get("questions_for_engineer")
+                or last["corrected"].get("questions_for_engineer")
+                or first.get("questions_for_engineer", [])
             ),
         }
         audit = {
@@ -212,6 +255,23 @@ class ClaudeDrawingReader(DrawingReader):
 
     def read(self, file: bytes, filename: str = "") -> TableData:
         return self.read_report(file, filename).table
+
+
+def corrected_table(raw: Any) -> dict[str, Any]:
+    """The checking agent's corrected table (sent as JSON text), checked before it is used."""
+    table = raw
+    if isinstance(raw, str):
+        try:
+            table = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise DrawingReaderError(
+                "The checking agent's corrected table was not valid JSON."
+            ) from e
+    if not isinstance(table, dict) or not isinstance(table.get("features", []), list):
+        raise DrawingReaderError("The checking agent's corrected table was not in the right form.")
+    if not isinstance(table.get("header", {}), dict):
+        raise DrawingReaderError("The checking agent's corrected table had no header.")
+    return table
 
 
 # ---------------------------------------------------------------------- completeness

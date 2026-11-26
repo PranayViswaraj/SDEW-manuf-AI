@@ -64,7 +64,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 exclude = ["app/db/migrations/"]
 
-# Imaging for the AI reader (optional extra "ai"): may be missing where the reader is off.
+# Imaging for the AI reader (optional extra "ai") and the browser (Pyodide) modules: may be missing.
 [[tool.mypy.overrides]]
-module = ["PIL", "PIL.*", "pypdfium2", "pypdfium2.*"]
+module = ["PIL", "PIL.*", "pypdfium2", "pypdfium2.*", "js", "pyodide", "pyodide.*"]
 ignore_missing_imports = true

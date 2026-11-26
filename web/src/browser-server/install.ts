@@ -3,14 +3,49 @@
 
 type Pending = { resolve: (r: Response) => void; reject: (e: unknown) => void };
 
+// ---- AI reader with the user's own Anthropic key (hosted build). The key is kept in THIS
+// browser's storage only and handed to the server worker; it is never sent anywhere but Anthropic.
+const KEY_STORE = 'manufai.anthropicKey';
+let serverWorker: Worker | null = null;
+
+export const browserServerMode = import.meta.env.VITE_BROWSER_SERVER === '1';
+
+export function getBrowserAiKey(): string | null {
+  try {
+    return localStorage.getItem(KEY_STORE);
+  } catch {
+    return null;
+  }
+}
+
+export function setBrowserAiKey(key: string | null): void {
+  try {
+    if (key) localStorage.setItem(KEY_STORE, key);
+    else localStorage.removeItem(KEY_STORE);
+  } catch {
+    // storage blocked: the key still works until the page is closed
+  }
+  serverWorker?.postMessage({ type: 'ai-key', key });
+}
+
 export function installBrowserServer(): void {
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+  serverWorker = worker;
+  worker.postMessage({ type: 'ai-key', key: getBrowserAiKey() });
   const pending = new Map<number, Pending>();
   let nextId = 1;
   const overlay = showOverlay();
 
   worker.onmessage = (e: MessageEvent) => {
     const m = e.data;
+    if (m.type === 'render-tiles') {
+      void import('../lib/drawingTiles')
+        .then(({ renderTiles }) => renderTiles(m.pdf))
+        .then((r) => JSON.stringify(r))
+        .catch(() => '{}')
+        .then((result) => worker.postMessage({ type: 'render-tiles-done', id: m.id, result }));
+      return;
+    }
     if (m.type === 'progress') overlay.text(m.text);
     else if (m.type === 'ready') overlay.remove();
     else if (m.type === 'failed') overlay.fail(m.text);
@@ -20,9 +55,7 @@ export function installBrowserServer(): void {
       pending.delete(m.id);
       if (m.error) p.reject(new TypeError(`ManufAI server error: ${m.error}`));
       else
-        p.resolve(
-          new Response(nullBody(m.status) ? null : m.body, { status: m.status, headers: m.headers }),
-        );
+        p.resolve(new Response(nullBody(m.status) ? null : m.body, { status: m.status, headers: m.headers }));
     }
   };
   worker.postMessage({ type: 'boot', zipUrl: `${import.meta.env.BASE_URL}pyserver.zip` });
@@ -34,8 +67,7 @@ export function installBrowserServer(): void {
     if (url.origin !== location.origin || !url.pathname.startsWith('/api/')) {
       return realFetch(input, init);
     }
-    const body =
-      req.method === 'GET' || req.method === 'HEAD' ? new ArrayBuffer(0) : await req.arrayBuffer();
+    const body = req.method === 'GET' || req.method === 'HEAD' ? new ArrayBuffer(0) : await req.arrayBuffer();
     const headers: [string, string][] = [];
     req.headers.forEach((v, k) => headers.push([k, v]));
     const id = nextId++;

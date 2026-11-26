@@ -142,6 +142,13 @@ def _other_part_in_name(request: Request, db: Session, filename: str, part: str)
     return None
 
 
+def _has_ai_suggestions(ft: FeatureTable) -> bool:
+    cells = list(ft.data.get("header", {}).values()) + [
+        c for f in ft.data.get("features", []) for c in f.get("fields", {}).values()
+    ]
+    return any(c.get("ai") not in (None, "") for c in cells)
+
+
 def _table_is_empty(ft: FeatureTable) -> bool:
     cells = list(ft.data.get("header", {}).values()) + [
         c for f in ft.data.get("features", []) for c in f.get("fields", {}).values()
@@ -270,6 +277,9 @@ def _start_ai_read(
     ft = db.scalar(select(FeatureTable).where(FeatureTable.part_number == part))
     if ft is None or not _table_is_empty(ft):
         return None
+    for job in _ai_jobs(request.app).values():  # already reading this part: show that job
+        if job["part_number"] == part and job["status"] == "running":
+            return dict(job["info"])
     info: dict[str, Any] = {
         "part_number": part,
         "title": d.filename,
@@ -297,9 +307,14 @@ def _start_ai_read(
         "updated": time.time(),
         "info": info,
     }
-    background.add_task(
-        _run_ai_read, request.app, job_id, user.id, part, d.filename, content, dict(info)
-    )
+    args = (request.app, job_id, user.id, part, d.filename, content, dict(info))
+    # The in-browser server (GitHub Pages) runs the job as a task on its own event loop, so the
+    # app keeps answering while the agents read; a normal server uses a background task.
+    schedule = getattr(request.app.state, "ai_scheduler", None)
+    if schedule is not None:
+        schedule(_run_ai_read(*args))
+    else:
+        background.add_task(_run_ai_read, *args)
     return info
 
 
@@ -322,9 +337,11 @@ async def _run_ai_read(
         job.update(status=status, stage=status, info=info, updated=time.time())
 
     try:
-        result = await run_in_threadpool(
-            get_drawing_reader().read_report, content, filename, part, progress
-        )
+        reader = get_drawing_reader()
+        if getattr(reader, "runs_in_event_loop", False):
+            result = await reader.aread_report(content, filename, part, progress)  # type: ignore[attr-defined]
+        else:
+            result = await run_in_threadpool(reader.read_report, content, filename, part, progress)
     except DrawingReaderError as e:
         finish("failed", f"{e} Enter the values from the drawing by hand.")
         return
@@ -377,6 +394,38 @@ async def _run_ai_read(
         "The AI read this drawing (one agent read it, a second checked and corrected it). Each "
         "value is a suggestion: compare it with the drawing, press Use, tick it, then confirm.",
     )
+
+
+@router.post("/{drawing_id}/ai-read")
+def ai_read_drawing(
+    drawing_id: int,
+    request: Request,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(uploaders),
+) -> dict[str, Any]:
+    """Read an uploaded drawing with the two AI agents. Fills only an EMPTY feature table, as
+    suggestions the engineer checks and ticks; answers at once with the job to poll."""
+    if not ai_reader_enabled():
+        raise HTTPException(409, "The AI reader is off. Switch it on (API key) and try again.")
+    d = db.get(Drawing, drawing_id)
+    if d is None:
+        raise HTTPException(404, "Drawing not found.")
+    ft = db.scalar(select(FeatureTable).where(FeatureTable.part_number == d.part_number))
+    if ft is not None and _has_ai_suggestions(ft):
+        raise HTTPException(
+            409,
+            f"The AI has already read a drawing of part {d.part_number}: its suggestions are in "
+            "the table. Check and tick them, or clear the table to read again.",
+        )
+    info = _start_ai_read(request, background, db, user, d.part_number, d, d.content)
+    if info is None:
+        raise HTTPException(
+            409,
+            f"The feature table of part {d.part_number} already has values. The AI only fills an "
+            "empty table, so it never overwrites what an engineer entered.",
+        )
+    return info
 
 
 @router.get("/ai-reader")

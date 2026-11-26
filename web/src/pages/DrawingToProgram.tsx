@@ -35,6 +35,8 @@ import { useAuth } from '../auth/AuthContext';
 import CompareView from '../components/CompareView';
 import GcodeView from '../components/GcodeView';
 import AiReadPanel from '../components/AiReadPanel';
+import BrowserAiKey from '../components/BrowserAiKey';
+import { browserServerMode } from '../browser-server/install';
 import GeneratingCode from '../components/GeneratingCode';
 import { useA11y } from '../a11y/A11yContext';
 import { useToast } from '../components/Toast';
@@ -1006,12 +1008,14 @@ export default function DrawingToProgram() {
   // Two-agent AI read of a new drawing, running in the background (job id), and whether it is on.
   const [aiJob, setAiJob] = useState<string | null>(null);
   const [aiReader, setAiReader] = useState<{ enabled: boolean; model: string | null } | null>(null);
+  const [aiStatusReload, setAiStatusReload] = useState(0);
   useEffect(() => {
     api
       .get<{ enabled: boolean; model: string | null }>('/drawings/ai-reader')
       .then(setAiReader)
       .catch(() => setAiReader(null));
-  }, []);
+  }, [aiStatusReload]);
+  const [aiStarting, setAiStarting] = useState(false);
 
   const reloadMachines = useCallback(() => {
     api
@@ -1847,13 +1851,53 @@ export default function DrawingToProgram() {
                     }}
                   />
                 )}
-                {!aiJob && aiReader && !aiReader.enabled && !knownInfo && (
+                {!aiJob && browserServerMode && (
+                  <BrowserAiKey onChange={() => setAiStatusReload((n) => n + 1)} />
+                )}
+                {!aiJob && aiReader && !aiReader.enabled && !knownInfo && !browserServerMode && (
                   <p className="text-xs text-slate-500">
                     AI drawing reading is off on this server, so drawings that are not known yet are filled in
                     by hand. With it on, two AI agents read every new drawing: one extracts the features, the
                     3D shape and a feature list, the second checks each value against the drawing.
                   </p>
                 )}
+                {!aiJob &&
+                  aiReader?.enabled &&
+                  selectedDrawing &&
+                  isEngineer &&
+                  partModel.chars.length === 0 &&
+                  data.features.length === 0 && (
+                    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-sky-200 bg-sky-50/70 px-4 py-3 text-sm">
+                      <span className="flex-1 text-sky-950">
+                        Let the two AI agents read <b>{selectedDrawing.filename}</b>: agent 1 extracts every
+                        feature and dimension, agent 2 checks each one against the drawing. It takes a few
+                        minutes; you can keep working meanwhile.
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={aiStarting}
+                        onClick={async () => {
+                          setAiStarting(true);
+                          try {
+                            const info = await api.post<KnownDrawingInfo>(
+                              `/drawings/${selectedDrawing.id}/ai-read`,
+                            );
+                            if (info.job_id) {
+                              setKnownInfo(null);
+                              setAiJob(info.job_id);
+                            }
+                          } catch (e) {
+                            setError((e as Error).message);
+                          } finally {
+                            setAiStarting(false);
+                          }
+                        }}
+                      >
+                        {aiStarting ? 'Starting…' : 'Read with AI'}
+                      </button>
+                    </div>
+                  )}
                 {knownInfo && (
                   <Notice tone="info">
                     <p className="font-medium">
