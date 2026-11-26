@@ -39,6 +39,11 @@ from app.services.feature_tables import FEATURE_TYPES, HEADER_FIELDS, Kind, Tabl
 log = logging.getLogger(__name__)
 
 MAX_VERIFY_ROUNDS = 2
+# The most the model can answer (thinking included). A careful read of a dense sheet thinks long:
+# at effort "max" agent 1 used all of 64,000 tokens on thinking and wrote no answer.
+MAX_TOKENS = 128000
+# When an answer is still cut off, try once more one effort level lower.
+LOWER_EFFORT = {"max": "xhigh", "xhigh": "high", "high": "medium"}
 LOW_CONFIDENCE = 0.7
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 _KEEP = {"ok", "wrong"}  # the verifier accepted the value, or supplied the correction
@@ -65,6 +70,10 @@ def drawing_block(content: bytes) -> dict[str, Any]:
     data = base64.standard_b64encode(content).decode("ascii")
     kind = "document" if mtype == "application/pdf" else "image"
     return {"type": kind, "source": {"type": "base64", "media_type": mtype, "data": data}}
+
+
+class AnswerCutOff(DrawingReaderError):
+    """The model used all its answer room (usually thinking) before writing the answer."""
 
 
 class ClaudeDrawingReader(DrawingReader):
@@ -98,7 +107,7 @@ class ClaudeDrawingReader(DrawingReader):
         server-side fallback if the model declines."""
         return {
             "model": self.model,
-            "max_tokens": 64000,
+            "max_tokens": MAX_TOKENS,
             "fallbacks": "default",
             "thinking": {"type": "adaptive"},
             "output_config": {
@@ -116,7 +125,7 @@ class ClaudeDrawingReader(DrawingReader):
                 "The AI declined to read this drawing. Enter the values by hand."
             )
         if stop_reason == "max_tokens":
-            raise DrawingReaderError("The AI answer was cut off. Enter the values by hand.")
+            raise AnswerCutOff("The AI answer was cut off. Enter the values by hand.")
         try:
             answer = json.loads(text)
         except json.JSONDecodeError as e:
@@ -146,9 +155,26 @@ class ClaudeDrawingReader(DrawingReader):
         """Whole-sheet view and zoomed tiles of the drawing (see drawing_images)."""
         return render(file) if self.tiles else DrawingImages()
 
+    async def _agent(
+        self, system: str, content: list[dict[str, Any]], schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        """One agent's answer; if it is cut off, once more one effort level lower."""
+        try:
+            return await self._aask(system, content, schema)
+        except AnswerCutOff:
+            lower = LOWER_EFFORT.get(self.effort)
+            if lower is None:
+                raise
+            log.warning("AI answer cut off at effort %s: trying %s", self.effort, lower)
+            saved, self.effort = self.effort, lower
+            try:
+                return await self._aask(system, content, schema)
+            finally:
+                self.effort = saved
+
     async def aextract(self, drawing: list[dict[str, Any]], part_number: str) -> dict[str, Any]:
         hint = f"Part number typed by the user: {part_number}." if part_number else ""
-        return await self._aask(
+        return await self._agent(
             extractor_system(),
             [
                 *drawing,
@@ -165,7 +191,7 @@ class ClaudeDrawingReader(DrawingReader):
         )
         if gaps:
             text += "\n\n" + gaps
-        answer = await self._aask(
+        answer = await self._agent(
             VERIFIER_SYSTEM, [*drawing, {"type": "text", "text": text}], VERIFICATION_SCHEMA
         )
         answer["corrected"] = corrected_table(answer.get("corrected"))

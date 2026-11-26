@@ -89,6 +89,6 @@ describe('two-agent AI read panel', () => {
     const onDone = vi.fn();
     render(<AiReadPanel jobId="j1" onDone={onDone} />);
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(failed.info, false));
-    expect(screen.getAllByText('Could not finish.').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Could not finish: The AI drawing reader is not available/)).toBeInTheDocument();
   });
 });

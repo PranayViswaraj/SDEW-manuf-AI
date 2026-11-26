@@ -12,7 +12,7 @@ pip install ".[ai]"                 # in server/
 MANUFAI_AI_READER=claude
 ANTHROPIC_API_KEY=<key>             # server environment only, never in git
 MANUFAI_AI_MODEL=claude-opus-5-5    # default
-MANUFAI_AI_EFFORT=max               # default: the most careful reading
+MANUFAI_AI_EFFORT=xhigh             # default (max ran out of answer room on a dense drawing)
 ```
 
 Where it runs: drawing upload on the Drawing → Program page (only when the drawing is not a known

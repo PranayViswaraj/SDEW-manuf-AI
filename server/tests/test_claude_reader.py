@@ -283,3 +283,27 @@ def test_reader_failure_keeps_upload_working(
     job = client.get(f"/api/drawings/ai-jobs/{job_id}", headers=eng).json()
     assert job["status"] == "failed" and job["info"]["filled"] is False
     assert "not available" in job["info"]["message"]
+
+
+def test_a_cut_off_answer_is_tried_once_more_one_effort_lower() -> None:
+    v = {
+        "verdict": "accept",
+        "checks": ALL_OK,
+        "corrected": extraction(),
+        "questions_for_engineer": [],
+    }
+    fake = FakeClient([{}, extraction(), v])
+    efforts: list[str] = []
+    real = fake._stream
+
+    def stream(**kw: Any) -> Any:
+        efforts.append(kw["output_config"]["effort"])
+        fake.stop_reason = "max_tokens" if len(efforts) == 1 else "end_turn"
+        return real(**kw)
+
+    fake.beta.messages.stream = stream
+    r = ClaudeDrawingReader(model="claude-opus-5-5", effort="max", client=fake)
+    result = r.read_report(PDF)
+    assert efforts == ["max", "xhigh", "max"]  # the retry only for the cut-off call
+    assert fake.calls[0]["max_tokens"] == 128000
+    assert result.table.features[0].fields["diameter"].ai == 22.22

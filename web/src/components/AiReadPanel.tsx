@@ -190,7 +190,7 @@ export default function AiReadPanel({
               ? 'Reading the drawing as an image: views, every dimension, the 3D shape.'
               : s1 === 'done'
                 ? 'Feature table, 3D analysis and feature list drafted.'
-                : 'Could not finish.'
+                : `Could not finish: ${info?.message ?? 'no reason given.'}`
           }
         />
         <AgentCard
@@ -211,7 +211,7 @@ export default function AiReadPanel({
               : s2 === 'done'
                 ? `Checked ${info?.verify_rounds ?? 1} time${(info?.verify_rounds ?? 1) > 1 ? 's' : ''}; only accepted or corrected values are suggested.`
                 : s2 === 'failed'
-                  ? 'Could not finish.'
+                  ? `Could not finish: ${info?.message ?? 'no reason given.'}`
                   : 'Starts when agent 1 hands over its draft.'
           }
         />
