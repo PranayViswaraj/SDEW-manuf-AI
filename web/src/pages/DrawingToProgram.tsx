@@ -1902,14 +1902,13 @@ export default function DrawingToProgram() {
                     )}
                   </Notice>
                 )}
-                {(partModel.outer.length >= 2 || partModel.chars.length > 0) && (
-                  <PartReport
-                    model={partModel}
-                    partNumber={ft.part_number}
-                    drawingRef={selectedDrawing?.filename ?? ft.drawing_ref}
-                    programText={writing ? null : (editText ?? preview?.text ?? null)}
-                  />
-                )}
+                <PartReport
+                  model={partModel}
+                  partNumber={ft.part_number}
+                  drawingRef={selectedDrawing?.filename ?? ft.drawing_ref}
+                  programText={writing ? null : (editText ?? preview?.text ?? null)}
+                  aiOn={!!aiReader?.enabled}
+                />
                 <h3 className="pt-2 font-semibold">
                   Feature table: enter, check against the drawing and tick
                 </h3>

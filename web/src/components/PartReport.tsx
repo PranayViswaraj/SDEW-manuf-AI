@@ -170,11 +170,13 @@ function Characteristics({
   programText,
   selected,
   onSelect,
+  empty,
 }: {
   chars: Characteristic[];
   programText: string | null;
   selected: number | null;
   onSelect: (no: number | null) => void;
+  empty: string;
 }) {
   const words = useMemo(() => xWords(programText), [programText]);
   const anyAi = chars.some((c) => c.ai !== null);
@@ -210,6 +212,13 @@ function Characteristics({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
+            {chars.length === 0 && (
+              <tr>
+                <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-500">
+                  {empty}
+                </td>
+              </tr>
+            )}
             {chars.map((c) => {
               const { verdict, dev } = verdictOf(c);
               const tol = c.upper !== null && c.lower !== null;
@@ -394,11 +403,14 @@ export default function PartReport({
   partNumber,
   drawingRef,
   programText,
+  aiOn = false,
 }: {
   model: PartModel;
   partNumber: string;
   drawingRef: string;
   programText: string | null;
+  /** The AI reader is switched on (it fills the table when it reads a drawing). */
+  aiOn?: boolean;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [planPick, setPlanPick] = useState<PlanRow | null>(null);
@@ -503,18 +515,32 @@ export default function PartReport({
         </dl>
       </div>
 
-      {model.chars.length > 0 && (
+      {
         <Characteristics
           chars={model.chars}
           programText={programText}
           selected={selected}
+          empty={
+            aiOn
+              ? 'No dimensions yet. The two AI agents fill this table when they read the drawing (upload it, or upload a new revision).'
+              : 'No dimensions yet. The AI reader is off on this server, so enter the values in the feature table below: each dimension then appears here with its tolerance band, the size the program cuts and its check result.'
+          }
           onSelect={(no) => {
             setSelected(no);
             setPlanPick(null);
           }}
         />
-      )}
+      }
 
+      {turned === 0 && (
+        <div className="space-y-3">
+          <h3 className="font-semibold">Process plan: every feature in an operation</h3>
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-500">
+            OP10 (front side) and OP20 (after "Turn part around") are planned here from the feature table,
+            with Z from / Z to for every feature.
+          </div>
+        </div>
+      )}
       {turned > 0 && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">

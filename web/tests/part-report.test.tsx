@@ -57,3 +57,19 @@ describe('part report: characteristics read twice', () => {
     expect(planRow.className).toContain('bg-sky-50');
   });
 });
+
+describe('part report: before any value is entered', () => {
+  it('still shows the characteristics table and the plan, and says what fills them', () => {
+    const empty: FeatureTableData = {
+      header: { material_grade: c(null), bar_diameter: c(null), overall_length: c(null) },
+      features: [],
+    };
+    render(
+      <PartReport model={buildPartModel(empty)} partNumber="P-2" drawingRef="p2.pdf" programText={null} />,
+    );
+    const table = screen.getByRole('table', { name: 'Characteristics' });
+    expect(within(table).getByText(/The AI reader is off on this server/)).toBeInTheDocument();
+    expect(within(table).getByText('AI read')).toBeInTheDocument();
+    expect(screen.getByText(/OP10 \(front side\) and OP20/)).toBeInTheDocument();
+  });
+});
