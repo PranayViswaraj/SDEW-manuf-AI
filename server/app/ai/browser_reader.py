@@ -49,8 +49,11 @@ class BrowserClaudeReader(ClaudeDrawingReader):
         import js
 
         body = self._request(system, content, schema) | {"stream": True}
-        raw = await js.manufaiAnthropic(json.dumps(body, ensure_ascii=False))
-        res = json.loads(str(raw))
+        try:
+            raw = await js.manufaiAnthropic(json.dumps(body, ensure_ascii=False))
+            res = json.loads(str(raw))
+        except Exception as e:  # noqa: BLE001 - a browser-side failure: say what it was
+            raise DrawingReaderError(f"The browser could not reach the AI service: {e}") from e
         if not res.get("ok"):
             status = int(res.get("status") or 0)
             msg = _HTTP_MESSAGES.get(status) or f"The AI service answered with an error ({status})."

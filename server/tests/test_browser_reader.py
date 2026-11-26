@@ -129,3 +129,14 @@ def test_read_with_ai_for_an_uploaded_drawing(
         client.post(f"/api/drawings/{did}/ai-read", headers=role_headers["operator"]).status_code
         == 403
     )
+
+
+def test_a_browser_side_failure_is_explained(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_js(monkeypatch, [])
+
+    async def boom(_body: str) -> str:
+        raise RuntimeError("TypeError: Failed to fetch")
+
+    monkeypatch.setattr(sys.modules["js"], "manufaiAnthropic", boom)
+    with pytest.raises(DrawingReaderError, match="could not reach the AI service: TypeError"):
+        asyncio.run(BrowserClaudeReader(model="m").aread_report(PDF))
