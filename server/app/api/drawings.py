@@ -148,15 +148,48 @@ def _other_part_in_name(request: Request, db: Session, filename: str, part: str)
     return None
 
 
+# Common round bar sizes (mm) stocked for turning.
+STOCK_BARS = (
+    6, 8, 10, 12, 14, 16, 18, 20, 22, 25, 28, 30, 32, 35, 36, 38, 40, 42, 45, 48, 50, 55, 60,
+    65, 70, 75, 80, 85, 90, 95, 100, 110, 120, 130, 140, 150, 160, 180, 200,
+)  # fmt: skip
+BAR_ALLOWANCE = 2.0  # on diameter, to turn the largest diameter clean
+
+
+def standard_bar(data: dict[str, Any]) -> tuple[float, str] | None:
+    """The stock bar for a part: the next common size at least 2 mm over its largest diameter."""
+    biggest = 0.0
+    for f in data.get("features", []):
+        for key in ("diameter", "diameter_start", "diameter_end"):
+            if f.get("type") in ("od", "taper", "groove"):
+                v = (f.get("fields", {}).get(key) or {}).get("value")
+                if isinstance(v, int | float):
+                    biggest = max(biggest, float(v))
+    if biggest <= 0:
+        return None
+    need = biggest + BAR_ALLOWANCE
+    size = next((b for b in STOCK_BARS if b >= need - 1e-9), None)
+    if size is None:
+        return None
+    return float(size), (
+        f"not on the drawing: the next common bar size at least {BAR_ALLOWANCE:g} mm over the "
+        f"largest diameter Ø{biggest:g}. Check it against the bar on the rack."
+    )
+
+
 def _ai_untouched(ft: FeatureTable) -> bool:
     """Filled by the AI reader and not touched since: no value ticked or changed by an engineer,
     table not confirmed. Such a table may be read again (and replaced) by the AI."""
     if ft.source != "drawing_reader" or ft.status != FeatureTableStatus.DRAFT.value:
         return False
-    cells = list(ft.data.get("header", {}).values()) + [
+    header = ft.data.get("header", {})
+    cells = [c for k, c in header.items() if k != "bar_diameter"] + [
         c for f in ft.data.get("features", []) for c in f.get("fields", {}).values()
     ]
-    return all(not c.get("confirmed") and c.get("value") in (None, "", c.get("ai")) for c in cells)
+    bar = header.get("bar_diameter") or {}  # chosen by the app when the drawing has none
+    return not bar.get("confirmed") and all(
+        not c.get("confirmed") and c.get("value") in (None, "", c.get("ai")) for c in cells
+    )
 
 
 def _ai_may_fill(ft: FeatureTable) -> bool:
@@ -398,7 +431,13 @@ async def _run_ai_read(
             # ticks it; the table cannot be confirmed (or a program made) before every tick
             cell["value"], cell["confirmed"] = cell["ai"], False
         if data["header"]["bar_diameter"]["ai"] is None:
-            info["not_on_drawing"] = ["bar_diameter"]
+            # the bar size is almost never on a drawing: choose the stock bar (unticked)
+            bar = standard_bar(data)
+            if bar is not None:
+                data["header"]["bar_diameter"]["value"] = bar[0]
+                info["bar_estimate"] = {"value": bar[0], "note": bar[1]}
+            else:
+                info["not_on_drawing"] = ["bar_diameter"]
         ft.data = data
         ft.status = FeatureTableStatus.DRAFT.value
         ft.source = "drawing_reader"

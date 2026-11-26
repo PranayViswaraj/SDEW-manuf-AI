@@ -357,10 +357,17 @@ def test_plan_prefills_from_proven_programs(
     assert ops["thread"]["needed"] and ops["bore"]["needed"]
     gen_params = {p["key"]: p["suggestion"] for p in ops["general"]["params"]}
     assert gen_params["clearance"]["value"] == 2.0
-    assert gen_params["part_off"] is None  # bar or blanks: open item, never assumed
+    # no proven program for this part: made from bar and parted off, marked as a standard value
+    assert gen_params["part_off"]["value"] == "yes"
+    assert gen_params["part_off"]["source"] == "standard"
     assert ops["drill"]["tool_suggestion"]["value"] == "T0101"
     thread = {p["key"]: p["suggestion"] for p in ops["thread"]["params"]}
-    assert thread["first_depth"] is None  # no proven thread program
+    # no proven thread program: a standard value, labelled as such
+    assert thread["first_depth"] == {
+        "value": 0.3,
+        "source": "standard",
+        "note": "common shop value (not found in your programs): check at the machine",
+    }
 
 
 def test_preview_save_approve_flow(
@@ -412,7 +419,9 @@ def test_preview_save_approve_flow(
     ).json()
     ops = {o["key"]: o for o in plan["operations"]}
     sug = {p["key"]: p["suggestion"] for p in ops["general"]["params"]}
-    assert sug["part_off"] is None  # bar or cut blank is a fact about the part, never carried
+    # bar or cut blank is a fact about the part, never carried over from TEST-1: the standard
+    # value (from bar) is offered instead, labelled as such
+    assert sug["part_off"]["source"] == "standard"
     finish = {p["key"]: p["suggestion"] for p in ops["finish"]["params"]}
     assert finish["rpm"]["value"] == 2500 and finish["rpm"]["source"] == "last saved"
 
@@ -1107,3 +1116,53 @@ def test_taper_checks() -> None:
     geo, problems = read_geometry(data)
     assert problems == [] and geo is not None
     assert any("0.75° per side does not match" in n for n in geo.notes)
+
+
+def test_a_new_part_on_a_machine_with_no_tool_list_needs_nothing_typed(
+    client: TestClient, settings: Settings, db: Session, make_user: UserFactory
+) -> None:
+    """Wo-1047-like tapered pin: no proven program, machine tool list empty. Every setting is
+    filled (standard turret, part off from bar, standard values) and the program generates."""
+    from app.seed import run_seed
+
+    run_seed(settings, db)
+    m = db.scalar(select(Machine).where(Machine.key == "lmw-lx20tl3-l110-00542"))
+    assert m is not None and not m.tools
+    m.controller = "FANUC 0i-TF"
+    data = core_pin()
+    ft = FeatureTable(
+        part_number="WO-1047-TEST",
+        data=data,
+        status="confirmed",
+        confirmed_hash=data_hash(data),
+    )
+    db.add(ft)
+    db.commit()
+    h = headers_for(make_user(Role.PROGRAMMER))
+    plan = client.get(
+        f"/api/generator/plan?feature_table_id={ft.id}&machine_id={m.id}", headers=h
+    ).json()
+    empty = [
+        f"{o['key']}.{p['key']}"
+        for o in plan["operations"]
+        if o["needed"]
+        for p in o["params"]
+        if p["suggestion"] is None
+    ] + [
+        o["key"]
+        for o in plan["operations"]
+        if o["needed"] and o["tool_types"] and not o["tool_suggestion"]
+    ]
+    assert empty == []
+    rough = next(o for o in plan["operations"] if o["key"] == "rough")
+    assert rough["tool_suggestion"]["source"].startswith("standard turret")
+    body = {
+        "feature_table_id": ft.id,
+        "machine_id": m.id,
+        "program_number": plan["program_number"],
+        "setup": _setup_from_plan(plan),
+    }
+    r = client.post("/api/generator/preview", json=body, headers=h).json()
+    assert r["ok"], r["problems"]
+    assert r["validation"]["errors"] == []
+    assert "G1X21.29Z-57.0" in r["text"]  # the 2° taper, cut as one line

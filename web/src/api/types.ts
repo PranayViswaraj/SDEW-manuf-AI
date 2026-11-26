@@ -416,7 +416,13 @@ export interface AiJob {
 
 export interface Suggestion {
   value: number | string;
-  source: 'last saved' | 'proven program' | 'proven program for this part' | 'machine tool list';
+  source:
+    | 'last saved'
+    | 'proven program'
+    | 'proven program for this part'
+    | 'machine tool list'
+    | 'standard'
+    | 'standard turret (machine tool list not entered)';
   note: string;
 }
 

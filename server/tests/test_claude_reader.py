@@ -258,6 +258,9 @@ def test_drawing_upload_fills_empty_table_with_ai_suggestions(
         "value": 22.22,  # filled in for the engineer to check, never ticked
         "confirmed": False,
     }
+    # the bar is not on the drawing: the next stock size over Ø22.22 + 2 mm is filled in, unticked
+    assert ft["data"]["header"]["bar_diameter"] == {"ai": None, "value": 25.0, "confirmed": False}
+    assert info["bar_estimate"]["value"] == 25.0
 
 
 def test_reader_failure_keeps_upload_working(

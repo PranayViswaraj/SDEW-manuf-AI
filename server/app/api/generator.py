@@ -154,12 +154,29 @@ def _company_edge(request: Request, op: str) -> dict[str, Any] | None:
     return None
 
 
+# Used while a machine's tool list is not entered and the part has no proven program: a common
+# 8-station lathe turret, so a program can be written at once. The validator warns that tool
+# calls were not checked against the machine; the setter loads or matches these stations.
+STANDARD_TURRET: tuple[ToolInfo, ...] = (
+    ToolInfo("T0101", "od_rough", "OD rough CNMG 0.8 (standard turret)", 0.8),
+    ToolInfo("T0202", "od_finish", "OD finish VNMG 0.4 (standard turret)", 0.4),
+    ToolInfo("T0303", "drill", "Drill (standard turret)", None),
+    ToolInfo("T0404", "bore", "Boring bar 0.4 (standard turret)", 0.4),
+    ToolInfo("T0505", "groove", "Groove 3 mm (standard turret)", None),
+    ToolInfo("T0606", "thread", "Thread 60 deg (standard turret)", None),
+    ToolInfo("T0707", "parting", "Part-off 3 mm (standard turret)", None),
+)
+
+
 def _tools(machine: Machine, ctx: PartContext | None = None) -> list[ToolInfo]:
-    """The machine's tool list; while it is empty, the tools the part's proven program uses."""
-    if machine.tools or ctx is None:
+    """The machine's tool list; while it is empty, the tools the part's proven program uses,
+    else a standard turret layout (so nothing is left to choose by hand)."""
+    if machine.tools:
         return [
             ToolInfo(t.tool_code, t.tool_type, t.description, t.nose_radius) for t in machine.tools
         ]
+    if ctx is None:
+        return list(STANDARD_TURRET)
     return [
         ToolInfo(t["tool_code"], t["tool_type"], t["description"], t["nose_radius"])
         for t in ctx.tools
@@ -267,6 +284,7 @@ def plan(
     proven = _proven(request)
     tool_pool = _tools(machine, ctx)
     tools_from_ctx = not machine.tools and ctx is not None
+    standard_turret = not machine.tools and ctx is None
     length = ft.data.get("header", {}).get("overall_length", {}).get("value")
     lib_face_stock = company_face_stock(
         [(x.name, x.text) for x in load_library(_library_dir(request))]
@@ -308,7 +326,11 @@ def plan(
                 tool_sug = {
                     "value": tools[0]["tool_code"],
                     "source": (
-                        "proven program for this part" if tools_from_ctx else "machine tool list"
+                        "proven program for this part"
+                        if tools_from_ctx
+                        else "standard turret (machine tool list not entered)"
+                        if standard_turret
+                        else "machine tool list"
                     ),
                     "note": f"{tools[0]['tool_code']} {tools[0]['description']}".strip()
                     + (
@@ -327,6 +349,13 @@ def plan(
                 from_part := _from_part(ctx, spec.key, prm.key, spec.proven_kinds, length, ft.data)
             ):
                 sug = from_part
+            elif ctx is None and spec.key == "general" and prm.key == "part_off":
+                # a new part with no proven program: made from bar and parted off at the end
+                sug = {
+                    "value": "yes",
+                    "source": "standard",
+                    "note": "made from bar, parted off at the end (no proven program yet)",
+                }
             elif not part_fact and last.get(prm.key) not in (None, ""):
                 sug = {"value": last[prm.key], "source": "last saved", "note": saved_note}
             elif prm.key == "ref_edge" and (edge := _company_edge(request, spec.key)):
@@ -346,6 +375,12 @@ def plan(
                     sug = (
                         ctx.suggest(("bore",), "finish_feed") if ctx else None
                     ) or proven.suggest(("bore",), "finish_feed")
+            if sug is None and (std := STANDARD_VALUES.get((spec.key, prm.key))) is not None:
+                sug = {
+                    "value": std,
+                    "source": "standard",
+                    "note": "common shop value (not found in your programs): check at the machine",
+                }
             params.append(
                 {
                     "key": prm.key,
@@ -381,6 +416,49 @@ def plan(
         "controller_problem": controller_problem(machine),
     }
 
+
+# Last resort, after this part's proven program, the last saved setup and the company's proven
+# programs: common shop values for steel on a CNC lathe, so nothing is left to type. Each is
+# shown as "standard" in the setup for the setter to check at the machine.
+STANDARD_VALUES: dict[tuple[str, str], Any] = {
+    ("general", "clearance"): 2.0,
+    ("general", "spindle_direction"): "M4",
+    ("general", "part_off"): "yes",
+    ("drill", "rpm"): 600,
+    ("drill", "feed"): 0.08,
+    ("drill", "peck"): 3.0,
+    ("drill", "retract"): 1.0,
+    ("rough", "rpm"): 1200,
+    ("rough", "feed"): 0.2,
+    ("rough", "depth_of_cut"): 1.0,
+    ("rough", "retract"): 0.5,
+    ("rough", "finish_allow_x"): 0.3,
+    ("rough", "finish_allow_z"): 0.05,
+    ("rough", "face_stock"): 1.0,
+    ("finish", "rpm"): 1800,
+    ("finish", "feed"): 0.08,
+    ("bore", "rpm"): 1200,
+    ("bore", "feed"): 0.15,
+    ("bore", "finish_feed"): 0.08,
+    ("bore", "depth_of_cut"): 0.8,
+    ("bore", "retract"): 0.5,
+    ("bore", "finish_allow_x"): 0.3,
+    ("bore", "finish_allow_z"): 0.05,
+    ("groove", "rpm"): 800,
+    ("groove", "feed"): 0.05,
+    ("groove", "width"): 3.0,
+    ("groove", "ref_edge"): "left",
+    ("thread", "rpm"): 800,
+    ("thread", "first_depth"): 0.3,
+    ("thread", "min_depth"): 0.05,
+    ("thread", "finish_allowance"): 0.05,
+    ("thread", "finish_passes"): 1,
+    ("back", "face_stock"): 1.0,
+    ("part", "rpm"): 800,
+    ("part", "feed"): 0.05,
+    ("part", "width"): 3.0,
+    ("part", "ref_edge"): "left",
+}
 
 BORE_FROM_ROUGH = {"depth_of_cut", "retract", "finish_allow_x", "finish_allow_z"}
 # Facts about one part, never carried over from another part's saved setup.

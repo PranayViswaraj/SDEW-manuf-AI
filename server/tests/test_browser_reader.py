@@ -187,3 +187,19 @@ def test_read_again_with_opus(
     r = client.post(f"/api/drawings/{did}/ai-read?model=opus", headers=eng)
     assert r.status_code == 200 and r.json()["model"] == "claude-opus-5-5"
     assert used == ["claude-opus-5-5"]
+
+
+def test_standard_bar_size() -> None:
+    from app.api.drawings import standard_bar
+
+    def od(d: float) -> dict[str, Any]:
+        return {"type": "od", "fields": {"diameter": {"value": d}}}
+
+    taper = {
+        "type": "taper",
+        "fields": {"diameter_start": {"value": 16.3}, "diameter_end": {"value": 21.3}},
+    }
+    assert standard_bar({"features": [taper, od(27.0)]})[0] == 30.0  # Wo-1047: Ø27 + 2 -> Ø30
+    assert standard_bar({"features": [od(38.0)]})[0] == 40.0
+    assert standard_bar({"features": [od(48.0)]})[0] == 50.0
+    assert standard_bar({"features": []}) is None

@@ -80,6 +80,9 @@ function sourceText(s: Suggestion | null | undefined): string {
   if (s.source === 'proven program for this part') return `From this part's program: ${s.note}`;
   if (s.source === 'proven program') return `From ${s.note}`;
   if (s.source === 'last saved') return `Same as ${s.note}`;
+  if (s.source === 'standard') return `Standard: ${s.note}`;
+  if (s.source.startsWith('standard turret'))
+    return `Standard turret (machine tool list not entered): ${s.note}`;
   return `From the machine tool list: ${s.note}`;
 }
 
@@ -1532,9 +1535,13 @@ export default function DrawingToProgram() {
     !dirty &&
     ft.source === 'drawing_reader' &&
     ft.status === 'draft' &&
-    [...Object.values(data.header), ...data.features.flatMap((f) => Object.values(f.fields))].every(
-      (c) => !c.confirmed && (c.value === null || c.value === '' || c.value === c.ai),
-    );
+    !data.header.bar_diameter?.confirmed &&
+    [
+      ...Object.entries(data.header)
+        .filter(([k]) => k !== 'bar_diameter') // the bar is chosen by the app, not read
+        .map(([, c]) => c),
+      ...data.features.flatMap((f) => Object.values(f.fields)),
+    ].every((c) => !c.confirmed && (c.value === null || c.value === '' || c.value === c.ai));
   const tableEmpty =
     !!data &&
     [...Object.values(data.header), ...data.features.flatMap((f) => Object.values(f.fields))].every(
@@ -1954,9 +1961,10 @@ export default function DrawingToProgram() {
                     )}
                     {knownInfo.bar_estimate ? (
                       <p className="mt-1">
-                        Bar diameter <b>Ø{knownInfo.bar_estimate.value}</b> is not on the drawing; it is
-                        worked out from the proven program: {knownInfo.bar_estimate.note} Check it against the
-                        bar on the rack.
+                        Bar diameter <b>Ø{knownInfo.bar_estimate.value}</b> is{' '}
+                        {knownInfo.ai
+                          ? knownInfo.bar_estimate.note
+                          : `not on the drawing; it is worked out from the proven program: ${knownInfo.bar_estimate.note} Check it against the bar on the rack.`}
                       </p>
                     ) : (
                       knownInfo.not_on_drawing.includes('bar_diameter') && (
