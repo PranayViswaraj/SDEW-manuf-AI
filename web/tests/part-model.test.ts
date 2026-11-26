@@ -28,9 +28,12 @@ describe('part model from the feature table', () => {
   });
 
   it('places every feature in its operation with Z from its clamping face', () => {
-    expect(m.op10.map((r) => r.type)).toEqual(['face', 'chamfer', 'od', 'od', 'drill', 'bore']);
+    expect(m.op10.map((r) => r.type)).toEqual(['face', 'chamfer', 'od', 'shoulder', 'od', 'drill', 'bore']);
     expect(m.op20.map((r) => r.type)).toEqual(['bore']);
-    const [, ch, od1, od2] = m.op10;
+    const [, ch, od1, sh, od2] = m.op10;
+    expect(sh).toMatchObject({ nominal: 'Ø31 / Ø38', zFrom: -22, derived: true });
+    expect(od1.drawing).toBe('Ø31.00, 22.00');
+    expect(m.op10.map((r) => r.id)).toEqual(['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7']);
     expect([od1.zFrom, od1.zTo, od1.length]).toEqual([-0, -22, 22]);
     expect([od2.zFrom, od2.zTo]).toEqual([-22, -32]);
     expect([ch.zFrom, ch.zTo]).toEqual([-0, -1]); // on the front corner of the next OD
@@ -50,5 +53,26 @@ describe('part model from the feature table', () => {
     const words = xWords('%\nO1(X99 IN A COMMENT)\nG0X40.Z2.\nG1X30.95F0.1\n%');
     expect(words.get('30.950')).toBe(4);
     expect(words.has('99.000')).toBe(false);
+  });
+
+  it("carries the AI's own reading, the engineer's tick and where each dimension is", () => {
+    const withAi: FeatureTableData = {
+      ...DATA,
+      features: [
+        {
+          type: 'od',
+          fields: { diameter: { ai: 31.05, value: 31, confirmed: true }, length: c(22) },
+        },
+        {
+          type: 'od',
+          fields: { diameter: { ai: 38, value: null, confirmed: false }, length: c(10) },
+        },
+      ],
+    };
+    const k = buildPartModel(withAi).chars;
+    const d1 = k.find((x) => x.what === 'OD (row 1)');
+    expect(d1).toMatchObject({ nominal: 31, ai: 31.05, confirmed: true, pending: false, span: [0, 22] });
+    const d2 = k.find((x) => x.what === 'OD (row 2)');
+    expect(d2).toMatchObject({ nominal: 38, ai: 38, pending: true, span: [22, 32] });
   });
 });

@@ -22,6 +22,12 @@ export interface PlanRow {
   zFrom: number | null;
   zTo: number | null;
   length: number | null;
+  /** Drawing dimensions that belong to this feature ("Ø27.00, 7.40"), or why there are none. */
+  drawing: string;
+  /** Where it is on the part (p from the front face), for highlighting. */
+  span: [number, number] | null;
+  /** Derived from the table (a shoulder between two OD steps), not a row of its own. */
+  derived?: boolean;
 }
 
 export interface Characteristic {
@@ -38,6 +44,14 @@ export interface Characteristic {
   programmed: number | null;
   /** Diameter the program writes as an X word (looked up in the program text). */
   xWord: boolean;
+  /** The AI agents' reading of the same value (a second, independent reading), if any. */
+  ai: number | null;
+  /** The engineer has ticked the value as checked against the drawing. */
+  confirmed: boolean;
+  /** Only the AI has given this value so far (not yet accepted by the engineer). */
+  pending: boolean;
+  /** Where it is on the part (p from the front face), for highlighting. */
+  span: [number, number] | null;
 }
 
 export interface PartModel {
@@ -65,12 +79,20 @@ const TYPE_LABEL: Record<string, string> = {
   cone: 'Cone / countersink',
 };
 
-const val = (c: Cell | undefined) => (c ? c.value : null);
-function num(c: Cell | undefined): number | null {
-  const v = val(c);
+const val = (c: Cell | undefined) => (c ? (c.value ?? c.ai) : null);
+function toNum(v: unknown): number | null {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v);
   return null;
+}
+const num = (c: Cell | undefined): number | null => toNum(val(c));
+/** The AI reading, whether it is pending and whether the engineer ticked it, for one cell. */
+function meta(c: Cell | undefined) {
+  return {
+    ai: c ? toNum(c.ai) : null,
+    confirmed: !!c?.confirmed,
+    pending: !!c && (c.value === null || c.value === '') && c.ai !== null,
+  };
 }
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
 /** Middle of the tolerance band, else the nominal (as the generator cuts it). */
@@ -107,22 +129,28 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
 
   let fId = 0;
   let dNo = 0;
-  const addChar = (c: Omit<Characteristic, 'no' | 'tag'>) => {
+  const addChar = (
+    c: Omit<Characteristic, 'no' | 'tag' | 'ai' | 'confirmed' | 'pending' | 'span'>,
+    cell?: Cell,
+  ) => {
     dNo++;
-    out.chars.push({ ...c, no: dNo, tag: `D${dNo}` });
+    out.chars.push({ ...c, ...meta(cell), span: null, no: dNo, tag: `D${dNo}` });
   };
   if (length !== null)
-    addChar({
-      label: f2(length),
-      what: 'Overall length',
-      op: flip >= 0 ? 'OP20' : 'OP10',
-      feature: 0,
-      nominal: length,
-      upper: null,
-      lower: null,
-      programmed: length,
-      xWord: false,
-    });
+    addChar(
+      {
+        label: f2(length),
+        what: 'Overall length',
+        op: flip >= 0 ? 'OP20' : 'OP10',
+        feature: 0,
+        nominal: length,
+        upper: null,
+        lower: null,
+        programmed: length,
+        xWord: false,
+      },
+      h.overall_length,
+    );
 
   // turned intervals, part coordinates (p from the front face), for the outline
   const odSpans: { p0: number; p1: number; r: number }[] = [];
@@ -131,6 +159,12 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
   for (const side of sides) {
     const rows = side.op === 'OP10' ? out.op10 : out.op20;
     const toPart = (z: number) => (side.op === 'OP10' ? -z : length !== null ? length + z : -z);
+    const partSpan = (z0: number, z1: number): [number, number] => {
+      const a = toPart(z0);
+      const b = toPart(z1);
+      return [Math.min(a, b), Math.max(a, b)];
+    };
+    let lastOd: { dia: number; z: number } | null = null;
     let zOd = 0;
     let boreDepth = 0;
     let pending: { row: PlanRow; axial: number } | null = null;
@@ -151,15 +185,19 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
         zFrom: null,
         zTo: null,
         length: null,
+        drawing: '',
+        span: null,
       };
       const place = (z0: number, z1: number) => {
         row.zFrom = r3(z0);
         row.zTo = r3(z1);
         row.length = Math.abs(z1 - z0) > 1e-9 ? r3(Math.abs(z1 - z0)) : null;
+        row.span = partSpan(z0, z1);
         if (pending) {
           pending.row.zFrom = r3(z0);
           pending.row.zTo = r3(z0 - pending.axial);
           pending.row.length = pending.axial || null;
+          pending.row.span = partSpan(z0, z0 - pending.axial);
           pending = null;
         }
       };
@@ -168,97 +206,131 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
         const a = num(c.angle);
         row.nominal = s !== null ? `${s} × ${a ?? 45}°` : '';
         if (s !== null)
-          addChar({
-            label: `${f2(s)}×${a ?? 45}°`,
-            what: `Chamfer (row ${n})`,
-            op: side.op,
-            feature: n,
-            nominal: s,
-            upper: tp,
-            lower: tm,
-            programmed: null,
-            xWord: false,
-          });
+          addChar(
+            {
+              label: `${f2(s)}×${a ?? 45}°`,
+              what: `Chamfer (row ${n})`,
+              op: side.op,
+              feature: n,
+              nominal: s,
+              upper: tp,
+              lower: tm,
+              programmed: null,
+              xWord: false,
+            },
+            c.size,
+          );
         pending = { row, axial: s ?? 0 };
       } else if (f.type === 'radius') {
         const r = num(c.radius);
         row.nominal = r !== null ? `R${r}` : '';
         if (r !== null)
-          addChar({
-            label: `R${r}`,
-            what: `Radius (row ${n})`,
-            op: side.op,
-            feature: n,
-            nominal: r,
-            upper: tp,
-            lower: tm,
-            programmed: null,
-            xWord: false,
-          });
+          addChar(
+            {
+              label: `R${r}`,
+              what: `Radius (row ${n})`,
+              op: side.op,
+              feature: n,
+              nominal: r,
+              upper: tp,
+              lower: tm,
+              programmed: null,
+              xWord: false,
+            },
+            c.radius,
+          );
         pending = { row, axial: r ?? 0 };
       } else if (f.type === 'cone') {
         const d = num(c.diameter);
         const a = num(c.angle);
         row.nominal = d !== null ? `Ø${d} mouth, ${a ?? '?'}° from axis` : '';
         if (d !== null)
-          addChar({
-            label: `Ø${f2(d)}`,
-            what: `Cone mouth (row ${n})`,
-            op: side.op,
-            feature: n,
-            nominal: d,
-            upper: tp,
-            lower: tm,
-            programmed: midTol(d, tp, tm),
-            xWord: true,
-          });
+          addChar(
+            {
+              label: `Ø${f2(d)}`,
+              what: `Cone mouth (row ${n})`,
+              op: side.op,
+              feature: n,
+              nominal: d,
+              upper: tp,
+              lower: tm,
+              programmed: midTol(d, tp, tm),
+              xWord: true,
+            },
+            c.diameter,
+          );
         if (a !== null)
-          addChar({
-            label: `${a}°`,
-            what: `Cone angle (row ${n})`,
-            op: side.op,
-            feature: n,
-            nominal: a,
-            upper: null,
-            lower: null,
-            programmed: null,
-            xWord: false,
-          });
+          addChar(
+            {
+              label: `${a}°`,
+              what: `Cone angle (row ${n})`,
+              op: side.op,
+              feature: n,
+              nominal: a,
+              upper: null,
+              lower: null,
+              programmed: null,
+              xWord: false,
+            },
+            c.angle,
+          );
         pending = { row, axial: 0 };
       } else if (f.type === 'od') {
         const d = num(c.diameter);
         const ln = num(c.length) ?? 0;
         row.nominal = d !== null ? `Ø${d} × ${ln}` : '';
+        if (d !== null && lastOd && lastOd.dia < d)
+          rows.push({
+            id: '',
+            feature: n,
+            type: 'shoulder',
+            typeLabel: 'Shoulder face',
+            nominal: `Ø${lastOd.dia} / Ø${d}`,
+            tol: null,
+            zFrom: r3(-zOd),
+            zTo: r3(-zOd),
+            length: null,
+            drawing: '',
+            span: partSpan(-zOd, -zOd),
+            derived: true,
+          });
         place(-zOd, -(zOd + ln));
         if (d !== null) {
+          lastOd = { dia: d, z: -zOd };
           const cut = midTol(d, tp, tm);
-          addChar({
-            label: `Ø${f2(d)}`,
-            what: `OD (row ${n})`,
-            op: side.op,
-            feature: n,
-            nominal: d,
-            upper: tp,
-            lower: tm,
-            programmed: cut,
-            xWord: true,
-          });
+          addChar(
+            {
+              label: `Ø${f2(d)}`,
+              what: `OD (row ${n})`,
+              op: side.op,
+              feature: n,
+              nominal: d,
+              upper: tp,
+              lower: tm,
+              programmed: cut,
+              xWord: true,
+            },
+            c.diameter,
+          );
           odAt.push({ nom: d, z: -zOd });
           odSpans.push(span(toPart(-zOd), toPart(-(zOd + ln)), cut / 2));
           out.maxDia = Math.max(out.maxDia ?? 0, d);
         }
         if (ln)
-          addChar({
-            label: f2(ln),
-            what: `OD length (row ${n})`,
-            op: side.op,
-            feature: n,
-            nominal: ln,
-            upper: null,
-            lower: null,
-            programmed: null,
-            xWord: false,
-          });
+          addChar(
+            {
+              label: f2(ln),
+              what: `OD length (row ${n})`,
+              op: side.op,
+              feature: n,
+              nominal: ln,
+              upper: null,
+              lower: null,
+              programmed: null,
+              xWord: false,
+            },
+            c.length,
+          );
         zOd += ln;
       } else if (f.type === 'bore') {
         const d = num(c.diameter);
@@ -267,30 +339,36 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
         place(-boreDepth, -depth);
         if (d !== null) {
           const cut = midTol(d, tp, tm);
-          addChar({
-            label: `Ø${f2(d)}`,
-            what: `Bore (row ${n})`,
-            op: side.op,
-            feature: n,
-            nominal: d,
-            upper: tp,
-            lower: tm,
-            programmed: cut,
-            xWord: true,
-          });
+          addChar(
+            {
+              label: `Ø${f2(d)}`,
+              what: `Bore (row ${n})`,
+              op: side.op,
+              feature: n,
+              nominal: d,
+              upper: tp,
+              lower: tm,
+              programmed: cut,
+              xWord: true,
+            },
+            c.diameter,
+          );
           holeSpans.push(span(toPart(-boreDepth), toPart(-depth), cut / 2));
         }
-        addChar({
-          label: f2(depth),
-          what: `Bore depth (row ${n})`,
-          op: side.op,
-          feature: n,
-          nominal: depth,
-          upper: null,
-          lower: null,
-          programmed: null,
-          xWord: false,
-        });
+        addChar(
+          {
+            label: f2(depth),
+            what: `Bore depth (row ${n})`,
+            op: side.op,
+            feature: n,
+            nominal: depth,
+            upper: null,
+            lower: null,
+            programmed: null,
+            xWord: false,
+          },
+          c.depth,
+        );
         boreDepth = depth;
       } else if (f.type === 'drill') {
         const d = num(c.diameter);
@@ -298,17 +376,20 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
         row.nominal = d !== null ? `Ø${d} drill${depth !== null ? `, depth ${depth}` : ''}` : '';
         place(0, -(depth ?? 0));
         if (d !== null) {
-          addChar({
-            label: `Ø${f2(d)}`,
-            what: `Drill (row ${n})`,
-            op: side.op,
-            feature: n,
-            nominal: d,
-            upper: tp,
-            lower: tm,
-            programmed: null,
-            xWord: false,
-          });
+          addChar(
+            {
+              label: `Ø${f2(d)}`,
+              what: `Drill (row ${n})`,
+              op: side.op,
+              feature: n,
+              nominal: d,
+              upper: tp,
+              lower: tm,
+              programmed: null,
+              xWord: false,
+            },
+            c.diameter,
+          );
           if (depth !== null) holeSpans.push(span(toPart(0), toPart(-depth), d / 2));
         }
       } else if (f.type === 'groove') {
@@ -318,31 +399,37 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
         row.nominal = d !== null ? `Ø${d} × ${w} wide` : '';
         place(-pos, -(pos + w));
         if (d !== null) {
-          addChar({
-            label: `Ø${f2(d)}`,
-            what: `Groove (row ${n})`,
-            op: side.op,
-            feature: n,
-            nominal: d,
-            upper: tp,
-            lower: tm,
-            programmed: midTol(d, tp, tm),
-            xWord: true,
-          });
+          addChar(
+            {
+              label: `Ø${f2(d)}`,
+              what: `Groove (row ${n})`,
+              op: side.op,
+              feature: n,
+              nominal: d,
+              upper: tp,
+              lower: tm,
+              programmed: midTol(d, tp, tm),
+              xWord: true,
+            },
+            c.diameter,
+          );
           odSpans.push(span(toPart(-pos), toPart(-(pos + w)), midTol(d, tp, tm) / 2));
         }
         if (w)
-          addChar({
-            label: f2(w),
-            what: `Groove width (row ${n})`,
-            op: side.op,
-            feature: n,
-            nominal: w,
-            upper: null,
-            lower: null,
-            programmed: null,
-            xWord: false,
-          });
+          addChar(
+            {
+              label: f2(w),
+              what: `Groove width (row ${n})`,
+              op: side.op,
+              feature: n,
+              nominal: w,
+              upper: null,
+              lower: null,
+              programmed: null,
+              xWord: false,
+            },
+            c.width,
+          );
       } else if (f.type === 'thread') {
         const size = String(val(c.size) ?? '');
         const pitch = num(c.pitch);
@@ -360,6 +447,20 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
       rows.push(row);
     });
   }
+
+  let id = 0;
+  for (const r of [...out.op10, ...out.op20]) {
+    r.id = `F${++id}`;
+    const mine = out.chars.filter((ch) => ch.feature === r.feature && !r.derived);
+    r.drawing = r.derived
+      ? 'derived from the OD steps'
+      : mine.length
+        ? mine.map((ch) => ch.label).join(', ')
+        : '–';
+    for (const ch of mine) ch.span ??= r.span;
+  }
+  for (const ch of out.chars) if (ch.feature === 0 && length !== null) ch.span = [0, length];
+  void fId;
 
   out.outer = outline(odSpans, length, (bar ?? out.maxDia ?? 0) / 2, 'outer');
   out.inner = outline(holeSpans, length, 0, 'inner');
