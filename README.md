@@ -23,8 +23,6 @@ Safety checks at every step, and a log of every action that nobody can edit.
 > again. Cycle Start is pressed at the machine by the operator. See
 > [docs/safety-rules.md](docs/safety-rules.md).
 
-![Home page](docs/images/screens/home.jpg)
-
 ---
 
 ## Contents
@@ -59,7 +57,7 @@ the documents require.
 | [Build plan](docs/build-plan.md) | 13 milestones: repo, users and roles, machine register, material register, simulated FANUC, FOCAS driver, probe tool, bridge, programs and validator, tool path, run screen, feature table, capability check | ✅ All 13 done |
 | [Safety rules](docs/safety-rules.md) | 9 non-negotiable rules, each enforced in code and tested | ✅ 9 / 9, each with tests |
 | [Architecture](docs/architecture.md) | Server, web app and an outbound-only bridge at the factory | ✅ Built as described |
-| Design document (Nov 3, 2026) | The 11-step flow, roles, run log and go-live checks | ✅ 11 of 11 steps live: known drawings fill their values, and the program generator is built from the proven programs |
+| Design document (Nov 3, 2026) | The 11-step flow, roles, run log and go-live checks | ✅ 11 of 11 steps live: two AI agents read every uploaded drawing, and the program generator writes the program from that table |
 | [Deployment](docs/deployment.md) | Production setup: HTTPS, PostgreSQL, first admin, health checks, backups, upgrades | ✅ Two ways: one Windows PC (`start-production.ps1`) or Docker with HTTPS |
 | [Go-live runbook](docs/go-live.md) | Day 1: the first part (3773480M01) on LMW SMARTURN 55-04927 by USB stick | ✅ Ready |
 | [FOCAS notes](docs/focas-notes.md) | What to verify on the real 0i-TF on the first day | ✅ Probe tool ready; checks happen at the machine |
@@ -94,7 +92,7 @@ sending.
 | # | Step | Who | Status |
 |:-:|---|---|---|
 | 1 | Upload the drawing | Engineer | ✅ Live |
-| 2 | Read the drawing into a feature table | ManufAI | ✅ Live for the company's known drawings (values recorded once, filled in on upload); unknown drawings are typed in |
+| 2 | Read the drawing into a feature table | ManufAI | ✅ Live: every uploaded drawing is read by two AI agents through the Anthropic API (nothing is filled from stored values) |
 | 3 | Confirm or correct every value in the feature table | Engineer | ✅ Live |
 | 4 | List machines that can make the part and are online and idle | ManufAI | ✅ Live |
 | 5 | Select the machine | Engineer | ✅ Live |
@@ -111,8 +109,6 @@ sending.
 
 On the login page you **tap your role** instead of typing a username. **Other user** is there for
 named accounts. In production the login page shows personal sign-in only.
-
-<img src="docs/images/screens/login.jpg" alt="Login page with role tiles" width="720">
 
 | Role | What they do |
 |---|---|
@@ -161,22 +157,19 @@ step, and the latest runs. The E-stop reminder appears on every main screen.
 The main page for a new part. An animated step track shows where you are, and one **Do this now**
 card shows the next action.
 
-1. **Upload the drawing.** The company's known drawings (3773480M01, 1816C01001, 1627C00501,
-   3216C11701, 832100172) are recognised by fingerprint or part number and their values fill in.
-   They are **not** confirmed: the engineer still checks and ticks every row. The assembly drawing
-   3314A01701 and the sheet-metal plate 832100171 are recognised and explained as not lathe parts.
+1. **Upload the drawing.** Every drawing, including one uploaded before or from the demo data, is
+   read by two AI agents through the Anthropic API: one extracts every feature and a point-by-point
+   contour in mm, the second checks each value against the drawing. Nothing is filled from stored
+   values. The values are **not** confirmed: the engineer still checks and ticks every row.
 2. **Confirm the table.** Rows after **Turn part around** are the second clamping, measured from the
-   back face. Values a drawing does not give (bar size, back-end lengths) carry a note saying which
-   proven-program line they come from.
-3. **Choose the machine** and **Generate live program.** The generator is fixed code that uses the
-   part's proven program for tools, cutting data and part-off position. It writes the second
-   clamping after `M30` for sequence search, as the proven programs do. Setups are remembered per
-   part and never carried over to another part.
-4. **Compare with the proven program.** The generated cutting path (blue) is drawn over the proven
-   one (amber) for each clamping. **Use O0001 instead** sends the proven program, byte for byte,
-   through the same accept step.
-5. **Correct on screen if needed.** The G-code editor keeps colours and line numbers, marks changed
-   lines in amber, and re-runs the validator, tool path and comparison as you type. **Reset to
+   back face. Values a drawing does not give (bar size, drill) are standard choices with a note.
+3. **Choose the machine** and **Generate live program.** The generator is fixed code that works from
+   the confirmed table only; no stored program for the part is looked up. Cutting values come from
+   the last saved setup, company-wide reference values from the proven programs, or standard shop
+   values, each shown with its source. It writes the second clamping after `M30` for sequence
+   search.
+4. **Correct on screen if needed.** The G-code editor keeps colours and line numbers, marks changed
+   lines in amber, and re-runs the validator and tool path as you type. **Reset to
    generated** undoes everything. Nothing is saved until you accept.
 6. **Accept** (engineer or programmer). An edit is saved as v2 "edited from v1 by …", so the audit
    log shows who changed what. Then **Download O1000.NC for a USB stick**.
@@ -187,8 +180,6 @@ The company's 5 trusted programs (O0001, O0002, O0003, O0004, O0009) are importe
 their SHA-256 fingerprints. The generator reproduces their part-off positions exactly (O0001 Z-26.5,
 O0002 Z-23.2, O0003 Z-32.4). Any approved program can be **downloaded for a USB stick**; the
 download is refused unless it is the latest approved version.
-
-![Program O0001 with validation results](docs/images/screens/validation.jpg)
 
 **Validator** (fixed rules, no AI). Every line is checked against FANUC 0i-TF lathe rules:
 - **Errors** block approval and sending: missing `%`, O-number header, brackets, unreadable
@@ -206,7 +197,6 @@ version and retires the approved one, so an approval always belongs to one exact
 
 | Machining simulation | Tool path |
 |---|---|
-| ![Machining simulation](docs/images/screens/simulation.jpg) | ![Tool path](docs/images/screens/toolpath.jpg) |
 | Press **Play** to watch the bar being cut, block by block, at 1×, 2×, 5× or 10× speed. Drills, boring bars and parting tools are recognised from their names in the program comments. Each operation is shown on its own, because the part is re-clamped in between. | Every move drawn: Z horizontal, X as radius, rapid moves dashed, feed moves solid, one colour per tool. Drag the slider or click a line of the program to step through it. Supports G0–G3, G28/G30, G70–G72, G74/G83, G76, G90/G92/G94. |
 
 > Both are visual aids made with fixed rules. They don't prove a program is safe and don't replace
@@ -214,18 +204,14 @@ version and retires the approved one, so an approval always belongs to one exact
 
 ### 5.4 Parts: the feature table and capability check
 
-![Feature table](docs/images/screens/part_top.jpg)
-
 A part is a table of values: material grade, bar diameter, overall length, and an ordered list of
 features (OD, bore, face, chamfer, radius, groove, thread, drill, cone/countersink, and a **Turn part
 around** row for the second clamping), each with tolerances.
-- Each value has an **AI value** column (filled from a known drawing) and a **Confirmed value**
+- Each value has an **AI value** column (filled by the AI reader) and a **Confirmed value**
   with a tick box.
 - **Only an engineer can confirm** the table, and only when every value is entered and ticked.
 - **Any later change clears the confirmation**, and the part's programs can't be sent until it is
   confirmed again.
-
-![Capability check](docs/images/screens/capability.jpg)
 
 **Capability check** (fixed rules): a machine is offered only if it is in service, the bar and part
 fit its limits, its tool list covers every feature, and it is online and idle. **Unknown limits are
@@ -239,7 +225,6 @@ big buttons, and every locked button explains why it is locked.
 
 | ① Choose machine and program | ② Material and safety checklist |
 |---|---|
-| ![Run picker](docs/images/screens/run_picker.jpg) | ![Checklist](docs/images/screens/ready.jpg) |
 | Machine tiles show live state. Only **approved** programs are listed. An unfinished run is offered as **Continue run #N**. | The bar is matched to what the part needs: matching bars are listed first (✓), and a wrong grade or size shows a red alert. **Send** unlocks only when all 6 checklist items are ticked. |
 
 **Send is locked until** the checklist is complete, the program is approved for this exact machine,
@@ -253,10 +238,7 @@ at the machine."** and follows the run from the live status.
 
 | ③ Running | ④ First piece |
 |---|---|
-| ![Running](docs/images/screens/running.jpg) | ![First piece](docs/images/screens/first_piece.jpg) |
 | Live state, spindle speed, program, block and part count. **Feed hold** and **Stop** stay available, and Stop is labelled as a control reset, **not** an emergency stop. | The measurement list is **pre-filled** from the confirmed feature table, with min and max limits. Each value is marked **OK** or **OUT**, and the operator chooses **Pass** or **Fail**. |
-
-![Run complete](docs/images/screens/run_closed.jpg)
 
 ⑤ **Done.** A passed first piece marks the program **proven** for that part, and **Run this program
 again** starts the next one. **Full screen** hides the browser for a tablet at the machine. Every
@@ -264,8 +246,6 @@ step is written to the audit log and to the **Run log** (who, which program, whi
 how it was started, the first-piece result).
 
 ### 5.6 Machines
-
-<img src="docs/images/screens/machines.jpg" alt="Machine register" width="49%"> <img src="docs/images/screens/machine_lmw.jpg" alt="LMW Lathe 1" width="49%">
 
 The register lists every machine with its control, IP address, live status and limits. The six real
 machines are created from their nameplates, all with the FANUC Series 0i-TF control:
@@ -288,8 +268,6 @@ machines are created from their nameplates, all with the FANUC Series 0i-TF cont
 
 ### 5.7 Raw materials
 
-![Raw material register](docs/images/screens/materials.jpg)
-
 Search by grade (`en8` finds `EN8`) or diameter range. Admins and engineers can import the company
 register from **CSV or Excel**:
 1. Choose the file. The server reads the header row and suggests which column is grade, diameter,
@@ -305,10 +283,7 @@ Values like `Ø25`, `25 mm` and `25,5` are understood. The sample file
 
 | Users and Start list | Bridges |
 |---|---|
-| ![Users](docs/images/screens/users.jpg) | ![Bridges](docs/images/screens/bridges.jpg) |
 | Tick roles per person, and keep the separate **Allowed to press Start** list. | Register the bridge PC at the machine and see whether it is connected. Each bridge gets its own token and signing key, shown once. |
-
-![Audit log](docs/images/screens/logs.jpg)
 
 **Audit log**: every login, upload, generate, edit, approval, download, send, start and result, with
 user, machine, program, program fingerprint and time, newest first. Entries **can't be edited or
@@ -359,9 +334,9 @@ never carried to another**, and **every write to a machine goes through one func
 | M13 | Capability check | Which machines can make the part, with reasons |
 
 **Added after the plan:**
-- **Drawing to program**: drawing upload, known-drawing autofill, live generator built from the
-  proven programs, second clamping, cone/countersink features, comparison with the proven program,
-  on-screen G-code editor, accept, USB download.
+- **Drawing to program**: drawing upload, two-agent AI reading through the API, live generator
+  working from the AI-read table, second clamping, cone/countersink and taper features, on-screen
+  G-code editor, accept, USB download.
 - **Real machines**: six LMW lathes from their nameplates.
 - **One-PC production**: `start-production.ps1`, auto-start and nightly backup, installable app.
 - From the design document: the run log, material length checks, a shift-long status watch, the
@@ -477,7 +452,8 @@ trusted programs, the demo program O9000, the DEMO-SIM-001 feature table, sample
 4. Wait for *completed* and record the first piece.
 
 **Try drawing to program:** log in as **engineer**, open **Drawing to program** and upload
-the 3773480M01 drawing PDF (or any known drawing; the PDFs are not stored in this repo).
+a drawing PDF (the PDFs are not stored in this repo). Paste your Anthropic API key on the page
+first; the two AI agents then read the drawing.
 
 ---
 
@@ -587,10 +563,9 @@ Latest run (15 Nov 2026): **581 tests passed.**
 
 <sub>*The skipped tests are the role check on public pages (login, health), which have no role by design.</sub>
 
-The generator tests (`server/tests/test_generator.py`) check that the generated programs match the
-proven ones where they should (tools, part-off positions, second clamping), and that values from one
-part are never used for another. Tool-path drawings of the 5 trusted programs were checked by eye
-against the programs: `docs/images/backplot-check-*.png`.
+The generator tests (`server/tests/test_generator.py`) generate programs from recorded tables of
+the company's drawings (test data only, never used by the app) and check the second clamping, the
+tolerance-middle cuts and that no stored program is used for a part.
 
 ---
 
@@ -625,7 +600,7 @@ stock versus cut blank per part. The rest is listed in full in
 ├── bridge/              Factory-PC bridge: FOCAS2 driver, simulated 0i-TF, probe tool, service files
 ├── samples/
 │   ├── programs/        The 5 trusted FANUC programs supplied by the company
-│   ├── drawings/        Values recorded from the company's known drawings
+│   ├── drawings/        Hand-checked tables: test data and AI accuracy scoring only
 │   ├── demo/            O9000, a synthetic demo program for the simulator only
 │   └── materials/       Sample material register (SAMPLE DATA)
 ├── docs/                Build plan, safety rules, architecture, deployment, go-live, FOCAS notes, open items, PDFs

@@ -8,14 +8,30 @@
   "background_color": "#f8fafc",
   "theme_color": "#24477f",
   "icons": [
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" },
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
   ],
   "shortcuts": [
-    { "name": "Drawing to program", "url": "make" },
-    { "name": "Run a part", "url": "run" },
-    { "name": "Programs", "url": "programs" }
+    {
+      "name": "Drawing to program",
+      "url": "make"
+    },
+    {
+      "name": "Run a part",
+      "url": "run"
+    },
+    {
+      "name": "Programs",
+      "url": "programs"
+    }
   ]
 }
