@@ -496,53 +496,20 @@ def test_drawing_type_comes_from_the_bytes(client: TestClient, make_user: UserFa
 # ------------------------------------------------------------------ company library, real machines
 
 
-def test_library_matches_the_drawing_part_number(
+def test_library_is_reference_only_never_matched_to_a_part(
     client: TestClient, make_user: UserFactory
 ) -> None:
     h = headers_for(make_user(Role.ENGINEER))
+    every = [p["name"] for p in client.get("/api/generator/library", headers=h).json()]
+    assert "O0001" in every
+    # a part number does not pick out "its" program: nothing is matched to a part
     r = client.get("/api/generator/library?part_number=3773480M01", headers=h)
-    assert [p["name"] for p in r.json()] == ["O0001"]
-    # header "1816C01001&1527A02301" names two parts: either matches
-    r = client.get("/api/generator/library?part_number=1527a02301", headers=h)
-    assert [p["name"] for p in r.json()] == ["O0002"]
-    assert client.get("/api/generator/library?part_number=NOPE", headers=h).json() == []
-
-
-def test_real_machines_refuse_programs_until_the_control_is_confirmed(
-    client: TestClient, settings: Settings, db: Session, make_user: UserFactory
-) -> None:
-    from app.seed import run_seed
-
-    run_seed(settings, db)
-    m = db.scalar(select(Machine).where(Machine.key == "lmw-lx20tl3-l110-00542"))
-    assert m is not None and m.controller == "FANUC 0i-TF"  # confirmed for all lathes
-    m.controller = ""  # a machine whose control is not entered must still be refused
-    db.commit()
-    h = headers_for(make_user(Role.PROGRAMMER))
-    body = {"machine_id": m.id, "part_number": "3773480M01"}
-    r = client.post("/api/generator/library/O0001/use", json=body, headers=h)
-    assert r.status_code == 409 and "control of" in r.json()["detail"]
-
-    m.controller = "FANUC 0i-TF"  # entered after checking at the machine
-    db.commit()
-    r = client.post("/api/generator/library/O0001/use", json=body, headers=h)
-    assert r.status_code == 201, r.text
-    p = db.get(Program, r.json()["program_id"])
-    assert p is not None and p.status == "draft" and p.machine_id == m.id
-    lib = (REPO / "samples" / "programs" / "O0001").read_bytes().decode("ascii")
-    assert p.text == lib  # byte for byte
-    # asking again does not duplicate it
-    again = client.post("/api/generator/library/O0001/use", json=body, headers=h)
-    assert again.json()["program_id"] == p.id
-
-
-def test_library_program_must_be_for_that_part(
-    client: TestClient, db: Session, lmw: Machine, make_user: UserFactory
-) -> None:
-    h = headers_for(make_user(Role.PROGRAMMER))
-    body = {"machine_id": lmw.id, "part_number": "OTHER-PART"}
-    r = client.post("/api/generator/library/O0001/use", json=body, headers=h)
-    assert r.status_code == 422
+    assert [p["name"] for p in r.json()] == every
+    body = {"machine_id": 1, "part_number": "3773480M01"}
+    assert client.post("/api/generator/library/O0001/use", json=body, headers=h).status_code in (
+        404,
+        405,
+    )
 
 
 def test_send_is_blocked_while_the_control_is_not_confirmed(db: Session, lmw: Machine) -> None:
@@ -554,19 +521,7 @@ def test_send_is_blocked_while_the_control_is_not_confirmed(db: Session, lmw: Ma
     assert "not confirmed" in (approval_problem(db, p, lmw) or "")
 
 
-# ------------------------------------------------------------------ known drawings (autofill)
-
-DRAWING_3773480M01 = next(
-    (
-        f
-        for f in (
-            REPO.parent / "drawings" / "3773480M01 SLEEVE 4WD.pdf",
-            REPO.parent / "3773480M01 SLEEVE 4WD.pdf",
-        )
-        if f.is_file()
-    ),
-    REPO.parent / "3773480M01 SLEEVE 4WD.pdf",
-)
+# ------------------------------------------------------------------ uploads go to the AI reader
 
 
 def _upload(client: TestClient, h: dict[str, str], part: str, content: bytes) -> Any:
@@ -584,39 +539,24 @@ def _empty_table(client: TestClient, h: dict[str, str], part: str) -> int:
     return int(r.json()["id"])
 
 
-def test_known_part_is_filled_but_not_confirmed(client: TestClient, make_user: UserFactory) -> None:
-    eng = headers_for(make_user(Role.ENGINEER))
-    tid = _empty_table(client, eng, "3773480M01")
-    r = _upload(client, eng, "3773480M01", PDF)  # any file: matched by part number
-    assert r.status_code == 201 and r.json()["autofill"]["filled"] is True
-    t = client.get(f"/api/feature-tables/{tid}", headers=eng).json()
-    assert t["status"] == "draft" and t["source"] == "known_drawing"
-    od = next(f for f in t["data"]["features"] if f["type"] == "od")["fields"]
-    assert od["diameter"] == {"ai": 44.45, "value": 44.45, "confirmed": False}
-    # not on the drawing: worked out from O0001 (between 45.2 and 50), filled but not ticked
-    bar = t["data"]["header"]["bar_diameter"]
-    assert bar["value"] == 48.0 and bar["confirmed"] is False
-    cells = [c for f in t["data"]["features"] for c in f["fields"].values()]
-    assert not any(c["confirmed"] for c in cells)  # the engineer still ticks every value
-    info = client.get("/api/drawings/known?part_number=3773480m01", headers=eng).json()
-    # the back end is now in the table, after "Turn part around"
-    types = [f["type"] for f in t["data"]["features"]]
-    assert "flip" in types and types.index("flip") < len(types) - 1
-    assert "2 x 15 deg" in info["back_note"] and "O0001 N6" in info["back_note"]
-
-
-def test_autofill_never_overwrites_entered_values(
+def test_a_drawing_recorded_before_is_not_filled_from_stored_values(
     client: TestClient, make_user: UserFactory
 ) -> None:
+    """Even a part whose values are on record is left to the AI reader (off in tests)."""
     eng = headers_for(make_user(Role.ENGINEER))
     tid = _empty_table(client, eng, "3773480M01")
-    t = client.get(f"/api/feature-tables/{tid}", headers=eng).json()
-    t["data"]["header"]["overall_length"]["value"] = 24.0
-    client.put(f"/api/feature-tables/{tid}", json={"data": t["data"]}, headers=eng)
     r = _upload(client, eng, "3773480M01", PDF)
-    assert r.json()["autofill"]["filled"] is False
+    assert r.status_code == 201 and r.json()["autofill"] is None
     t = client.get(f"/api/feature-tables/{tid}", headers=eng).json()
-    assert t["data"]["header"]["overall_length"]["value"] == 24.0
+    assert t["source"] != "known_drawing"
+    cells = list(t["data"]["header"].values()) + [
+        c for f in t["data"]["features"] for c in f["fields"].values()
+    ]
+    assert all(c["value"] in (None, "") for c in cells)
+    assert client.get("/api/drawings/known?part_number=3773480M01", headers=eng).status_code in (
+        404,
+        405,
+    )
 
 
 def test_unknown_drawing_fills_nothing(client: TestClient, make_user: UserFactory) -> None:
@@ -624,20 +564,6 @@ def test_unknown_drawing_fills_nothing(client: TestClient, make_user: UserFactor
     _empty_table(client, eng, "NEW-PART")
     r = _upload(client, eng, "NEW-PART", PDF)
     assert r.json()["autofill"] is None
-
-
-@pytest.mark.skipif(not DRAWING_3773480M01.is_file(), reason="drawing file not on this PC")
-def test_real_drawing_file_is_recognised_under_another_part_number(
-    client: TestClient, make_user: UserFactory
-) -> None:
-    eng = headers_for(make_user(Role.ENGINEER))
-    _empty_table(client, eng, "TYPO-123")
-    r = _upload(client, eng, "TYPO-123", DRAWING_3773480M01.read_bytes())
-    info = r.json()["autofill"]
-    assert info["filled"] is False and "drawing of part 3773480M01" in info["message"]
-    # uploading the same file twice keeps one copy
-    again = _upload(client, eng, "TYPO-123", DRAWING_3773480M01.read_bytes())
-    assert again.json()["id"] == r.json()["id"]
 
 
 def _setup_from_plan(plan: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -656,7 +582,8 @@ def _setup_from_plan(plan: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def test_3773480m01_generates_with_no_questions_on_a_real_machine(
     client: TestClient, settings: Settings, db: Session, make_user: UserFactory
 ) -> None:
-    """Drawing values (bar size left empty) + O0001 for this part: nothing left to ask."""
+    """A full table on a real machine with no tool list: nothing left to ask, and nothing taken
+    from a stored program for the part."""
     from app.ai.known_drawings import find_known, load_known
     from app.seed import run_seed
 
@@ -693,17 +620,14 @@ def test_3773480m01_generates_with_no_questions_on_a_real_machine(
     assert r["ok"], r["problems"]
     assert r["validation"]["errors"] == []
     text = r["text"]
-    assert "T0101" in text and "G74Z-31.0Q5000F0.05" in text  # O0001's U-drill
+    assert "O0001" not in text  # no stored program is used
     assert "G1X44.4Z-2.0" in text  # drawing OD 44.45 0/-0.1, cut at its middle 44.40
-    # 23 long + 0.5 left for facing the back, 3 mm blade on its left edge: O0001's own Z-26.5
-    assert "G0Z-26.5" in text
     first, second = text.split("(2ND OPN - PART TURNED AROUND, Z0 = FINISHED BACK FACE)")
     assert "SEARCH N6" in first and first.rstrip().endswith("M30")
-    # back end: 2 x 15 deg chamfers on OD and bore, one finishing pass each (as O0001 N6/N7)
+    # back end: 2 x 15 deg chamfers on OD and bore, one finishing pass each
     assert "G1X44.4Z-2.0\nG1Z-4.0" in second and "G1X34.87Z-2.0\nG1Z-5.0" in second
     assert "G71" not in second  # nothing to rough: the first clamping finished both diameters
     assert second.rstrip().endswith("M30\n%")
-    assert "BAR D48.0" in text  # bar size worked out from O0001
     assert r["controller_problem"] is None  # FANUC 0i-TF, confirmed for all lathes
 
 
@@ -712,6 +636,7 @@ def test_upload_refuses_a_drawing_named_for_another_part(
 ) -> None:
     eng = headers_for(make_user(Role.ENGINEER))
     _empty_table(client, eng, "3773480M01")
+    _empty_table(client, eng, "1627C00501")  # only parts created here count
     r = client.post(
         "/api/drawings",
         data={"part_number": "3773480M01"},
@@ -785,21 +710,6 @@ def test_every_known_lathe_drawing_generates_with_nothing_to_ask(
     assert r["validation"]["errors"] == []
 
 
-def test_cut_blank_od_stops_where_the_proven_program_stops(
-    client: TestClient, settings: Settings, db: Session, make_user: UserFactory
-) -> None:
-    """3216C11701 is a 50 mm blank held in the chuck: O0009 turns 23 mm, then flips it."""
-    from app.seed import run_seed
-
-    run_seed(settings, db)
-    m = db.scalar(select(Machine).where(Machine.key == "lmw-smarturn-55-04927"))
-    assert m is not None
-    _, r = _plan_and_preview(client, db, headers_for(make_user(Role.PROGRAMMER)), "3216C11701", m)
-    lines = r["text"].splitlines()
-    assert "G1Z-23.0" in lines and "G1Z-50.0" not in lines
-    assert any("second clamping" in n for n in r["notes"])
-
-
 def test_cuts_to_the_middle_of_the_tolerance_like_the_proven_programs(
     client: TestClient, settings: Settings, db: Session, make_user: UserFactory
 ) -> None:
@@ -814,37 +724,23 @@ def test_cuts_to_the_middle_of_the_tolerance_like_the_proven_programs(
     assert "N300G0X25.59" in text  # 25.55 +0.08/0 -> 25.59 (O0003: X25.6)
 
 
-def test_not_lathe_drawings_say_so(client: TestClient, make_user: UserFactory) -> None:
-    eng = headers_for(make_user(Role.ENGINEER))
-    found = list((REPO.parent / "drawings").rglob("832100171 - Plate - Dwrg.pdf"))
-    if not found:
-        pytest.skip("drawing file not on this PC")
-    plate = found[0]
-    r = client.post(
-        "/api/drawings/identify",
-        files={"file": ("x.pdf", plate.read_bytes(), "application/pdf")},
-        headers=eng,
-    )
-    assert r.status_code == 200 and "not made on a lathe" in r.json()["not_lathe"]
-
-
 # ---------------------------------------------------------------- second clamping (turn around)
 
 SECOND_SIDE = {
-    # part: (part-off line in the 1st clamping or None for a cut blank, lines in the 2nd)
-    "3773480M01": ("G0Z-26.5", ["G1X44.4Z-2.0", "G1Z-4.0", "G1X34.87Z-2.0", "G1Z-5.0"]),
-    # O0002 parts off at Z-23.2; flare D28.7, 33 deg, blended R2.4 into the bore
-    "1816C01001": ("G0Z-23.2", ["N700G0X28.7", "G1X26.324Z-1.829", "G2X25.55Z-3.136R2.4"]),
-    # O0003 parts off at Z-32.4 (2 mm blade); 33 deg cone from D29.5 into the 25.0 bore
-    "1627C00501": ("G0Z-32.4", ["N700G0X29.5", "G1X25.0Z-3.465", "G1Z-10.0"]),
-    # cut blanks: back OD and bore lengths as in O0004 N6 and O0009 N2/N4
+    # part: (unused, lines in the 2nd clamping); worked out from the table alone
+    "3773480M01": (None, ["G1X44.4Z-2.0", "G1Z-4.0", "G1X34.87Z-2.0", "G1Z-5.0"]),
+    # flare D28.7, 33 deg, blended R2.4 into the bore
+    "1816C01001": (None, ["N700G0X28.7", "G1X26.324Z-1.829", "G2X25.55Z-3.136R2.4"]),
+    # 33 deg cone from D29.5 into the 25.0 bore
+    "1627C00501": (None, ["N700G0X29.5", "G1X25.0Z-3.465", "G1Z-10.0"]),
+    # cut blanks: back OD and bore lengths from the drawing
     "832100172": (None, ["G1X34.6Z-1.0", "G1Z-9.0"]),
     "3216C11701": (None, ["G1Z-20.0", "G1X19.0Z-0.5", "G1Z-36.5"]),
 }
 
 
 @pytest.mark.parametrize("part", sorted(SECOND_SIDE))
-def test_second_clamping_matches_the_drawing_and_the_proven_program(
+def test_second_clamping_matches_the_drawing(
     client: TestClient, settings: Settings, db: Session, make_user: UserFactory, part: str
 ) -> None:
     from app.seed import run_seed
@@ -1166,3 +1062,18 @@ def test_a_new_part_on_a_machine_with_no_tool_list_needs_nothing_typed(
     assert r["ok"], r["problems"]
     assert r["validation"]["errors"] == []
     assert "G1X21.29Z-57.0" in r["text"]  # the 2° taper, cut as one line
+
+
+def test_a_bore_with_no_drill_on_the_drawing_gets_a_standard_drill() -> None:
+    """Drawings show only the finished bore: the generator picks the drill itself (never from a
+    stored program for the part), leaving 2 mm on the diameter to bore."""
+    from app.gcode.generator import standard_drill
+
+    assert standard_drill(25.0, 30.0, 30.0) == (23.0, 37.9)  # through: length + point + 1
+    assert standard_drill(20.3, 12.0, 30.0) == (18.0, 17.4)  # blind: depth + point
+    assert standard_drill(4.0, 5.0, 30.0) is None  # too small to drill and bore
+    data = sleeve()
+    data["features"] = [f for f in data["features"] if f["type"] != "drill"]
+    geo, problems = read_geometry(data)
+    assert problems == [] and geo is not None
+    assert any("standard choice" in n for n in geo.notes)

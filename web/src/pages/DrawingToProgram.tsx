@@ -32,7 +32,6 @@ import type {
   Suggestion,
 } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
-import CompareView from '../components/CompareView';
 import GcodeView from '../components/GcodeView';
 import AiReadPanel from '../components/AiReadPanel';
 import BrowserAiKey from '../components/BrowserAiKey';
@@ -77,8 +76,7 @@ function parseValue(kind: FieldDef['kind'], raw: string): CellValue {
 
 function sourceText(s: Suggestion | null | undefined): string {
   if (!s) return 'Not found in proven programs - enter it';
-  if (s.source === 'proven program for this part') return `From this part's program: ${s.note}`;
-  if (s.source === 'proven program') return `From ${s.note}`;
+  if (s.source === 'proven program') return `Company reference: ${s.note}`;
   if (s.source === 'last saved') return `Same as ${s.note}`;
   if (s.source === 'standard') return `Standard: ${s.note}`;
   if (s.source.startsWith('standard turret'))
@@ -660,15 +658,6 @@ function SetupEditor({
 
 /* ------------------------------------------------------------------ progress, machines */
 
-interface LibraryProgram {
-  name: string;
-  program_number: number;
-  part_numbers: string[];
-  title: string;
-  sha256: string;
-  text: string;
-}
-
 function Progress({ steps }: { steps: { label: string; done: boolean }[] }) {
   const current = steps.findIndex((s) => !s.done);
   const doneCount = steps.filter((s) => s.done).length;
@@ -1078,25 +1067,8 @@ export default function DrawingToProgram() {
     loadDrawings();
   }, [loadDrawings]);
 
-  useEffect(() => {
-    setKnownInfo(null);
-    if (!partNumber) return;
-    api
-      .get<KnownDrawingInfo | null>(`/drawings/known?part_number=${encodeURIComponent(partNumber)}`)
-      .then((k) => setKnownInfo(k))
-      .catch(() => setKnownInfo(null));
-  }, [partNumber]);
-
-  // proven programs already made for this part number (company library)
-  const [library, setLibrary] = useState<LibraryProgram[]>([]);
-  useEffect(() => {
-    setLibrary([]);
-    if (!partNumber) return;
-    api
-      .get<LibraryProgram[]>(`/generator/library?part_number=${encodeURIComponent(partNumber)}`)
-      .then(setLibrary)
-      .catch((e: Error) => setError(e.message));
-  }, [partNumber]);
+  // A new part shows no earlier AI notes: every drawing is read by the AI again.
+  useEffect(() => setKnownInfo(null), [partNumber]);
 
   async function uploadDrawing(part: string, f: File) {
     const form = new FormData();
@@ -1154,40 +1126,17 @@ export default function DrawingToProgram() {
       ? 'Open a part in step 1 first, then upload its drawing here.'
       : null;
 
-  // A dropped drawing with no part open: recognise it (fingerprint or part number in its
-  // name), create the part and fill its values in one go.
-  async function identifyAndStart(f: File) {
-    if (!isEngineer) {
-      setFile(f);
-      return;
-    }
-    setBusy(true);
-    try {
-      const form = new FormData();
-      form.append('file', f);
-      const k = await api.post<KnownDrawingInfo | null>('/drawings/identify', form);
-      if (k?.not_lathe) {
-        setError(k.not_lathe);
-        return;
-      }
-      if (k) {
-        setNewPart(k.part_number);
-        await startPart(f, k.part_number);
-        return;
-      }
-      setFile(f); // unknown drawing: type its part number and press Start
-      setNotice(`${f.name} is not a known drawing yet: type its part number in step 1 and press Start.`);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+  // A dropped drawing with no part open: the part number is typed in step 1 (nothing is
+  // looked up in stored drawings; the AI reads the drawing once the part is started).
+  function needPartNumber(f: File) {
+    setFile(f);
+    setNotice(`${f.name}: type its part number in step 1 and press Start. The AI then reads the drawing.`);
   }
 
   function handleDrawingFile(f: File) {
     if (ft) void addDrawing(f);
     else if (newPart.trim()) void startPart(f);
-    else void identifyAndStart(f);
+    else needPartNumber(f);
   }
 
   async function addDrawing(f: File) {
@@ -1313,13 +1262,9 @@ export default function DrawingToProgram() {
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const bodyKey = JSON.stringify(body) + tableVersion;
   const stale = !!preview && generatedKey !== bodyKey;
-  // The proven program loaded into step 4 instead of a generated one (copied line for line).
-  const [fromLib, setFromLib] = useState<LibraryProgram | null>(null);
-  const autoLoaded = useRef('');
   useEffect(() => {
     setPreview(null);
     setGeneratedKey(null);
-    setFromLib(null);
   }, [tableId, machineId]);
 
   // Editing the generated text on screen: checked live, saved as a new version on accept.
@@ -1358,7 +1303,6 @@ export default function DrawingToProgram() {
   async function generateLive() {
     if (!body) return;
     setGenerating(true);
-    setFromLib(null);
     try {
       const p = await api.post<GenPreview>('/generator/preview', body);
       setEditText(null);
@@ -1394,14 +1338,7 @@ export default function DrawingToProgram() {
       return;
     try {
       let id = program?.id;
-      if (!id && fromLib) {
-        // the proven program, byte for byte (no regeneration)
-        const r = await api.post<{ program_id: number }>(`/generator/library/${fromLib.name}/use`, {
-          machine_id: machine.id,
-          part_number: ft?.part_number ?? '',
-        });
-        id = r.program_id;
-      } else if (!id) {
+      if (!id) {
         const r = await api.post<{ program_id: number }>('/generator/programs', body);
         id = r.program_id;
       }
@@ -1420,51 +1357,6 @@ export default function DrawingToProgram() {
       setError((e as Error).message);
     }
   }
-
-  /** Put the part's proven program into step 4 (checked, tool path, 3D) exactly as written. */
-  async function loadLibraryProgram(lib: LibraryProgram, quiet = false) {
-    if (!machineId) return;
-    try {
-      const bar = Number(data?.header?.bar_diameter?.value);
-      const chk = await api.post<{ validation: GenPreview['validation']; toolpath: GenPreview['toolpath'] }>(
-        '/generator/check',
-        { machine_id: machineId, text: lib.text, bar_diameter: bar > 0 ? bar : null },
-      );
-      setEditText(null);
-      setEditing(false);
-      setEditCheck(null);
-      setPreview({
-        ok: true,
-        problems: [],
-        operations: [],
-        text: lib.text,
-        validation: chk.validation,
-        toolpath: chk.toolpath,
-        drawing: null,
-        table_problem: null,
-        controller_problem: null,
-        notes: [],
-      });
-      setFromLib(lib);
-      setGeneratedKey(bodyKey);
-      setProgram(null);
-      setError(null);
-      setNotice(`${lib.name} loaded: your proven program for this part, copied line for line.`);
-    } catch (e) {
-      if (!quiet) setError((e as Error).message);
-    }
-  }
-
-  // When the part has a proven program, step 4 starts with it (shop rule: run what is proven).
-  useEffect(() => {
-    if (!ft || !machineId || !plan || library.length === 0 || preview || !(isEngineer || isProgrammer))
-      return;
-    const key = `${ft.id}|${machineId}|${library[0].name}`;
-    if (autoLoaded.current === key) return;
-    autoLoaded.current = key;
-    void loadLibraryProgram(library[0], true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ft, machineId, plan, library, preview, isEngineer, isProgrammer]);
 
   async function sendToMachine() {
     if (!program || !machineId) return;
@@ -1834,7 +1726,7 @@ export default function DrawingToProgram() {
                         onChange={(e) => {
                           const f = e.target.files?.[0] ?? null;
                           e.target.value = '';
-                          if (f && !newPart.trim()) void identifyAndStart(f);
+                          if (f && !newPart.trim()) needPartNumber(f);
                           else setFile(f);
                         }}
                       />
@@ -1878,9 +1770,9 @@ export default function DrawingToProgram() {
                 )}
                 {!aiJob && aiReader && !aiReader.enabled && !knownInfo && !browserServerMode && (
                   <p className="text-xs text-slate-500">
-                    AI drawing reading is off on this server, so drawings that are not known yet are filled in
-                    by hand. With it on, two AI agents read every new drawing: one extracts the features, the
-                    3D shape and a feature list, the second checks each value against the drawing.
+                    AI drawing reading is off on this server, so drawings are filled in by hand. With it on,
+                    two AI agents read every drawing you upload: one extracts the features, the 3D shape and a
+                    feature list, the second checks each value against the drawing.
                   </p>
                 )}
                 {!aiJob &&
@@ -1945,9 +1837,7 @@ export default function DrawingToProgram() {
                 {knownInfo && (
                   <Notice tone="info">
                     <p className="font-medium">
-                      {knownInfo.ai
-                        ? `AI read drawing ${knownInfo.title}: one agent read it and a second checked and corrected it, and the table below is filled in. Check each value against the drawing and tick it, then press Confirm table.`
-                        : `Known drawing ${knownInfo.part_number}: the values below were filled for you. Check each against the drawing, tick it, then press Confirm table.`}
+                      {`AI read drawing ${knownInfo.title}: one agent read it and a second checked and corrected it, and the table below is filled in. Check each value against the drawing and tick it, then press Confirm table.`}
                     </p>
                     {knownInfo.questions && knownInfo.questions.length > 0 && (
                       <>
@@ -1961,10 +1851,7 @@ export default function DrawingToProgram() {
                     )}
                     {knownInfo.bar_estimate ? (
                       <p className="mt-1">
-                        Bar diameter <b>Ø{knownInfo.bar_estimate.value}</b> is{' '}
-                        {knownInfo.ai
-                          ? knownInfo.bar_estimate.note
-                          : `not on the drawing; it is worked out from the proven program: ${knownInfo.bar_estimate.note} Check it against the bar on the rack.`}
+                        Bar diameter <b>Ø{knownInfo.bar_estimate.value}</b> is {knownInfo.bar_estimate.note}
                       </p>
                     ) : (
                       knownInfo.not_on_drawing.includes('bar_diameter') && (
@@ -2154,33 +2041,6 @@ export default function DrawingToProgram() {
                 title="Bar, tools and cutting values, then generate live code"
                 done={!!preview?.ok && !stale && !writing}
               >
-                {library.length > 0 && fromLib && (
-                  <Notice tone="info">
-                    Step 4 shows <strong className="font-mono">{fromLib.name}</strong>, your proven program
-                    for part {ft.part_number}, copied line for line. Accepting saves exactly this text.{' '}
-                    <button
-                      className="underline"
-                      disabled={generating || !body}
-                      onClick={() => void generateLive()}
-                    >
-                      Generate a new program from the drawing instead
-                    </button>
-                  </Notice>
-                )}
-                {library.length > 0 && !fromLib && (
-                  <Notice tone="info">
-                    Your shop already runs <strong className="font-mono">{library[0].name}</strong> for part{' '}
-                    {ft.part_number}. You can generate a new program from the drawing below, or{' '}
-                    <button
-                      className="underline"
-                      disabled={!!program || (!isEngineer && !isProgrammer)}
-                      onClick={() => void loadLibraryProgram(library[0])}
-                    >
-                      use {library[0].name} instead
-                    </button>{' '}
-                    (the proven program, byte for byte). Both include the second clamping.
-                  </Notice>
-                )}
                 {plan.geometry_problems.length > 0 && (
                   <Notice tone="warn">
                     <ul className="list-disc pl-4">
@@ -2392,14 +2252,9 @@ export default function DrawingToProgram() {
                     const path = isEdited ? editCheck?.toolpath : preview.toolpath;
                     return path ? (
                       <details className="rounded-xl border border-slate-200 p-3">
-                        <summary className="cursor-pointer text-sm font-medium">
-                          2D tool path{library.length > 0 ? ` and comparison with ${library[0].name}` : ''}
-                        </summary>
+                        <summary className="cursor-pointer text-sm font-medium">2D tool path</summary>
                         <div className="mt-3 space-y-3">
                           <ToolpathView key={isEdited ? 'edit' : 'gen'} preview={path} />
-                          {library.length > 0 && (
-                            <CompareView generated={path} provenName={library[0].name} />
-                          )}
                         </div>
                       </details>
                     ) : null;

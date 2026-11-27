@@ -5,7 +5,6 @@ import time
 import uuid
 from collections.abc import Iterator
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import quote
 
@@ -34,14 +33,12 @@ from app.ai.drawing_reader import (
     ai_reader_enabled,
     get_drawing_reader,
 )
-from app.ai.known_drawings import KnownDrawing, find_known, load_known
 from app.auth.deps import any_user, get_audit, require_roles
 from app.config import get_settings
 from app.db.models import Drawing, FeatureTable, FeatureTableStatus, Role, User
 from app.db.session import get_db
 from app.services.audit_log import AuditLogger, AuditResult
 from app.services.feature_tables import normalise
-from app.services.program_library import load_library
 
 router = APIRouter(prefix="/drawings", tags=["drawings"])
 uploaders = require_roles(Role.ENGINEER, Role.PROGRAMMER)
@@ -99,51 +96,19 @@ def list_drawings(
     return [_out(d) for d in db.scalars(stmt.limit(200))]
 
 
-def _known(request: Request) -> list[KnownDrawing]:
-    folder = Path(str(request.app.state.settings.samples_dir)).parent / "drawings"
-    return load_known(folder / "known_drawings.json")
-
-
-def _known_out(k: KnownDrawing) -> dict[str, Any]:
-    return {
-        "part_number": k.part_number,
-        "title": k.title,
-        "read_by": k.read_by,
-        "not_on_drawing": list(k.not_on_drawing),
-        "not_in_table": list(k.not_in_table),
-        "aliases": list(k.aliases),
-        "not_lathe": k.not_lathe,
-        "bar_estimate": k.bar_estimate,
-        "back_note": k.back_note,
-    }
-
-
-def _same_part(request: Request, a: str, b: str) -> bool:
-    """True when a and b are the same part (identical, or aliases on a known drawing)."""
-    if _norm(a) == _norm(b):
-        return True
-    return any(_norm(a) in k.names() and _norm(b) in k.names() for k in _known(request))
-
-
 def _norm(text: str) -> str:
     return "".join(ch for ch in text.upper() if ch.isalnum())
 
 
-def _other_part_in_name(request: Request, db: Session, filename: str, part: str) -> str | None:
-    """A known part number (company programs, known drawings, existing parts) named in the file
-    name that is not the part being uploaded to: the file was most likely picked by mistake."""
+def _other_part_in_name(db: Session, filename: str, part: str) -> str | None:
+    """Another part of this app named in the file name: the file was most likely picked by
+    mistake. Only parts already created here count (nothing is looked up in stored data)."""
     name = _norm(filename)
     if not name or _norm(part) in name:
         return None
-    known = {k.part_number for k in _known(request) if not k.not_lathe}
-    known |= {
-        p
-        for prog in load_library(str(request.app.state.settings.samples_dir))
-        for p in prog.part_numbers
-    }
-    known |= set(db.scalars(select(FeatureTable.part_number)))
-    for other in sorted(known, key=len, reverse=True):
-        if len(_norm(other)) >= 6 and _norm(other) in name and not _same_part(request, other, part):
+    others = set(db.scalars(select(FeatureTable.part_number)))
+    for other in sorted(others, key=len, reverse=True):
+        if len(_norm(other)) >= 6 and _norm(other) in name and _norm(other) != _norm(part):
             return other
     return None
 
@@ -204,35 +169,6 @@ def _table_is_empty(ft: FeatureTable) -> bool:
     return all(c.get("value") in (None, "") for c in cells)
 
 
-@router.get("/known")
-def known_drawing(
-    request: Request,
-    part_number: str = Query(min_length=1, max_length=64),
-    _: User = Depends(any_user),
-) -> dict[str, Any] | None:
-    """What is recorded for a known drawing (incl. items the table cannot hold), or null."""
-    k = find_known(_known(request), part_number=part_number)
-    return _known_out(k) if k else None
-
-
-@router.post("/identify")
-async def identify_drawing(
-    request: Request,
-    file: UploadFile = File(...),
-    _: User = Depends(uploaders),
-) -> dict[str, Any] | None:
-    """Which known part a drawing file is, by its fingerprint or the part number in its name."""
-    content = await file.read(MAX_BYTES + 1)
-    known = _known(request)
-    k = find_known(known, sha256=hashlib.sha256(content).hexdigest())
-    if k is None:
-        name = _norm(file.filename or "")
-        k = next(
-            (x for x in known if any(n and len(n) >= 6 and n in name for n in x.names())), None
-        )
-    return _known_out(k) if k else None
-
-
 @router.post("", response_model=DrawingOut, status_code=201)
 async def upload_drawing(
     request: Request,
@@ -252,7 +188,7 @@ async def upload_drawing(
     if ctype is None:
         raise HTTPException(415, "Upload the drawing as a PDF or an image (PNG, JPG or WEBP).")
     part = part_number.strip()
-    if other := _other_part_in_name(request, db, file.filename or "", part):
+    if other := _other_part_in_name(db, file.filename or "", part):
         raise HTTPException(
             409,
             f"The file name '{file.filename}' is for part {other}, not {part}. "
@@ -262,8 +198,7 @@ async def upload_drawing(
     d = db.scalar(select(Drawing).where(Drawing.part_number == part, Drawing.sha256 == digest))
     if d is not None:  # the same file again: keep one copy
         out = _out(d)
-        out.autofill = _autofill(request, db, user, audit, part, digest)
-        if out.autofill is None and ai_reader_enabled():
+        if ai_reader_enabled():
             out.autofill = _start_ai_read(request, background, db, user, part, d, content)
         return out
     d = Drawing(
@@ -291,8 +226,9 @@ async def upload_drawing(
         },
     )
     out = _out(d)
-    out.autofill = _autofill(request, db, user, audit, part, digest)
-    if out.autofill is None and ai_reader_enabled():
+    # Every drawing is read by the AI reader, also one seen before: nothing is filled from
+    # stored values, so every table comes from the API.
+    if ai_reader_enabled():
         out.autofill = _start_ai_read(request, background, db, user, part, d, content)
     return out
 
@@ -511,47 +447,6 @@ def ai_job(job_id: str, request: Request, _: User = Depends(any_user)) -> dict[s
     if job is None:
         raise HTTPException(404, "No such AI read (it may have finished more than an hour ago).")
     return {**job, "elapsed": round(time.time() - job["started"], 1)}
-
-
-def _autofill(
-    request: Request, db: Session, user: User, audit: AuditLogger, part: str, digest: str
-) -> dict[str, Any] | None:
-    """Fill an EMPTY feature table from a known drawing. Values stay unticked/unconfirmed."""
-    k = find_known(_known(request), sha256=digest, part_number=part)
-    if k is None:
-        return None
-    info = _known_out(k) | {"filled": False, "message": ""}
-    if k.not_lathe:
-        info["message"] = k.not_lathe
-        return info
-    if not _same_part(request, k.part_number, part):
-        info["message"] = (
-            f"This file is the drawing of part {k.part_number}, not {part}. Nothing was filled."
-        )
-        return info
-    ft = db.scalar(select(FeatureTable).where(FeatureTable.part_number == part))
-    if ft is None:
-        info["message"] = "Open or create the part first; its values will be filled then."
-        return info
-    if not _table_is_empty(ft):
-        info["message"] = "The table already has values, so nothing was overwritten."
-        return info
-    ft.data = normalise(k.table_data())
-    ft.status = FeatureTableStatus.DRAFT.value
-    ft.source = "known_drawing"
-    db.commit()
-    audit.record(
-        "feature_table_autofill",
-        AuditResult.OK,
-        user=user,
-        payload={"part_number": part, "feature_table_id": ft.id, "drawing_sha256": digest},
-    )
-    info["filled"] = True
-    info["message"] = (
-        f"Filled from the recorded values of drawing {k.part_number}. Check each value against "
-        "the drawing, tick it and confirm the table."
-    )
-    return info
 
 
 @router.get("/{drawing_id}/file")

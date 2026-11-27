@@ -284,7 +284,7 @@ class Geometry:
     drill: tuple[float, float] | None  # (diameter, depth)
     grooves: list[Groove]
     threads: list[Thread]
-    notes: list[str] = field(default_factory=list)  # values taken from the part's proven program
+    notes: list[str] = field(default_factory=list)  # standard choices the drawing does not give
     start_x: float | None = None  # rapid X known to clear the bar (when the bar size is unknown)
     part_off_end_x: float | None = None
     hole_x: float | None = None
@@ -347,6 +347,25 @@ class Fallback:
     approach_x: float | None = None
     approach_source: str = ""
     part_off_end_x: float | None = None
+
+
+BORE_STOCK = 2.0  # mm on the diameter left by the drill for the boring bar
+MIN_DRILL = 3.0
+
+
+def standard_drill(
+    smallest_bore: float, deepest_bore: float, length: float
+) -> tuple[float, float] | None:
+    """(diameter, depth) of a standard drill for a bore the drawing shows only finished: the
+    largest 0.5 mm size leaving BORE_STOCK to bore; through the part when the bore goes through
+    (plus the drill point), else as deep as the deepest bore plus the point."""
+    dia = math.floor((smallest_bore - BORE_STOCK) * 2 + 1e-9) / 2
+    if dia < MIN_DRILL:
+        return None
+    point = round(0.3 * dia, 1)  # 118 deg point length
+    through = deepest_bore >= length - 1e-6
+    depth = (length + point + 1.0) if through else (deepest_bore + point)
+    return dia, round(depth, 1)
 
 
 def _mid(cells: dict[str, Any], nominal: float) -> float:
@@ -586,6 +605,14 @@ def read_geometry(
                 f"Drill to depth {fmt(fdepth)} as in {fallback.drill_source}; its size is not "
                 f"written there, so the program treats the hole as X{fmt(fallback.hole_x)}, where "
                 f"{fallback.program} faces inside it."
+            )
+    if bores and drill is None:
+        drill = standard_drill(min(s.dia for s in bores), -bores[-1].z_back, length)
+        if drill is not None:
+            notes.append(
+                f"Drill D{fmt(drill[0])} to depth {fmt(drill[1])}: standard choice, the drawing "
+                f"shows only the finished bore (largest 0.5 mm drill leaving at least "
+                f"{BORE_STOCK / 2:g} mm a side to bore). Check the drill on the machine."
             )
 
     # checks that need every number

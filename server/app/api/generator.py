@@ -1,12 +1,13 @@
 """Drawing-to-program: plan the setup, preview and save a generated program (step 6).
 
-The program comes from fixed code (app.gcode.generator), never AI. Setup values are offered from
-the last setup saved for the machine or from the company's proven programs, always with their
-source; nothing is invented. A saved program is a DRAFT that a programmer must approve.
+The program comes from fixed code (app.gcode.generator), never AI. The part itself comes only from
+its feature table (read from the drawing by the AI reader): no stored program or recorded drawing
+for the part is looked up. Cutting values are offered from the last setup saved for the machine,
+company-wide reference values mined from the proven programs, or standard shop values, always with
+their source. A saved program is a DRAFT that a programmer must approve.
 """
 
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -14,7 +15,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.known_drawings import KnownDrawing, find_known, load_known
 from app.auth.deps import any_user, get_audit, require_roles
 from app.db.models import (
     FeatureTable,
@@ -29,26 +29,22 @@ from app.db.session import get_db
 from app.gcode.backplot import backplot, stock_outline
 from app.gcode.generator import (
     OPS,
-    Fallback,
     ToolInfo,
     drawing_profile,
     generate,
     read_geometry,
 )
 from app.gcode.proven_data import (
-    PartContext,
     ProvenData,
-    _words,
     clearance,
     company_face_stock,
-    part_context,
     proven_data,
     spindle_direction,
 )
 from app.services.approval import controller_problem
 from app.services.audit_log import AuditLogger, AuditResult
 from app.services.feature_tables import data_hash, feature_table_problem
-from app.services.program_library import load_library, match_part
+from app.services.program_library import load_library
 from app.services.program_store import ProgramError, create_version, validate_for_machine
 
 router = APIRouter(prefix="/generator", tags=["generator"])
@@ -80,81 +76,7 @@ def _proven(request: Request) -> ProvenData:
     return proven_data([(p.name, None, p.text) for p in load_library(_library_dir(request))])
 
 
-def _known_list(request: Request) -> list[KnownDrawing]:
-    return load_known(Path(_library_dir(request)).parent / "drawings" / "known_drawings.json")
-
-
-def _part_ctx(request: Request, part_number: str) -> PartContext | None:
-    """The proven program made for this very part (also under its other part numbers)."""
-    lib = load_library(_library_dir(request))
-    names = [part_number]
-    if k := find_known(_known_list(request), part_number=part_number):
-        names += [k.part_number, *k.aliases]
-    for name in names:
-        if match := match_part(lib, name):
-            # Values come from the most complete program for the part (3227C07701: the full
-            # O0003 file, not its N4-N8 extract that is offered to run).
-            best = max(match, key=lambda p: len(p.text))
-            return part_context(best.name, best.text)
-    return None
-
-
-def _groove_edge(ctx: PartContext, data: dict[str, Any]) -> dict[str, Any] | None:
-    """Which insert edge the groove Z is set on, from the proven program and the drawing's
-    groove position: the first plunge Z must line up with the groove's front wall."""
-    grooves = [f for f in data.get("features", []) if f.get("type") == "groove"]
-    pos = grooves[0]["fields"].get("position", {}).get("value") if grooves else None
-    block = next((b for b in ctx.blocks if b.kind == "groove"), None)
-    width = ctx.suggest(("groove",), "width")
-    if not isinstance(pos, int | float) or block is None or width is None:
-        return None
-    lines = block.lines
-    z = None
-    for i, (_, t) in enumerate(lines):
-        w = _words(t)
-        nxt = lines[i + 1][1] if i + 1 < len(lines) else ""
-        if "Z" in w and "X" not in w and nxt.startswith("G1") and "X" in _words(nxt):
-            z = abs(w["Z"])
-            break
-    if z is None:
-        return None
-    wd = float(width["value"])
-    for edge, wall in (("left", z - wd), ("right", z)):
-        if abs(wall - pos) <= 0.3:
-            return {
-                "value": edge,
-                "source": "proven program for this part",
-                "note": (
-                    f"{ctx.program} plunges at Z-{z:g} with a {wd:g} mm insert; the drawing's "
-                    f"groove starts at {pos:g}, which fits the {edge} edge"
-                ),
-            }
-    return None
-
-
-def _company_edge(request: Request, op: str) -> dict[str, Any] | None:
-    """The same tool-edge convention, worked out from another part's proven program."""
-    for k in _known_list(request):
-        if k.not_lathe:
-            continue
-        ctx = _part_ctx(request, k.part_number)
-        if ctx is None:
-            continue
-        data = k.table_data()
-        found = (
-            _ref_edge(ctx, k.header.get("overall_length"))
-            if op == "part"
-            else _groove_edge(ctx, data)
-        )
-        if found:
-            return found | {
-                "source": "proven program",
-                "note": "same edge as your other parts: " + found["note"],
-            }
-    return None
-
-
-# Used while a machine's tool list is not entered and the part has no proven program: a common
+# Used while a machine's tool list is not entered: a common
 # 8-station lathe turret, so a program can be written at once. The validator warns that tool
 # calls were not checked against the machine; the setter loads or matches these stations.
 STANDARD_TURRET: tuple[ToolInfo, ...] = (
@@ -168,94 +90,14 @@ STANDARD_TURRET: tuple[ToolInfo, ...] = (
 )
 
 
-def _tools(machine: Machine, ctx: PartContext | None = None) -> list[ToolInfo]:
-    """The machine's tool list; while it is empty, the tools the part's proven program uses,
-    else a standard turret layout (so nothing is left to choose by hand)."""
+def _tools(machine: Machine) -> list[ToolInfo]:
+    """The machine's tool list; while it is empty, a standard turret layout (so nothing is left
+    to choose by hand)."""
     if machine.tools:
         return [
             ToolInfo(t.tool_code, t.tool_type, t.description, t.nose_radius) for t in machine.tools
         ]
-    if ctx is None:
-        return list(STANDARD_TURRET)
-    return [
-        ToolInfo(t["tool_code"], t["tool_type"], t["description"], t["nose_radius"])
-        for t in ctx.tools
-    ]
-
-
-def _fallback(ctx: PartContext | None) -> Fallback | None:
-    if ctx is None:
-        return None
-    return Fallback(
-        program=ctx.program,
-        drill=ctx.drill,
-        drill_source=ctx.drill_source,
-        approach_x=ctx.approach_x,
-        approach_source=ctx.approach_source,
-        part_off_end_x=ctx.part_off_end_x,
-        hole_x=ctx.face_end_x,
-        max_turn_z=ctx.max_turn_z if not ctx.part_off else None,
-        max_turn_source=ctx.max_turn_source,
-    )
-
-
-def _part_off_fit(ctx: PartContext, length: Any) -> tuple[str, float, str] | None:
-    """(blade edge, stock left for facing the back, note) from the proven part-off:
-    part-off Z, blade width and the drawing length must agree (op 2 faces at most 1 mm)."""
-    if not isinstance(length, int | float):
-        return None
-    part = next((b for b in ctx.blocks if b.kind == "parting"), None)
-    width = ctx.suggest(("parting",), "width")
-    if part is None or width is None:
-        return None
-    z = next(
-        (abs(_words(t)["Z"]) for _, t in part.lines if t.startswith("G1") and "Z" in _words(t)),
-        None,
-    )
-    if z is None:
-        return None
-    w = float(width["value"])
-    for edge, extra in (("left", z - w - length), ("right", z - length)):
-        if 0 <= extra <= 1.0:
-            extra = round(extra, 3)
-            return (
-                edge,
-                extra,
-                f"{ctx.program} parts off at Z-{z:g} with a {w:g} mm blade; with length "
-                f"{length:g} that only fits the {edge} edge ({extra:g} mm left for facing)",
-            )
-    return None
-
-
-def _ref_edge(ctx: PartContext, length: Any) -> dict[str, Any] | None:
-    fit = _part_off_fit(ctx, length)
-    if fit is None:
-        return None
-    return {"value": fit[0], "source": "proven program for this part", "note": fit[2]}
-
-
-def _back_stock(ctx: PartContext, length: Any) -> dict[str, Any] | None:
-    """Stock on the back face: what the proven part-off leaves, else what its 2nd side faces."""
-    src = "proven program for this part"
-    if ctx.part_off:
-        fit = _part_off_fit(ctx, length)
-        return {"value": fit[1], "source": src, "note": fit[2]} if fit else None
-    if ctx.back_face_stock is not None:
-        return {"value": ctx.back_face_stock, "source": src, "note": ctx.back_face_source}
-    return None
-
-
-def _company_back_stock(request: Request) -> dict[str, Any] | None:
-    """The largest back-face stock any proven program leaves (never too deep a cut)."""
-    best: tuple[float, str] | None = None
-    for k in _known_list(request):
-        ctx = None if k.not_lathe else _part_ctx(request, k.part_number)
-        found = _back_stock(ctx, k.header.get("overall_length")) if ctx else None
-        if found and (best is None or found["value"] > best[0]):
-            best = (float(found["value"]), found["note"])
-    if best is None:
-        return None
-    return {"value": best[0], "source": "proven program", "note": best[1] + " (largest)"}
+    return list(STANDARD_TURRET)
 
 
 def _rpm_max(machine: Machine) -> int | None:
@@ -278,21 +120,18 @@ def plan(
 ) -> dict[str, Any]:
     """Which operations the part needs and a pre-filled setup, each value with its source."""
     ft, machine = _load(db, feature_table_id, machine_id)
-    ctx = _part_ctx(request, ft.part_number)
-    geo, problems = read_geometry(ft.data, _fallback(ctx))
+    geo, problems = read_geometry(ft.data)
     needed = set(geo.needed_ops(None)) if geo else {"general", "rough"}
     proven = _proven(request)
-    tool_pool = _tools(machine, ctx)
-    tools_from_ctx = not machine.tools and ctx is not None
-    standard_turret = not machine.tools and ctx is None
-    length = ft.data.get("header", {}).get("overall_length", {}).get("value")
+    tool_pool = _tools(machine)
+    standard_turret = not machine.tools
     lib_face_stock = company_face_stock(
         [(x.name, x.text) for x in load_library(_library_dir(request))]
     )
     defaults: dict[str, Any] = machine.generator_defaults or {}
     mine: dict[str, Any] = (defaults.get("parts") or {}).get(ft.part_number) or {}
     # another part's setup on this machine: only general cutting values carry over
-    saved: dict[str, Any] = {} if ctx is not None and not machine.tools else defaults
+    saved: dict[str, Any] = defaults
     saved_note = (
         f"last saved for {machine.name} with {saved.get('_program', '?')} by "
         f"{saved.get('_saved_by', '?')}"
@@ -326,18 +165,11 @@ def plan(
                 tool_sug = {
                     "value": tools[0]["tool_code"],
                     "source": (
-                        "proven program for this part"
-                        if tools_from_ctx
-                        else "standard turret (machine tool list not entered)"
+                        "standard turret (machine tool list not entered)"
                         if standard_turret
                         else "machine tool list"
                     ),
-                    "note": f"{tools[0]['tool_code']} {tools[0]['description']}".strip()
-                    + (
-                        f" in {ctx.program} (machine tool list is empty)"
-                        if tools_from_ctx and ctx
-                        else ""
-                    ),
+                    "note": f"{tools[0]['tool_code']} {tools[0]['description']}".strip(),
                 }
         params = []
         for prm in spec.params:
@@ -345,25 +177,17 @@ def plan(
             part_fact = (spec.key, prm.key) in PART_FACTS
             if own.get(prm.key) not in (None, ""):
                 sug = {"value": own[prm.key], "source": "last saved", "note": mine_note}
-            elif ctx and (
-                from_part := _from_part(ctx, spec.key, prm.key, spec.proven_kinds, length, ft.data)
-            ):
-                sug = from_part
-            elif ctx is None and spec.key == "general" and prm.key == "part_off":
-                # a new part with no proven program: made from bar and parted off at the end
+            elif spec.key == "general" and prm.key == "part_off":
+                # every part is made from bar and parted off at the end
                 sug = {
                     "value": "yes",
                     "source": "standard",
-                    "note": "made from bar, parted off at the end (no proven program yet)",
+                    "note": "made from bar, parted off at the end",
                 }
             elif not part_fact and last.get(prm.key) not in (None, ""):
                 sug = {"value": last[prm.key], "source": "last saved", "note": saved_note}
-            elif prm.key == "ref_edge" and (edge := _company_edge(request, spec.key)):
-                sug = edge
             elif spec.key == "rough" and prm.key == "face_stock" and (fs := lib_face_stock):
                 sug = fs
-            elif spec.key == "back" and (bs := _company_back_stock(request)):
-                sug = bs
             elif spec.key == "general" and (found := proven_general.get(prm.key)):
                 sug = {"value": found.value, "source": "proven program", "note": found.source}
             elif spec.proven_kinds:
@@ -372,9 +196,7 @@ def plan(
                 if sug is None and spec.key == "bore" and prm.key in BORE_FROM_ROUGH:
                     sug = proven.suggest(("od_rough",), prm.key)
                 if sug is None and spec.key == "bore" and prm.key == "feed":
-                    sug = (
-                        ctx.suggest(("bore",), "finish_feed") if ctx else None
-                    ) or proven.suggest(("bore",), "finish_feed")
+                    sug = proven.suggest(("bore",), "finish_feed")
             if sug is None and (std := STANDARD_VALUES.get((spec.key, prm.key))) is not None:
                 sug = {
                     "value": std,
@@ -417,7 +239,7 @@ def plan(
     }
 
 
-# Last resort, after this part's proven program, the last saved setup and the company's proven
+# Last resort, after the last saved setup and the company-wide reference values from the proven
 # programs: common shop values for steel on a CNC lathe, so nothing is left to type. Each is
 # shown as "standard" in the setup for the setter to check at the machine.
 STANDARD_VALUES: dict[tuple[str, str], Any] = {
@@ -471,55 +293,18 @@ PART_FACTS = {
 }
 
 
-def _from_part(
-    ctx: PartContext,
-    op: str,
-    key: str,
-    kinds: tuple[str, ...],
-    length: Any,
-    data: dict[str, Any],
-) -> dict[str, Any] | None:
-    """A value from the proven program of this part, if it holds one."""
-    src = "proven program for this part"
-    if op == "general" and key in ("clearance", "spindle_direction"):
-        found = (clearance if key == "clearance" else spindle_direction)(ctx.blocks)
-        return {"value": found.value, "source": src, "note": found.source} if found else None
-    if op == "general" and key == "part_off":
-        return {
-            "value": "yes" if ctx.part_off else "no",
-            "source": src,
-            "note": ctx.part_source or f"{ctx.program} has no part-off",
-        }
-    if op == "rough" and key == "face_stock" and ctx.face_stock is not None:
-        return {"value": ctx.face_stock, "source": src, "note": ctx.face_source}
-    if op == "back" and key == "face_stock":
-        return _back_stock(ctx, length)
-    if op == "part" and key == "ref_edge":
-        return _ref_edge(ctx, length)
-    if op == "groove" and key == "ref_edge":
-        return _groove_edge(ctx, data)
-    return ctx.suggest(kinds, key) if kinds else None
-
-
 def _run(db: Session, body: GenerateBody, request: Request) -> tuple[FeatureTable, Machine, Any]:
     ft, machine = _load(db, body.feature_table_id, body.machine_id)
-    ctx = _part_ctx(request, ft.part_number)
     result = generate(
         ft.data,
         program_number=body.program_number,
         part_number=ft.part_number,
         title=body.title,
         setup=body.setup,
-        tools=_tools(machine, ctx),
+        tools=_tools(machine),
         rpm_max=_rpm_max(machine),
         table_ref=data_hash(ft.data)[:12],
-        fallback=_fallback(ctx),
     )
-    if result.text is not None and not machine.tools and ctx is not None:
-        result.notes.append(
-            f"Tool numbers are the ones {ctx.program} uses ({machine.name} has no tool list yet): "
-            "check the turret matches before running."
-        )
     return ft, machine, result
 
 
@@ -552,7 +337,7 @@ def preview(
             stock=stock_outline(float(bar) if isinstance(bar, int | float) else None, plot)
         )
         # Finished shape for the 3D simulation's compare with the drawing (advisory only).
-        geo, _problems = read_geometry(ft.data, _fallback(_part_ctx(request, ft.part_number)))
+        geo, _problems = read_geometry(ft.data)
         out["drawing"] = drawing_profile(geo) if geo is not None else None
     return out
 
@@ -661,21 +446,14 @@ def save_program(
 # ------------------------------------------------------------------ company program library
 
 
-class UseBody(BaseModel):
-    machine_id: int
-    part_number: str = Field(min_length=1, max_length=64)
-
-
 @router.get("/library")
 def library(
     request: Request,
-    part_number: str | None = Query(default=None, max_length=64),
     _: User = Depends(any_user),
 ) -> list[dict[str, Any]]:
-    """The company's proven programs; with part_number, only those made for that part."""
+    """The company's proven programs, as reference (code style, cutting values). They are never
+    matched to a part: every part's program is generated from its AI-read feature table."""
     lib = load_library(_library_dir(request))
-    if part_number:
-        lib = match_part(lib, part_number)
     return [
         {
             "name": p.name,
@@ -700,61 +478,3 @@ def library_toolpath(
     if prog is None:
         raise HTTPException(404, "Program not found.")
     return backplot(prog.text).to_dict()
-
-
-@router.post("/library/{name}/use", status_code=201)
-def use_library_program(
-    name: str,
-    body: UseBody,
-    request: Request,
-    db: Session = Depends(get_db),
-    user: User = Depends(programmers),
-    audit: AuditLogger = Depends(get_audit),
-) -> dict[str, Any]:
-    """Copy a proven program, byte for byte, to a machine as a DRAFT (approve it next)."""
-    prog = next((p for p in load_library(_library_dir(request)) if p.name == name), None)
-    machine = db.get(Machine, body.machine_id)
-    if prog is None or machine is None:
-        raise HTTPException(404, "Program or machine not found.")
-    if problem := controller_problem(machine):
-        raise HTTPException(409, problem)
-    part = body.part_number.strip()
-    if not match_part([prog], part):
-        raise HTTPException(422, f"{prog.name} is not made for part {part}.")
-    existing = db.scalar(
-        select(Program).where(
-            Program.machine_id == machine.id,
-            Program.part_number == part,
-            Program.sha256 == prog.sha256,
-            Program.status != ProgramStatus.RETIRED.value,
-        )
-    )
-    if existing is not None:
-        return {"program_id": existing.id, "name": prog.name, "version": existing.version}
-    try:
-        p = create_version(
-            db,
-            machine=machine,
-            text=prog.text,
-            source=ProgramSource.TRUSTED_IMPORT,
-            user=user,
-            part_number=part,
-            source_note=(
-                f"company library {prog.name} (SHA-256 {prog.sha256[:12]}), proven on a company "
-                f"machine (which one is not recorded); copied to {machine.name} by {user.username}"
-            )[:256],
-        )
-    except ProgramError as e:
-        db.rollback()
-        raise HTTPException(422, str(e)) from e
-    db.commit()
-    audit.record(
-        "program_from_library",
-        AuditResult.OK,
-        user=user,
-        machine_id=machine.id,
-        program_id=p.id,
-        program_hash=p.sha256,
-        payload={"program": prog.name, "part_number": part, "library_sha256": prog.sha256},
-    )
-    return {"program_id": p.id, "name": prog.name, "version": p.version}

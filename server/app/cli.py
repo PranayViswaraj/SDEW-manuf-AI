@@ -58,25 +58,18 @@ def _get_user(db: Session, username: str) -> User:
 
 
 def _check_data_files(settings: Settings, out: Out) -> bool:
-    """The generator needs the proven programs and the known-drawing values on disk."""
+    """The proven programs are reference only (company-wide cutting values, code style): every
+    part is read from its drawing by the AI, so missing programs are a note, never an error."""
     from pathlib import Path
 
-    from app.ai.known_drawings import load_known
     from app.services.program_library import load_library
 
     programs = Path(settings.samples_dir)
-    known = programs.parent / "drawings" / "known_drawings.json"
     count = len(load_library(str(programs))) if programs.is_dir() else 0
-    out(f"Proven programs: {count} in {programs}")
-    ok = count > 0
-    if not ok:
-        out("  ERROR: no proven programs; the program generator cannot run")
-    drawings = load_known(known) if known.is_file() else []
-    out(f"Known drawings: {len(drawings)} in {known}")
-    if not drawings:
-        out("  ERROR: known_drawings.json missing; uploads will not autofill")
-        ok = False
-    return ok
+    out(f"Reference programs: {count} in {programs}")
+    if count == 0:
+        out("  note: no reference programs; standard cutting values are used")
+    return True
 
 
 def cmd_check(settings: Settings, factory: sessionmaker[Session], out: Out) -> int:
