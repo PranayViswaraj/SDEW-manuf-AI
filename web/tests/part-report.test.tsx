@@ -89,3 +89,36 @@ describe('part report: off-lathe features', () => {
     expect(screen.getByText('Off the lathe: milling or grinding')).toBeInTheDocument();
   });
 });
+
+describe('part report: the point contour', () => {
+  it('lists every point in mm and says it agrees with the table', () => {
+    const withContour: FeatureTableData = {
+      ...DATA,
+      contour: {
+        outer: [
+          { z: 0, d: 31, segment: 'start', radius: null, evidence: 'Ø31' },
+          { z: 22, d: 31, segment: 'line', radius: null, evidence: '22' },
+          { z: 22, d: 38, segment: 'line', radius: null, evidence: 'Ø38' },
+          { z: 32, d: 38, segment: 'line', radius: null, evidence: '10' },
+        ],
+        inner: [],
+      },
+    };
+    withContour.header = { ...DATA.header, overall_length: c(32) };
+    render(
+      <PartReport
+        model={buildPartModel(withContour)}
+        partNumber="P-3"
+        drawingRef="p3.pdf"
+        programText={null}
+      />,
+    );
+    const t = screen.getByRole('table', { name: 'Contour points' });
+    expect(within(t).getAllByRole('row')).toHaveLength(5);
+    expect(t).toHaveTextContent('22.000');
+    expect(t).toHaveTextContent('Ø38.000');
+    expect(screen.getByText(/agrees with the feature table to 0.02 mm/)).toBeInTheDocument();
+    fireEvent.click(within(t).getAllByRole('row')[3]);
+    expect(screen.getByText('P3: 22.000 mm from the front face, Ø38.000')).toBeInTheDocument();
+  });
+});

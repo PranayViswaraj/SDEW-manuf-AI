@@ -49,7 +49,18 @@ def extraction(diameter: Any = 22.22, cls: str = "turned part") -> dict[str, Any
                 ],
             },
             {"type": "flip", "fields": []},
+            {"type": "od", "fields": [fval("diameter", 31), fval("length", 28)]},
         ],
+        # the same part point by point, mm from the front face (agrees with the table)
+        "contour": {
+            "outer": [
+                {"z": 0, "d": diameter, "segment": "start", "radius": None, "evidence": "Ø22.22"},
+                {"z": 34, "d": diameter, "segment": "line", "radius": None, "evidence": "34"},
+                {"z": 34, "d": 31, "segment": "line", "radius": None, "evidence": "Ø31"},
+                {"z": 62, "d": 31, "segment": "line", "radius": None, "evidence": "62"},
+            ],
+            "inner": [],
+        },
         "not_in_table": ["Perpendicularity 0.05 of the flange face to datum A"],
         "questions_for_engineer": ["Overall 67 on the drawing, steps add up to 62?"],
     }

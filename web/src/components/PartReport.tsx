@@ -418,6 +418,7 @@ export default function PartReport({
 }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [planPick, setPlanPick] = useState<PlanRow | null>(null);
+  const [pointPick, setPointPick] = useState<number | null>(null);
   const turned = model.op10.length + model.op20.length;
   const toleranced = model.chars.filter((c) => c.upper !== null && c.lower !== null).length;
   const aiRead = model.chars.filter((c) => c.ai !== null).length;
@@ -425,7 +426,11 @@ export default function PartReport({
   const ticked = model.chars.filter((c) => c.confirmed).length;
   const has3d = model.outer.length >= 2;
   const sel = model.chars.find((c) => c.no === selected) ?? null;
-  const highlight = sel?.span ?? planPick?.span ?? null;
+  const pickedPoint = pointPick !== null ? model.contour?.outer[pointPick] : undefined;
+  const highlight =
+    sel?.span ??
+    planPick?.span ??
+    (pickedPoint ? ([pickedPoint.z, pickedPoint.z] as [number, number]) : null);
   const selFeature = sel?.feature ?? planPick?.feature ?? null;
 
   const empty = model.chars.length === 0 && !has3d;
@@ -490,7 +495,9 @@ export default function PartReport({
                     ? `${sel.tag} ${sel.label}: ${sel.what}, ${sel.op}`
                     : planPick
                       ? `${planPick.id} ${planPick.typeLabel} ${planPick.nominal}`
-                      : 'Select a dimension or a plan row to see where it is.'}
+                      : pickedPoint
+                        ? `P${(pointPick ?? 0) + 1}: ${pickedPoint.z.toFixed(3)} mm from the front face, Ø${pickedPoint.d.toFixed(3)}`
+                        : 'Select a dimension, a plan row or a contour point to see where it is.'}
                 </p>
               </div>
             )}
@@ -547,6 +554,70 @@ export default function PartReport({
             setPlanPick(null);
           }}
         />
+      )}
+
+      {model.contour && model.contour.outer.length > 1 && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="font-semibold">The part point by point: mm from the front face</h3>
+            {model.contourCheck.length === 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200">
+                <Check className="h-3 w-3" aria-hidden="true" /> agrees with the feature table to 0.02 mm
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
+                <CircleAlert className="h-3 w-3" aria-hidden="true" /> {model.contourCheck.length}{' '}
+                {model.contourCheck.length === 1 ? 'difference' : 'differences'} with the feature table
+              </span>
+            )}
+          </div>
+          {model.contourCheck.length > 0 && (
+            <ul className="list-disc rounded-xl bg-rose-50/60 py-2 pr-3 pl-8 text-sm text-rose-900">
+              {model.contourCheck.map((x) => (
+                <li key={x}>{x}</li>
+              ))}
+            </ul>
+          )}
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+            <table className="w-full min-w-[640px] text-sm" aria-label="Contour points">
+              <thead className="bg-slate-50/80 text-left text-[11px] tracking-wider text-slate-500 uppercase">
+                <tr>
+                  <th className="px-3 py-2.5 font-medium">Point</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Z from front (mm)</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Diameter (mm)</th>
+                  <th className="px-3 py-2.5 font-medium">Reached by</th>
+                  <th className="px-3 py-2.5 font-medium">From the drawing</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {model.contour.outer.map((pt, i) => (
+                  <tr
+                    key={`${i}-${pt.z}-${pt.d}`}
+                    aria-selected={pointPick === i}
+                    className={`cursor-pointer ${pointPick === i ? 'bg-sky-50 shadow-[inset_3px_0_0_#0284c7]' : 'hover:bg-slate-50'}`}
+                    onClick={() => {
+                      setPointPick(pointPick === i ? null : i);
+                      setSelected(null);
+                      setPlanPick(null);
+                    }}
+                  >
+                    <td className="px-3 py-2 font-mono text-xs text-slate-600">P{i + 1}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">{pt.z.toFixed(3)}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">Ø{pt.d.toFixed(3)}</td>
+                    <td className="px-3 py-2 text-xs text-slate-600">
+                      {pt.segment === 'start'
+                        ? 'start (front face)'
+                        : pt.segment === 'arc'
+                          ? `arc R${pt.radius ?? '?'}`
+                          : 'straight line'}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-slate-700">{pt.evidence || '–'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {turned === 0 && !empty && (

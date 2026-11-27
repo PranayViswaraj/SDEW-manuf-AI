@@ -134,6 +134,28 @@ The table describes turned geometry from a FRONT FACE (Z0), measuring towards th
 - Face grooves (axial grooves cut into a face, like an O-ring groove) have no feature type: describe
   outer/inner diameter, depth, wall angle and radius in not_in_table.
 
+STEP 5b - The contour, point by point in mm (contour, written as JSON text)
+Describe the same part a second, independent way: walk its outline and give every corner as a
+point, in millimetres, 3 decimals. The program compares this contour with your feature table to
+within 0.02 mm, so compute every point carefully from the dimensions.
+- z: distance from the FRONT face (the Z0 face of the first clamping) toward the back face,
+  0 at the front face, the overall length at the back face, always counting along the whole part
+  (also for features made in the second clamping).
+- d: the DIAMETER at that point (nominal, as dimensioned; not the radius).
+- outer: the outside contour from the front face to the back face. First point: z 0 at the outer
+  edge where the front face meets the outside (after any front chamfer, the chamfer's small end
+  is the first point). Then every change of direction in order: chamfer ends, shoulder corners
+  (two points at the same z: the bottom and the top of the shoulder), taper ends, radius ends.
+  Last point: z = overall length at the outside of the back face.
+- inner: the bores / drilled holes from the front face inward (empty for a solid part): the
+  mouth diameter at z 0, then every step. For a blind hole stop at its full-diameter depth.
+- segment: "start" for the first point, "line" when a straight line (cylinder, taper, chamfer,
+  face) leads to this point, "arc" for a radius (give radius).
+- evidence: which dimensions give the point ("Ø21.30, 132.24-8.00-17.00 = 107.24", "derived").
+- Compute z from chain or baseline dimensions; never scale the drawing. If a point cannot be
+  computed from the dimensions, still give your best computed value and say "derived from ..."
+  in evidence, and ask about it in questions_for_engineer.
+
 STEP 6 - Check before answering
 - Every diameter you list appears on the drawing (or is derived, and evidence says how).
 - Step lengths add up to the overall length; bores do not go deeper than the part.
@@ -188,6 +210,10 @@ COMPLETENESS (the most important check)
   on the drawing and account for it (add the feature, put it in not_in_table, or say why it is
   not a callout, e.g. "title block tolerance table", "drawing number", "date").
 - Every balloon number from 1 to the highest must be present; find any that is missing.
+- The point contour ("contour", see the first reader's STEP 5b: z in mm from the front face, d =
+  diameter) must describe the same part as the feature table: check every point against the
+  dimensions and correct it. If the message lists places where the contour and the table
+  disagree, find out on the drawing which one is right and correct the other.
 
 Then check the whole table:
 - Classification (turned part vs assembly/tube/other) is right.
@@ -212,7 +238,8 @@ Then check the whole table:
 OUTPUT
 - "corrected" is the full table with your corrections applied, written as ONE JSON TEXT (a
   string) in exactly the same format as the claim: an object with drawing, feature_list,
-  callouts, general_tolerances, header, features, not_in_table and questions_for_engineer.
+  callouts, contour, general_tolerances, header, features, not_in_table and
+  questions_for_engineer.
   Write it first: your callouts and checks point into it.
 - "callouts" is YOUR own inventory (see COMPLETENESS), accounted against your corrected table.
 - One entry in "checks" for EVERY value in YOUR corrected table. "path" points into the corrected
@@ -270,6 +297,15 @@ _CALLOUT = _obj(
     }
 )
 _CALLOUTS = {"type": "array", "items": {"$ref": "#/$defs/callout"}}
+# The point contour travels as JSON text (a strict schema for it makes the API's compiled output
+# grammar too large); the program parses and checks every point (claude_reader.parse_contour).
+_CONTOUR = {
+    "type": "string",
+    "description": (
+        'JSON text: {"outer": [{"z": mm from the front face, "d": diameter mm, "segment": '
+        '"start"|"line"|"arc", "radius": number or null, "evidence": "..."}, ...], "inner": [...]}'
+    ),
+}
 
 _VALUE_PROPS = {
     "v": _SCALAR,
@@ -304,6 +340,7 @@ EXTRACTION_DEFS: dict[str, Any] = {
             ),
             "feature_list": _STR_LIST,
             "callouts": _CALLOUTS,
+            "contour": _CONTOUR,
             "general_tolerances": _STR_LIST,
             "header": _obj({k: {"$ref": "#/$defs/value"} for k, _, _ in HEADER_FIELDS}),
             "features": {

@@ -315,9 +315,20 @@ export interface FeatureSchema {
   header: FieldDef[];
   feature_types: { type: string; label: string; fields: FieldDef[] }[];
 }
+export interface ContourPoint {
+  /** mm from the front face (Z0) toward the back face */
+  z: number;
+  /** diameter at that point, mm */
+  d: number;
+  segment: 'start' | 'line' | 'arc';
+  radius: number | null;
+  evidence: string;
+}
 export interface FeatureTableData {
   header: Record<string, Cell>;
   features: { type: string; fields: Record<string, Cell> }[];
+  /** The part point by point as the AI read it (a second description, cross-checked). */
+  contour?: { outer: ContourPoint[]; inner: ContourPoint[] } | null;
 }
 export interface FeatureTable {
   id: number;

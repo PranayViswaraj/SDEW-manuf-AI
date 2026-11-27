@@ -278,3 +278,83 @@ def test_a_text_layer_number_alone_does_not_cost_a_second_round(
     assert fake.calls[0]["messages"][0]["content"][0]["type"] == "document"  # text layer: PDF kept
     assert len(fake.calls) == 2  # no third call for it...
     assert any("99.9" in x for x in result.notes["unaccounted"])  # ...the engineer checks it
+
+
+# ------------------------------------------------------------------ point contour
+
+
+def pin_answer(taper_end: float = 21.3, contour_end: float = 21.3) -> dict[str, Any]:
+    """A tapered pin as the reader answers: table and point contour (mm from the front face)."""
+
+    def f(name: str, v: Any) -> dict[str, Any]:
+        return {"name": name, "v": v, "evidence": "", "confidence": 1, "source": "drawing"}
+
+    def pt(z: float, d: float, seg: str = "line") -> dict[str, Any]:
+        return {"z": z, "d": d, "segment": seg, "radius": None, "evidence": ""}
+
+    return {
+        "header": {"overall_length": {"v": 96.59}},
+        "features": [
+            {
+                "type": "taper",
+                "fields": [
+                    f("diameter_start", 16.3),
+                    f("diameter_end", taper_end),
+                    f("length", 71.59),
+                ],
+            },
+            {"type": "od", "fields": [f("diameter", 21.3), f("length", 17)]},
+            {"type": "od", "fields": [f("diameter", 27), f("length", 8)]},
+        ],
+        "contour": {
+            "outer": [
+                pt(0, 16.3, "start"),
+                pt(71.59, contour_end),
+                pt(88.59, 21.3),
+                pt(88.59, 27),
+                pt(96.59, 27),
+            ],
+            "inner": [],
+        },
+    }
+
+
+def test_contour_agrees_with_the_table() -> None:
+    from app.ai.claude_reader import contour_gaps
+
+    assert contour_gaps(pin_answer()) == []
+
+
+def test_contour_and_table_disagreeing_is_caught_to_the_hundredth() -> None:
+    from app.ai.claude_reader import contour_gaps
+
+    gaps = contour_gaps(pin_answer(contour_end=21.4))  # the taper's mid diameter is 0.05 off
+    # that point bends both segments it joins: the taper and the parallel after it
+    assert len(gaps) == 2 and "35.795 mm from the front face" in gaps[0]
+    assert "80.090 mm" in gaps[1]
+    short = pin_answer()
+    short["contour"]["outer"] = short["contour"]["outer"][:-1]
+    assert any(
+        "ends at 88.590 mm, but the overall length is 96.590 mm" in g for g in contour_gaps(short)
+    )
+
+
+def test_a_contour_mismatch_costs_the_second_look_and_the_contour_is_kept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bad = extraction() | {"contour": pin_answer(contour_end=21.4)["contour"]}
+    check = {
+        "verdict": "accept",
+        "checks": ALL_OK,
+        "corrected": bad,
+        "callouts": [],
+        "questions_for_engineer": [],
+    }
+    fixed = check | {"corrected": extraction()}
+    fake = FakeClient([extraction(), check, fixed])
+    result = reader(fake).read_report(PDF)
+    assert len(fake.calls) == 3  # the disagreement sent agent 2 back
+    second = fake.calls[2]["messages"][0]["content"][-1]["text"]
+    assert "point contour and the feature table disagree" in second
+    contour = result.table.model_dump()["contour"]
+    assert [p["z"] for p in contour["outer"]] == [0, 34, 34, 62]  # saved with the table

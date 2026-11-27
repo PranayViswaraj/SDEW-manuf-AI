@@ -50,6 +50,17 @@ SDEW receives drawings as PDFs only (no STEP model), most of them scans. Three m
 
 Accuracy is measured, not assumed: `python -m app.ai.evaluate <drawings folder>` (section 6).
 
+### The part point by point (contour) and its cross-check
+
+Agent 1 also writes the part as a **point contour**: every corner of the outside (and bores) as
+z = mm from the front face and d = diameter, each computed from the dimensions (STEP 5b; sent as
+JSON text because a strict schema for it makes the API's output grammar too large). The program
+compares it with the feature table (`contour_gaps()`): at the middle of every straight contour
+segment longer than 1 mm the two diameters must agree to **0.02 mm**, and the contour must start
+at 0 and end at the overall length. A disagreement sends agent 2 back with the places listed; what
+is still open is shown to the engineer. The contour is saved with the table, shown as a point
+table on the page, and the 3D view and section are drawn from it (chamfers included).
+
 ### Tapers and autofill (from the first live read, Wo-1047)
 
 - The feature table has a **Taper (OD)** type (front diameter, end diameter, length, angle per side

@@ -199,7 +199,7 @@ class ClaudeDrawingReader(DrawingReader):
 
     async def aextract(self, drawing: list[dict[str, Any]], part_number: str) -> dict[str, Any]:
         hint = f"Part number typed by the user: {part_number}." if part_number else ""
-        return await self._agent(
+        answer = await self._agent(
             extractor_system(),
             [
                 *drawing,
@@ -207,6 +207,8 @@ class ClaudeDrawingReader(DrawingReader):
             ],
             EXTRACTION_SCHEMA,
         )
+        answer["contour"] = parse_contour(answer.get("contour"))
+        return answer
 
     async def averify(
         self, drawing: list[dict[str, Any]], claim: dict[str, Any], gaps: str = ""
@@ -220,6 +222,7 @@ class ClaudeDrawingReader(DrawingReader):
             VERIFIER_SYSTEM, [*drawing, {"type": "text", "text": text}], VERIFICATION_SCHEMA
         )
         answer["corrected"] = corrected_table(answer.get("corrected"))
+        answer["corrected"]["contour"] = parse_contour(answer["corrected"].get("contour"))
         return answer
 
     # ------------------------------------------------------------------ pipeline
@@ -326,6 +329,22 @@ class ClaudeDrawingReader(DrawingReader):
         return self.read_report(file, filename).table
 
 
+def parse_contour(raw: Any) -> dict[str, Any]:
+    """The point contour (sent as JSON text, or already an object): {"outer": [...], "inner":
+    [...]}; anything unreadable becomes an empty contour (the check then notes it is missing)."""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw) if raw.strip() else {}
+        except json.JSONDecodeError:
+            raw = {}
+    if not isinstance(raw, dict):
+        return {"outer": [], "inner": []}
+    return {
+        side: [p for p in (raw.get(side) or []) if isinstance(p, dict)]
+        for side in ("outer", "inner")
+    }
+
+
 def corrected_table(raw: Any) -> dict[str, Any]:
     """The checking agent's corrected table (sent as JSON text), checked before it is used."""
     table = raw
@@ -363,6 +382,104 @@ def _nums(text: str) -> set[float]:
     return out
 
 
+# ---------------------------------------------------------------------- contour check
+
+CONTOUR_TOL = 0.02  # mm on the diameter: the contour and the table must describe one part
+
+
+def _fields(f: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for x in f.get("fields") or []:
+        v = x.get("v")
+        if isinstance(v, int | float) and not isinstance(v, bool):
+            out[str(x.get("name"))] = float(v)
+    return out
+
+
+def _num_v(cell: Any) -> float | None:
+    v = cell.get("v") if isinstance(cell, dict) else None
+    return float(v) if isinstance(v, int | float) and not isinstance(v, bool) else None
+
+
+def table_spans(answer: dict[str, Any]) -> list[tuple[float, float, float, float]]:
+    """The outside of the part as the feature table gives it: (z0, z1, d0, d1) spans in mm from
+    the front face, nominal diameters; second-clamping steps placed from the back face."""
+    length = _num_v((answer.get("header") or {}).get("overall_length"))
+    feats = answer.get("features") or []
+    flip = next((i for i, f in enumerate(feats) if f.get("type") == "flip"), len(feats))
+    spans: list[tuple[float, float, float, float]] = []
+    for side, part in ((0, feats[:flip]), (1, feats[flip + 1 :])):
+        if side == 1 and length is None:
+            break
+        z = 0.0
+        for f in part:
+            v = _fields(f)
+            if f.get("type") == "od" and "diameter" in v and "length" in v:
+                d0 = d1 = v["diameter"]
+            elif (
+                f.get("type") == "taper"
+                and {"diameter_start", "diameter_end", "length"} <= v.keys()
+            ):
+                d0, d1 = v["diameter_start"], v["diameter_end"]
+            else:
+                continue
+            a, b = z, z + v["length"]
+            z = b
+            if side == 0:
+                spans.append((a, b, d0, d1))
+            else:  # measured from the back face
+                assert length is not None
+                spans.append((length - b, length - a, d1, d0))
+    return spans
+
+
+def contour_gaps(answer: dict[str, Any]) -> list[str]:
+    """Where the point contour and the feature table do not describe the same part."""
+    contour = answer.get("contour") or {}
+    pts = [
+        p
+        for p in contour.get("outer") or []
+        if isinstance(p.get("z"), int | float) and isinstance(p.get("d"), int | float)
+    ]
+    if not answer.get("features"):
+        return []
+    if len(pts) < 2:
+        return []  # no contour given: nothing to compare (noted separately)
+    out: list[str] = []
+    length = _num_v((answer.get("header") or {}).get("overall_length"))
+    if abs(float(pts[0]["z"])) > 0.011:
+        out.append(f"The contour starts at {pts[0]['z']:.3f} mm, not at the front face (0).")
+    if length is not None and abs(float(pts[-1]["z"]) - length) > 0.011:
+        out.append(
+            f"The contour ends at {pts[-1]['z']:.3f} mm, but the overall length is {length:.3f} mm."
+        )
+    spans = table_spans(answer)
+    for a, b in zip(pts, pts[1:], strict=False):
+        if b.get("segment") == "arc":
+            continue
+        z0, z1 = float(a["z"]), float(b["z"])
+        if z1 - z0 < 1.0:  # faces, shoulders, chamfers and small corners
+            continue
+        mid = (z0 + z1) / 2
+        d_contour = (float(a["d"]) + float(b["d"])) / 2
+        cover = [sp for sp in spans if sp[0] - 1e-6 <= mid <= sp[1] + 1e-6]
+        if not cover:
+            out.append(
+                f"Contour {z0:.3f}–{z1:.3f} mm (Ø{d_contour:.3f}): "
+                "no OD or taper in the table there."
+            )
+            continue
+        d_table = min(
+            sp[2] + (sp[3] - sp[2]) * (mid - sp[0]) / (sp[1] - sp[0] or 1) for sp in cover
+        )
+        if abs(d_contour - d_table) > CONTOUR_TOL:
+            out.append(
+                f"At {mid:.3f} mm from the front face the contour gives Ø{d_contour:.3f}, the "
+                f"feature table Ø{d_table:.3f}."
+            )
+    return out[:20]
+
+
 @dataclass
 class Gaps:
     """What the readers have not accounted for yet."""
@@ -371,14 +488,23 @@ class Gaps:
     missing_balloons: list[int] = field(default_factory=list)
     first_only: list[str] = field(default_factory=list)  # callouts the checker lost
     text_only: list[str] = field(default_factory=list)  # text-layer numbers nobody accounted for
+    contour: list[str] = field(default_factory=list)  # contour and table disagree
+    no_contour: bool = False  # the reader gave no point contour
     highest_balloon: int | None = None
 
     def any(self) -> bool:
-        return bool(self.unaccounted or self.missing_balloons or self.first_only or self.text_only)
+        return bool(
+            self.unaccounted
+            or self.missing_balloons
+            or self.first_only
+            or self.text_only
+            or self.contour
+        )
 
     def serious(self) -> bool:
-        """Gaps worth a second checking round: a callout or balloon not found or not placed."""
-        return bool(self.unaccounted or self.missing_balloons or self.first_only)
+        """Gaps worth a second checking round: a callout or balloon not found or not placed, or
+        the point contour and the feature table describing different parts."""
+        return bool(self.unaccounted or self.missing_balloons or self.first_only or self.contour)
 
     def message(self, *, first_round: bool) -> str:
         lines: list[str] = []
@@ -393,6 +519,11 @@ class Gaps:
             lines.append(
                 "Callouts the first reader listed that your answer does not contain: "
                 + "; ".join(self.first_only)
+            )
+        if self.contour:
+            lines.append(
+                "The point contour and the feature table disagree (mm from the front face): "
+                + "; ".join(self.contour)
             )
         if self.text_only:
             lines.append(
@@ -410,6 +541,9 @@ class Gaps:
         out += [f"Balloon {b} not found on the drawing by the AI" for b in self.missing_balloons]
         out += [f"Seen by the first reader only: {x}" for x in self.first_only]
         out += [f"Number printed on the drawing, not accounted for: {x}" for x in self.text_only]
+        out += [f"Contour check: {x}" for x in self.contour]
+        if self.no_contour:
+            out.append("No point contour (mm from the front face) was given: compare by eye.")
         return out[:40]
 
 
@@ -445,6 +579,11 @@ def completeness(
             nums = _nums(text)
             if nums and not any(nums <= other for other in listed):
                 g.first_only.append(text)
+    final = (latest.get("corrected") if check is not None else first) or {}
+    g.contour = contour_gaps(final)
+    g.no_contour = (
+        bool(final.get("features")) and len((final.get("contour") or {}).get("outer") or []) < 2
+    )
     for tok in text_numbers:
         if _zero_led(tok):
             continue
@@ -550,4 +689,34 @@ def reconcile(
                 cells[key] = {"ai": ai, "value": None, "confirmed": False}
             features.append({"type": ftype, "fields": cells})
 
-    return TableData.model_validate({"header": header, "features": features[:200]}), notes
+    data: dict[str, Any] = {"header": header, "features": features[:200]}
+    if not notes["not_lathe"] and (contour := _contour(table.get("contour"))):
+        data["contour"] = contour
+    return TableData.model_validate(data), notes
+
+
+def _contour(raw: Any) -> dict[str, list[dict[str, Any]]] | None:
+    """The point contour, cleaned (only well-formed points; never forced)."""
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, list[dict[str, Any]]] = {"outer": [], "inner": []}
+    for side in ("outer", "inner"):
+        for p in raw.get(side) or []:
+            z, d = p.get("z"), p.get("d")
+            if not all(isinstance(v, int | float) and not isinstance(v, bool) for v in (z, d)):
+                continue
+            if not (0 <= z <= 10000 and 0 <= d <= 10000):
+                continue
+            seg = p.get("segment") if p.get("segment") in ("start", "line", "arc") else "line"
+            r = p.get("radius")
+            out[side].append(
+                {
+                    "z": round(float(z), 4),
+                    "d": round(float(d), 4),
+                    "segment": seg,
+                    "radius": float(r) if isinstance(r, int | float) and r > 0 else None,
+                    "evidence": str(p.get("evidence") or "")[:200],
+                }
+            )
+        out[side] = out[side][:400]
+    return out if out["outer"] or out["inner"] else None

@@ -101,10 +101,31 @@ class Feature(BaseModel):
         return v
 
 
+class ContourPoint(BaseModel):
+    """One corner of the turned contour, in mm: distance from the front face and diameter."""
+
+    model_config = ConfigDict(extra="forbid")
+    z: float = Field(ge=0, le=10000)  # mm from the front face (Z0) toward the back face
+    d: float = Field(ge=0, le=10000)  # diameter at that point, mm
+    segment: Literal["start", "line", "arc"] = "line"  # how the contour reaches this point
+    radius: float | None = Field(default=None, ge=0, le=10000)  # for an arc
+    evidence: str = Field(default="", max_length=200)
+
+
+class Contour(BaseModel):
+    """The part as the AI read it, point by point (a second description of the feature table,
+    cross-checked against it). Outer: outside contour; inner: bores, from the front face."""
+
+    model_config = ConfigDict(extra="forbid")
+    outer: list[ContourPoint] = Field(default_factory=list, max_length=400)
+    inner: list[ContourPoint] = Field(default_factory=list, max_length=400)
+
+
 class TableData(BaseModel):
     model_config = ConfigDict(extra="forbid")
     header: dict[str, Cell] = Field(default_factory=dict)
     features: list[Feature] = Field(default_factory=list, max_length=200)
+    contour: Contour | None = None
 
 
 class FeatureTableError(ValueError):
@@ -176,7 +197,10 @@ def normalise(raw: dict[str, Any]) -> dict[str, Any]:
             _check_cell(f"Feature {n} ({label}) {flabel}", kind, cell)
             cells[key] = cell.model_dump()
         out_features.append({"type": f.type, "fields": cells})
-    return {"header": out_header, "features": out_features}
+    out: dict[str, Any] = {"header": out_header, "features": out_features}
+    if data.contour is not None and (data.contour.outer or data.contour.inner):
+        out["contour"] = data.contour.model_dump()
+    return out
 
 
 def unconfirmed_cells(data: dict[str, Any]) -> list[str]:

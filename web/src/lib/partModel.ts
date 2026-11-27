@@ -8,7 +8,7 @@
  * with depths from the face, a chamfer / radius / cone sits on the front corner of the OD or bore
  * after it, and a toleranced size is cut in the middle of its tolerance band.
  */
-import type { Cell, FeatureTableData } from '../api/types';
+import type { Cell, ContourPoint, FeatureTableData } from '../api/types';
 
 export type Op = 'OP10' | 'OP20';
 
@@ -65,6 +65,10 @@ export interface PartModel {
   /** Outer and inner outline in part coordinates: p from 0 (front face) to length, r = radius. */
   outer: [number, number][];
   inner: [number, number][];
+  /** The AI's point contour (mm from the front face), when the table has one. */
+  contour: { outer: ContourPoint[]; inner: ContourPoint[] } | null;
+  /** Where the point contour and the feature table disagree (empty: they agree). */
+  contourCheck: string[];
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -120,6 +124,8 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
     chars: [],
     outer: [],
     inner: [],
+    contour: null,
+    contourCheck: [],
   };
   const feats = data?.features ?? [];
   const flip = feats.findIndex((f) => f.type === 'flip');
@@ -155,6 +161,7 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
 
   // turned intervals, part coordinates (p from the front face), for the outline
   const odSpans: Span[] = [];
+  const nominalSpans: Span[] = []; // the drawing's sizes, for the contour check
   const holeSpans: Span[] = [];
 
   for (const side of sides) {
@@ -364,6 +371,7 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
           odSpans.push(
             span(toPart(-zOd), toPart(-(zOd + ln)), midTol(d0, tp, tm) / 2, midTol(d1, tp, tm) / 2),
           );
+          nominalSpans.push(span(toPart(-zOd), toPart(-(zOd + ln)), d0 / 2, d1 / 2));
           out.maxDia = Math.max(out.maxDia ?? 0, d0, d1);
           lastOd = { dia: d1, z: -(zOd + ln) };
         }
@@ -407,6 +415,7 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
           );
           odAt.push({ nom: d, z: -zOd });
           odSpans.push(span(toPart(-zOd), toPart(-(zOd + ln)), cut / 2));
+          nominalSpans.push(span(toPart(-zOd), toPart(-(zOd + ln)), d / 2));
           out.maxDia = Math.max(out.maxDia ?? 0, d);
         }
         if (ln)
@@ -557,6 +566,16 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
 
   out.outer = outline(odSpans, length, (bar ?? out.maxDia ?? 0) / 2, 'outer');
   out.inner = outline(holeSpans, length, 0, 'inner');
+
+  // The AI's point contour: checked against the table, then used for the 3D model and the
+  // section (it has the chamfers and exact corner points the table only implies).
+  const c = data?.contour;
+  if (c && c.outer.length >= 2) {
+    out.contour = c;
+    out.contourCheck = checkContour(c.outer, nominalSpans, length);
+    out.outer = c.outer.map((p) => [p.z, p.d / 2]);
+    if (c.inner.length >= 2) out.inner = c.inner.map((p) => [p.z, p.d / 2]);
+  }
   return out;
 }
 
@@ -600,6 +619,32 @@ function outline(
     pts.push([ps[i], rAt(pick, ps[i])], [ps[i + 1], rAt(pick, ps[i + 1])]);
   }
   return pts;
+}
+
+/** Where the contour and the table's outside disagree by more than 0.02 mm on the diameter
+ *  (same rule as the server's check). */
+function checkContour(pts: ContourPoint[], spans: Span[], length: number | null): string[] {
+  const out: string[] = [];
+  if (Math.abs(pts[0].z) > 0.011) out.push(`The contour starts at ${pts[0].z.toFixed(3)} mm, not at 0.`);
+  const last = pts[pts.length - 1];
+  if (length !== null && Math.abs(last.z - length) > 0.011)
+    out.push(`The contour ends at ${last.z.toFixed(3)} mm; the overall length is ${length.toFixed(3)} mm.`);
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    if (b.segment === 'arc' || b.z - a.z < 1) continue;
+    const mid = (a.z + b.z) / 2;
+    const dc = (a.d + b.d) / 2;
+    const cover = spans.filter((s) => s.p0 - 1e-6 <= mid && mid <= s.p1 + 1e-6);
+    if (!cover.length) {
+      out.push(`${a.z.toFixed(3)}–${b.z.toFixed(3)} mm (Ø${dc.toFixed(3)}): nothing in the table there.`);
+      continue;
+    }
+    const dt = Math.min(...cover.map((s) => 2 * rAt(s, mid)));
+    if (Math.abs(dc - dt) > 0.02)
+      out.push(`At ${mid.toFixed(3)} mm: contour Ø${dc.toFixed(3)}, table Ø${dt.toFixed(3)}.`);
+  }
+  return out;
 }
 
 /** X words of a program (diameters), to show which sizes it really cuts and on which line. */

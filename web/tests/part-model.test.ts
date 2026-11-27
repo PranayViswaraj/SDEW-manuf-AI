@@ -110,3 +110,46 @@ describe('tapers', () => {
     expect(at(75.07)).toEqual([10.65, 10.65]); // the taper ends at the parallel's size
   });
 });
+
+describe('point contour', () => {
+  const pt = (z: number, d: number, segment: 'start' | 'line' = 'line') => ({
+    z,
+    d,
+    segment,
+    radius: null,
+    evidence: '',
+  });
+  const base: FeatureTableData = {
+    header: { material_grade: c('H13'), bar_diameter: c(30), overall_length: c(96.59) },
+    features: [
+      {
+        type: 'taper',
+        fields: { diameter_start: c(16.3), diameter_end: c(21.3), length: c(71.59), angle: c(2) },
+      },
+      { type: 'od', fields: { diameter: c(21.3), length: c(17), tol_plus: c(0), tol_minus: c(-0.02) } },
+      { type: 'od', fields: { diameter: c(27), length: c(8) } },
+    ],
+  };
+  const contour = (endOfTaper: number) => ({
+    outer: [pt(0, 16.3, 'start'), pt(71.59, endOfTaper), pt(88.59, 21.3), pt(88.59, 27), pt(96.59, 27)],
+    inner: [],
+  });
+
+  it('agrees with the table and draws the 3D outline from its points', () => {
+    const m = buildPartModel({ ...base, contour: contour(21.3) });
+    expect(m.contourCheck).toEqual([]);
+    expect(m.outer).toEqual([
+      [0, 8.15],
+      [71.59, 10.65],
+      [88.59, 10.65],
+      [88.59, 13.5],
+      [96.59, 13.5],
+    ]);
+  });
+
+  it('shows where the contour and the table disagree', () => {
+    const m = buildPartModel({ ...base, contour: contour(21.4) });
+    expect(m.contourCheck).toHaveLength(2);
+    expect(m.contourCheck[0]).toContain('At 35.795 mm: contour Ø18.850, table Ø18.800');
+  });
+});
