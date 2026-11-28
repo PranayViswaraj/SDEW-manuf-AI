@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { SolidFeature } from '../src/api/types';
 import { cutters, describeSolid, radiusAt } from '../src/lib/solidCuts';
-import { cutSolid } from '../src/lib/solidMesh';
+import { cutSolid, sharpCorners } from '../src/lib/solidMesh';
 
 const base: SolidFeature = {
   kind: 'other',
@@ -105,5 +105,52 @@ describe('non-turned features in the 3D model', () => {
     expect(describeSolid(feat({ kind: 'hex', across_flats: 22, z_from: 0, z_to: 12 }))).toBe(
       'Hexagon 22 across flats, z 0–12',
     );
+  });
+
+  it('cuts the face groove of 3227C07701 into the flange face (DETAIL-B: 3.94 wide, 2.79 deep)', () => {
+    // spigot Ø22.22 x 34 at the front, Ø31 body, Ø38 flange 6 thick at the back (z 61-67)
+    const outer: [number, number][] = [
+      [0, 11.11],
+      [34, 11.11],
+      [34, 15.5],
+      [61, 15.5],
+      [61, 19],
+      [67, 19],
+    ];
+    const groove = feat({
+      kind: 'face_groove',
+      end: 'back',
+      diameter: 31.88,
+      diameter_end: 24.0,
+      depth: 2.79,
+    });
+    const { cuts, skipped } = cutters([groove], outer, 67);
+    expect(skipped).toEqual([]);
+    expect(cuts[0].shape).toBe('ring');
+    expect(cuts[0].rTop).toBeCloseTo(15.94);
+    expect(cuts[0].rInner).toBeCloseTo(12);
+    // reaches 2.79 into the back face and 1 mm beyond it
+    expect(cuts[0].at[1] - cuts[0].length / 2).toBeCloseTo(67 - 2.79);
+    expect(cuts[0].at[1] + cuts[0].length / 2).toBeCloseTo(68);
+    const pts = outer.map(([y, r]) => new THREE.Vector2(r, y));
+    const body = new THREE.LatheGeometry(
+      [new THREE.Vector2(9.5, 0), ...pts, new THREE.Vector2(9.5, 67), new THREE.Vector2(9.5, 0)],
+      64,
+    );
+    const cut = cutSolid(body, cuts);
+    const groovePlusRing = Math.PI * (15.94 ** 2 - 12 ** 2) * 2.79;
+    expect(volume(body) - volume(cut)).toBeCloseTo(groovePlusRing, -1);
+    expect(describeSolid(groove)).toBe('Face groove Ø31.88/Ø24, 2.79 deep, back face (face-grooving tool)');
+  });
+
+  it('keeps shoulders and chamfers sharp but curves smooth', () => {
+    const V = (r: number, y: number) => new THREE.Vector2(r, y);
+    // face -> 0.5x45 chamfer -> diameter: both corners doubled
+    expect(sharpCorners([V(5, 0), V(10.5, 0), V(11, 0.5), V(11, 20)]).length).toBe(6);
+    // a fine arc (5° per step) is not doubled
+    const arc = Array.from({ length: 10 }, (_, k) =>
+      V(10 + Math.cos((k * 5 * Math.PI) / 180), Math.sin((k * 5 * Math.PI) / 180)),
+    );
+    expect(sharpCorners(arc).length).toBe(10);
   });
 });

@@ -670,11 +670,12 @@ export default function PartReport({
           {offLathe.length > 0 && (
             <div className="overflow-hidden rounded-xl border border-violet-200 bg-white shadow-sm">
               <div className="flex items-center gap-3 border-b border-violet-200 bg-violet-50/70 px-4 py-3">
-                <span className="rounded-lg bg-violet-700 px-2 py-1 text-xs font-bold text-white">OP30</span>
+                <span className="rounded-lg bg-violet-700 px-2 py-1 text-xs font-bold text-white">Extra</span>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-slate-900">Off the lathe: milling or grinding</p>
+                  <p className="font-semibold text-slate-900">Not in the generated lathe program</p>
                   <p className="text-xs text-slate-600">
-                    From the AI&apos;s 3D analysis of the drawing · not cut by the lathe program
+                    From the AI&apos;s 3D analysis of the drawing · face grooves need a face-grooving tool;
+                    holes, flats and slots need drilling or milling
                   </p>
                 </div>
                 <span className="rounded-full bg-white px-2.5 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">

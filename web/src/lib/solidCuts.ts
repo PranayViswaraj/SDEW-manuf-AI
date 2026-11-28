@@ -8,7 +8,7 @@ import type { SolidFeature } from '../api/types';
  */
 export type Vec3 = [number, number, number];
 export interface Cutter {
-  shape: 'cylinder' | 'box';
+  shape: 'cylinder' | 'box' | 'ring';
   /** Centre of the shape. */
   at: Vec3;
   /** Direction of the shape's own Y axis (cylinder axis; box height). */
@@ -16,6 +16,8 @@ export interface Cutter {
   /** Cylinder: radius at its +axis end and at its -axis end, and its length. */
   rTop?: number;
   rBottom?: number;
+  /** Ring (face groove): inner radius; rTop is its outer radius. */
+  rInner?: number;
   length: number;
   /** Box: size across (perpendicular to axis and to `side`), and along `side`. */
   width?: number;
@@ -184,6 +186,24 @@ export function cutters(
         }
         break;
       }
+      case 'face_groove': {
+        if (f.diameter === null || f.depth === null) break;
+        const rOut = f.diameter / 2;
+        const rIn = f.diameter_end !== null ? f.diameter_end / 2 : f.width !== null ? rOut - f.width : null;
+        if (rIn === null || rIn <= 0 || rIn >= rOut) break;
+        const len = f.depth + 1; // 1 mm clear of the face
+        const y = f.end === 'front' ? f.depth - len / 2 : length - f.depth + len / 2;
+        cuts.push({
+          shape: 'ring',
+          at: [0, y, 0],
+          axis: Y,
+          rTop: rOut,
+          rInner: rIn,
+          length: len,
+          feature: i,
+        });
+        break;
+      }
       case 'face_hole': {
         if (f.diameter === null || f.pcd === null) break;
         const back = f.end === 'back';
@@ -221,6 +241,7 @@ const LABEL: Record<SolidFeature['kind'], string> = {
   slot: 'Slot',
   keyway: 'Keyway',
   face_hole: 'Face hole',
+  face_groove: 'Face groove',
   knurl: 'Knurl',
   spline: 'Spline',
   other: 'Other',
@@ -252,6 +273,16 @@ export function describeSolid(f: SolidFeature): string {
     case 'slot':
     case 'keyway':
       return `${n}${LABEL[f.kind]} ${mm(f.width)} wide × ${mm(f.depth)} deep${f.end ? ` across the ${f.end} face` : span}${at}`;
+    case 'face_groove':
+      return (
+        `${LABEL[f.kind]} Ø${mm(f.diameter)}` +
+        (f.diameter_end !== null
+          ? `/Ø${mm(f.diameter_end)}`
+          : f.width !== null
+            ? `, ${mm(f.width)} wide`
+            : '') +
+        `, ${mm(f.depth)} deep, ${f.end ?? '?'} face (face-grooving tool)`
+      );
     case 'face_hole':
       return `${n}${LABEL[f.kind]} Ø${mm(f.diameter)} on PCD ${mm(f.pcd)}, ${f.end ?? '?'} face${f.through ? ', through' : `, ${mm(f.depth)} deep`}`;
     default:

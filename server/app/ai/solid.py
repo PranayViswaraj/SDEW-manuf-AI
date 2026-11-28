@@ -20,6 +20,8 @@ SOLID_KINDS = (
     "slot",  # slot across or along the part: width, depth, z_from, z_to
     "keyway",  # keyway: width, depth, z_from, z_to
     "face_hole",  # axial hole(s) in an end face off the axis: diameter, pcd, count, end
+    "face_groove",  # annular groove / recess in an end face (O-ring groove): outer diameter,
+    # inner diameter (diameter_end) or radial width, axial depth, end
     "knurl",  # knurled band: z_from, z_to
     "spline",  # splined band: z_from, z_to
     "other",  # anything else (described in evidence)
@@ -48,6 +50,7 @@ REQUIRED: dict[str, tuple[tuple[str, ...], ...]] = {
     "slot": (("z_from",), ("z_to",), ("width",), ("depth",)),
     "keyway": (("z_from",), ("z_to",), ("width",), ("depth",)),
     "face_hole": (("diameter",), ("pcd",)),
+    "face_groove": (("diameter",), ("diameter_end", "width"), ("depth",)),
     "knurl": (("z_from",), ("z_to",)),
     "spline": (("z_from",), ("z_to",)),
     "other": (),
@@ -114,8 +117,8 @@ def solid_gaps(answer: dict[str, Any]) -> list[str]:
             " or ".join(alts) for alts in REQUIRED[f["kind"]] if all(f[a] is None for a in alts)
         ]
         if missing:
-            out.append(f"{what}: no {', '.join(missing)}.")
-        if f["kind"] == "saddle" and f["end"] is None:
+            out.append(f"{what}: no {'; no '.join(missing)}.")
+        if f["kind"] in ("saddle", "face_groove", "face_hole") and f["end"] is None:
             out.append(f"{what}: say which end (front or back) is cut.")
         if length is not None:
             for key in ("z", "z_from", "z_to"):

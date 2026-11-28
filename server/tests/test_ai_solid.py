@@ -112,3 +112,23 @@ def test_normalise_keeps_the_solid() -> None:
     out = normalise(data)
     assert [f["kind"] for f in out["solid"]] == ["saddle", "cross_hole"]
     assert "solid" not in normalise(TableData())
+
+
+def test_a_face_groove_needs_its_diameters_depth_and_end() -> None:
+    """3227C07701: the O-ring groove in the flange face (DETAIL-B 2:1) is a face groove."""
+    ok = [
+        {
+            "kind": "face_groove",
+            "end": "back",
+            "diameter": 31.88,
+            "diameter_end": 24.0,
+            "depth": 2.79,
+            "evidence": "DETAIL-B: 2.79 +0.13 deep, 3.94 +0.51 wide; Ø31.88 - 2 x 3.94 = Ø24.00",
+        }
+    ]
+    assert solid_gaps(with_solid(ok, ["face groove"])) == []
+    assert parse_solid(ok)[0]["kind"] == "face_groove"
+    bad = [{"kind": "face_groove", "diameter": 31.88}]
+    text = " | ".join(solid_gaps(with_solid(bad, ["face groove"])))
+    assert "no diameter_end or width" in text and "no depth" in text
+    assert "say which end" in text

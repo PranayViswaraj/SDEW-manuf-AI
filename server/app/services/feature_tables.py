@@ -136,6 +136,7 @@ class SolidFeature(BaseModel):
         "slot",
         "keyway",
         "face_hole",
+        "face_groove",
         "knurl",
         "spline",
         "other",

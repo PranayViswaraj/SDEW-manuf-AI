@@ -54,7 +54,14 @@ only imply. Use it to understand the solid, and the dimensioned views for every 
    curved end outline in the side view with a radius (e.g. R15.5 on a tube end) is a SADDLE cut, not
    a turned radius. A circle or ellipse on the side of a cylinder, or a section A-A across the axis
    showing a hole through the wall, is a CROSS HOLE (two diameters with an angle = a tapered hole).
-   A straight line across a turned diameter in the side view is usually a FLAT.
+   A straight line across a turned diameter in the side view is usually a FLAT. A recess or ring
+   groove cut INTO AN END FACE (a "well" around the bore or near the rim, typically an O-ring
+   groove) is a FACE GROOVE: in a section it shows as a small notch in the face, usually with a
+   DETAIL view at a larger scale (e.g. DETAIL-B 2:1) giving its width, depth, wall angle and radii;
+   in the end view it is a pair of concentric (often dashed) circles; in the isometric view a
+   ring step on the face.
+   EVERY DETAIL view and every circled area on a section is a feature: find what it shows and put
+   it in the table or in solid. A detail view you have not accounted for is a feature you missed.
 3. Check the reverse: every feature in the orthographic views is visible in the isometric view (it
    may be hidden on the far side). The turned profile (steps, bore, ends) must agree with the
    isometric view: same number of steps, the flange / large end at the same end, hollow or solid.
@@ -89,6 +96,10 @@ Fill drawing.shape_3d:
   - "slot" / "keyway": width, depth, z_from, z_to, angle; a slot across an end face: end, width,
     depth, z_from/z_to its extent.
   - "face_hole": holes in an end face off the axis: end, diameter, pcd, count, depth or through.
+  - "face_groove": an annular groove / recess in an end face: end, diameter = its OUTER diameter,
+    diameter_end = its INNER diameter (or width = radial width), depth = axial depth into the
+    face; wall angle, corner radii and tolerances in evidence. Work the diameters out from the
+    dimensions (e.g. outer Ø31.88 and radial width 3.94 -> inner Ø24.00) and say so in evidence.
   - "knurl" / "spline": z_from, z_to, and the spec in evidence.
   - "other": anything else, described in evidence.
   evidence: the view and the dimensions it comes from ("SECTION A-A: Ø16.5/Ø19.5, 7° taper;
@@ -168,8 +179,10 @@ The table describes turned geometry from a FRONT FACE (Z0), measuring towards th
 - Bores: largest first going in, each "depth" measured from the front face to the end of that bore.
 - Drilled holes: diameter and depth (to the full diameter, not the drill point). If the drawing
   shows only a bore, do not invent the drill size; leave drill out or null with a question.
-- Face grooves (axial grooves cut into a face, like an O-ring groove) have no feature type: describe
-  outer/inner diameter, depth, wall angle and radius in not_in_table.
+- Face grooves (axial grooves cut into an end face, like an O-ring groove) have no feature-table
+  type: give them as "face_groove" in drawing.shape_3d.solid (so the 3D model shows them) AND
+  describe outer/inner diameter, depth, wall angle and radius in not_in_table. Also name them in
+  shape_3d.non_turned ("face groove, cut with a face-grooving tool").
 
 STEP 5b - The contour, point by point in mm (contour, written as JSON text)
 Describe the same part a second, independent way: walk its outline and give every corner as a
@@ -272,8 +285,10 @@ Then check the whole table:
   the side or ends); then check: the summary describes that solid, the envelope is right, both
   ends are described, the turned profile agrees with the isometric (number of steps, which end is
   large, hollow or solid), and EVERY non-turned feature (cross holes, saddle cuts, flats, hexagons,
-  slots, keyways, splines, knurls) is in non_turned AND in solid with every number from the
-  dimensioned views (z from the front face). Correct it in "corrected".
+  slots, keyways, splines, knurls) and EVERY face groove / recess in an end face is in non_turned
+  AND in solid with every number from the dimensioned views (z from the front face). Every DETAIL
+  view (e.g. DETAIL-B 2:1) shows a feature: check it is in the table or in solid. Correct it in
+  "corrected".
 - feature_list names every feature with its key size; add what is missing, fix what is wrong.
 
 OUTPUT
@@ -353,7 +368,7 @@ _SOLID = {
     "type": "string",
     "description": (
         'JSON text: [{"kind": "cross_hole"|"saddle"|"flat"|"hex"|"square"|"slot"|"keyway"|'
-        '"face_hole"|"knurl"|"spline"|"other", "z", "z_from", "z_to", "diameter", '
+        '"face_hole"|"face_groove"|"knurl"|"spline"|"other", "z", "z_from", "z_to", "diameter", '
         '"diameter_end", "width", "depth", "radius", "across_flats", "pcd", "angle", "tilt", '
         '"count", "through", "end", "evidence"}, ...] or "[]"'
     ),

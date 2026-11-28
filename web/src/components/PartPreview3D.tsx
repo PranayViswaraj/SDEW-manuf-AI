@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { SolidFeature } from '../api/types';
 import { cutters } from '../lib/solidCuts';
-import { cutSolid } from '../lib/solidMesh';
+import { cutSolid, sharpCorners } from '../lib/solidMesh';
 
 /**
  * The part: revolved from its outline (outer and inner, part coordinates), with the non-turned
@@ -51,7 +51,8 @@ export default function PartPreview3D({
     pts.push(new THREE.Vector2(Math.max(inn[inn.length - 1][1], 0.001), L));
     for (let i = inn.length - 1; i >= 0; i--)
       pts.push(new THREE.Vector2(Math.max(inn[i][1], 0.001), inn[i][0]));
-    const body = new THREE.LatheGeometry(pts, 96);
+    // corners stay sharp (faces, shoulders, chamfers); only real curves are shaded smooth
+    const body = new THREE.LatheGeometry(sharpCorners(pts), 96);
     body.computeVertexNormals();
     const geo = cutSolid(body, cutters(solid, outer, L).cuts);
     if (geo !== body) body.dispose();
