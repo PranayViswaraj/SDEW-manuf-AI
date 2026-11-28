@@ -5,6 +5,7 @@ hole, seen in the isometric view)."""
 import json
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -170,3 +171,77 @@ def test_saving_the_rows_never_erases_the_ais_3d_features(
     assert r.status_code == 200, r.text
     assert [f["kind"] for f in r.json()["data"]["solid"]] == ["face_groove"]
     assert r.json()["data"]["contour"]["outer"][0]["d"] == 22.22
+
+
+def test_the_face_groove_survives_the_whole_engineer_flow(
+    client: TestClient,
+    role_headers: dict[str, dict[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """3227C07701 as the engineer uses it: the AI read saves the face groove; ticking every value
+    (also with a page that sends only the rows), confirming and reloading keep it."""
+    from app.api import drawings as api_mod
+
+    groove = [
+        {
+            "kind": "face_groove",
+            "end": "back",
+            "diameter": 31.88,
+            "diameter_end": 24.0,
+            "depth": 2.79,
+            "evidence": "DETAIL-B 2:1",
+        }
+    ]
+    claim = with_solid(json.dumps(groove), ["face groove in the flange face"])
+    verdict = {
+        "verdict": "accept",
+        "checks": ALL_OK,
+        "corrected": json.dumps(claim),
+        "callouts": [],
+        "questions_for_engineer": [],
+    }
+    monkeypatch.setattr(api_mod, "ai_reader_enabled", lambda: True)
+    monkeypatch.setattr(api_mod, "get_drawing_reader", lambda: reader(FakeClient([claim, verdict])))
+    eng = role_headers["engineer"]
+    tid = client.post("/api/feature-tables", json={"part_number": "TEST4"}, headers=eng).json()[
+        "id"
+    ]
+    r = client.post(
+        "/api/drawings",
+        data={"part_number": "TEST4"},
+        files={"file": ("3227C07701.pdf", PDF, "application/pdf")},
+        headers=eng,
+    )
+    job = client.get(f"/api/drawings/ai-jobs/{r.json()['autofill']['job_id']}", headers=eng).json()
+    assert job["status"] == "done", job
+
+    def kinds() -> list[str]:
+        t = client.get(f"/api/feature-tables/{tid}", headers=eng).json()
+        return [f["kind"] for f in t["data"].get("solid", [])]
+
+    assert kinds() == ["face_groove"]  # saved by the AI read
+
+    # the engineer ticks every value (entering the one the AI left open), as "Tick all" does
+    data = client.get(f"/api/feature-tables/{tid}", headers=eng).json()["data"]
+    for cell in [
+        *data["header"].values(),
+        *(c for f in data["features"] for c in f["fields"].values()),
+    ]:
+        if cell["value"] in (None, ""):
+            cell["value"] = cell["ai"] if cell["ai"] is not None else 0
+        cell["confirmed"] = True
+    rows_only = {"header": data["header"], "features": data["features"]}
+    assert (
+        client.put(f"/api/feature-tables/{tid}", json={"data": rows_only}, headers=eng).status_code
+        == 200
+    )
+    assert kinds() == ["face_groove"]  # a page sending only the rows cannot erase it
+    assert (
+        client.put(f"/api/feature-tables/{tid}", json={"data": data}, headers=eng).status_code
+        == 200
+    )
+    assert kinds() == ["face_groove"]
+    r = client.post(f"/api/feature-tables/{tid}/confirm", headers=eng)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "confirmed"
+    assert kinds() == ["face_groove"]  # and after "refresh": read back from the database
