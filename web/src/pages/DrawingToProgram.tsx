@@ -442,8 +442,10 @@ function FeatureEditor({
   const allCells = [...Object.values(data.header), ...data.features.flatMap((f) => Object.values(f.fields))];
   const hasSuggestions = allCells.some((c) => c.ai !== null && c.ai !== '' && !filled(c));
   // Fills empty boxes only. Each value still has to be ticked after checking it against the drawing.
+  // keep everything else in the table (the AI's point contour and 3D features) as it is
   const applyAllRead = () =>
     onChange({
+      ...data,
       header: Object.fromEntries(Object.entries(data.header).map(([k, c]) => [k, fromAi(c)])),
       features: data.features.map((f) => ({
         ...f,
@@ -452,6 +454,7 @@ function FeatureEditor({
     });
   const tickAll = () =>
     onChange({
+      ...data,
       header: Object.fromEntries(
         Object.entries(data.header).map(([k, c]) => [k, filled(c) ? { ...c, confirmed: true } : c]),
       ),
@@ -1757,11 +1760,17 @@ export default function DrawingToProgram() {
                     key={aiJob}
                     jobId={aiJob}
                     onDone={(info, ok) => {
+                      // the panel shows only while the two agents work; the result goes to the notice
+                      setAiJob(null);
                       setKnownInfo(info);
                       if (ok && info.filled) {
                         setNotice(info.message);
                         setTableReload((n) => n + 1);
                       } else setError(info.message);
+                    }}
+                    onLost={() => {
+                      setAiJob(null);
+                      setTableReload((n) => n + 1);
                     }}
                   />
                 )}
@@ -1839,6 +1848,22 @@ export default function DrawingToProgram() {
                     <p className="font-medium">
                       {`AI read drawing ${knownInfo.title}: one agent read it and a second checked and corrected it, and the table below is filled in. Check each value against the drawing and tick it, then press Confirm table.`}
                     </p>
+                    {knownInfo.usage && (
+                      <p className="mt-1 text-xs">
+                        {knownInfo.model?.includes('opus') ? 'Opus 5.5' : 'Sonnet 5.5'} ·{' '}
+                        {knownInfo.usage.calls} API calls · about ${knownInfo.usage.cost_usd.toFixed(2)}
+                      </p>
+                    )}
+                    {knownInfo.unaccounted && knownInfo.unaccounted.length > 0 && (
+                      <>
+                        <p className="mt-1">Check these on the drawing (the AI could not place them):</p>
+                        <ul className="list-disc pl-5">
+                          {knownInfo.unaccounted.map((x) => (
+                            <li key={x}>{x}</li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
                     {knownInfo.questions && knownInfo.questions.length > 0 && (
                       <>
                         <p className="mt-1">The AI could not settle these; check them on the drawing:</p>

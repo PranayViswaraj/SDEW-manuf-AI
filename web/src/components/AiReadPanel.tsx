@@ -9,7 +9,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { api } from '../api/client';
+import { api, ApiError } from '../api/client';
 import type { AiJob, KnownDrawingInfo } from '../api/types';
 import { CountUp } from './motion';
 
@@ -124,27 +124,43 @@ function AgentCard({
 export default function AiReadPanel({
   jobId,
   onDone,
+  onLost,
 }: {
   jobId: string;
   onDone: (info: KnownDrawingInfo & { filled: boolean; message: string }, ok: boolean) => void;
+  /** The server no longer knows this read (its in-browser server restarted): nothing to show. */
+  onLost: () => void;
 }) {
   const [job, setJob] = useState<AiJob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const doneRef = useRef(onDone);
   doneRef.current = onDone;
+  const lostRef = useRef(onLost);
+  lostRef.current = onLost;
 
   useEffect(() => {
     let stop = false;
     let timer = 0;
+    let misses = 0;
     const poll = async () => {
       try {
         const j = await api.get<AiJob>(`/drawings/ai-jobs/${jobId}`);
         if (stop) return;
+        misses = 0;
+        setError(null);
         setJob(j);
         if (j.status === 'running') timer = window.setTimeout(poll, 1200);
         else doneRef.current(j.info, j.status === 'done');
       } catch (e) {
-        if (!stop) setError((e as Error).message);
+        if (stop) return;
+        if (e instanceof ApiError && e.status === 404) {
+          lostRef.current(); // the read is gone: no error, the page shows the table as it is
+          return;
+        }
+        // a passing hiccup (busy worker, network): keep checking quietly
+        misses += 1;
+        if (misses >= 10) setError((e as Error).message);
+        timer = window.setTimeout(poll, Math.min(10000, 1200 * 2 ** Math.min(misses, 3)));
       }
     };
     void poll();

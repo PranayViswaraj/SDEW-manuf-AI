@@ -5,9 +5,13 @@ hole, seen in the isometric view)."""
 import json
 from typing import Any
 
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
 from app.ai.claude_reader import completeness
 from app.ai.solid import parse_solid, solid_gaps
 from app.services.feature_tables import TableData, normalise
+from tests.conftest import UserFactory
 from tests.test_claude_reader import ALL_OK, PDF, FakeClient, extraction, reader
 
 # 3216C11701: tube Ø25/Ø19 x 50, back end cut by an R15.5 cylinder (deepest at 41 from the
@@ -132,3 +136,37 @@ def test_a_face_groove_needs_its_diameters_depth_and_end() -> None:
     text = " | ".join(solid_gaps(with_solid(bad, ["face groove"])))
     assert "no diameter_end or width" in text and "no depth" in text
     assert "say which end" in text
+
+
+def test_saving_the_rows_never_erases_the_ais_3d_features(
+    client: TestClient, db: Session, make_user: UserFactory
+) -> None:
+    """3227C07701: the face groove vanished after "Tick all" (the page saved the rows only)."""
+    from app.db.models import FeatureTable, Role
+    from tests.conftest import headers_for
+
+    eng = headers_for(make_user(Role.ENGINEER))
+    tid = client.post(
+        "/api/feature-tables", json={"part_number": "3227C07701"}, headers=eng
+    ).json()["id"]
+    ft = db.get(FeatureTable, tid)
+    assert ft is not None
+    groove = parse_solid(
+        [
+            {
+                "kind": "face_groove",
+                "end": "back",
+                "diameter": 31.88,
+                "diameter_end": 24,
+                "depth": 2.79,
+            }
+        ]
+    )
+    contour = {"outer": [{"z": 0, "d": 22.22, "segment": "start"}], "inner": []}
+    ft.data = normalise(TableData.model_validate({**ft.data, "solid": groove, "contour": contour}))
+    db.commit()
+    rows = {k: v for k, v in ft.data.items() if k in ("header", "features")}
+    r = client.put(f"/api/feature-tables/{tid}", json={"data": rows}, headers=eng)
+    assert r.status_code == 200, r.text
+    assert [f["kind"] for f in r.json()["data"]["solid"]] == ["face_groove"]
+    assert r.json()["data"]["contour"]["outer"][0]["d"] == 22.22

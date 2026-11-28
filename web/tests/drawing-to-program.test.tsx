@@ -391,3 +391,43 @@ describe('dropping a drawing with no part open', () => {
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
 });
+
+describe('the AI 3D features survive editing the table', () => {
+  it('keeps the face groove and contour when "Tick all" saves the table', async () => {
+    const groove = {
+      kind: 'face_groove' as const,
+      z: null,
+      z_from: null,
+      z_to: null,
+      diameter: 31.88,
+      diameter_end: 24,
+      width: null,
+      depth: 2.79,
+      radius: null,
+      across_flats: null,
+      pcd: null,
+      angle: null,
+      tilt: null,
+      count: 1,
+      through: true,
+      end: 'back' as const,
+      evidence: 'DETAIL-B',
+    };
+    const draft = {
+      ...TABLE,
+      status: 'draft' as const,
+      confirmed_by_name: null,
+      confirmed_at: null,
+      data: { ...TABLE.data, solid: [groove] },
+    };
+    const { calls } = renderApp('/make?table=4', makeUser(['engineer']), {
+      ...routes(() => NOT_YET),
+      'GET /feature-tables/4': draft,
+      'PUT /feature-tables/4': draft,
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Tick all entered values' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true), { timeout: 5000 });
+    const put = calls.find((c) => c.method === 'PUT');
+    expect((put?.body as { data: { solid: unknown[] } }).data.solid).toEqual([groove]);
+  });
+});

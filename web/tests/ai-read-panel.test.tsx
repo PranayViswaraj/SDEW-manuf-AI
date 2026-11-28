@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { api } from '../src/api/client';
+import { api, ApiError } from '../src/api/client';
 import type { AiJob } from '../src/api/types';
 import AiReadPanel from '../src/components/AiReadPanel';
 
@@ -59,7 +59,7 @@ describe('two-agent AI read panel', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.spyOn(api, 'get').mockImplementation(async () => replies.shift() ?? done);
     const onDone = vi.fn();
-    render(<AiReadPanel jobId="j1" onDone={onDone} />);
+    render(<AiReadPanel jobId="j1" onDone={onDone} onLost={vi.fn()} />);
 
     expect(await screen.findByText(/Reading the drawing as an image/)).toBeInTheDocument();
     expect(screen.getByText('Starts when agent 1 hands over its draft.')).toBeInTheDocument();
@@ -91,8 +91,33 @@ describe('two-agent AI read panel', () => {
     });
     vi.spyOn(api, 'get').mockResolvedValue(failed);
     const onDone = vi.fn();
-    render(<AiReadPanel jobId="j1" onDone={onDone} />);
+    render(<AiReadPanel jobId="j1" onDone={onDone} onLost={vi.fn()} />);
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(failed.info, false));
     expect(screen.getByText(/Could not finish: The AI drawing reader is not available/)).toBeInTheDocument();
+  });
+
+  it('shows no error when the read is gone (in-browser server restarted): it just goes away', async () => {
+    vi.spyOn(api, 'get').mockRejectedValue(
+      new ApiError(404, 'No such AI read (it may have finished more than an hour ago).'),
+    );
+    const onLost = vi.fn();
+    render(<AiReadPanel jobId="j1" onDone={vi.fn()} onLost={onLost} />);
+    await waitFor(() => expect(onLost).toHaveBeenCalled());
+    expect(screen.queryByText(/No such AI read/)).not.toBeInTheDocument();
+  });
+
+  it('keeps checking quietly through a passing hiccup', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const replies: (AiJob | Error)[] = [new Error('Failed to fetch'), job({ stage: 'verify', round: 1 })];
+    vi.spyOn(api, 'get').mockImplementation(async () => {
+      const r = replies.shift() ?? job({ stage: 'verify', round: 1 });
+      if (r instanceof Error) throw r;
+      return r;
+    });
+    render(<AiReadPanel jobId="j1" onDone={vi.fn()} onLost={vi.fn()} />);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(await screen.findByText(/Checking every value against the drawing/)).toBeInTheDocument();
+    expect(screen.queryByText(/Failed to fetch/)).not.toBeInTheDocument();
+    vi.useRealTimers();
   });
 });

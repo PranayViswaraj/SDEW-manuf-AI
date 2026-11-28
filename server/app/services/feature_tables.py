@@ -266,7 +266,13 @@ def data_hash(data: dict[str, Any]) -> str:
 
 
 def update_data(ft: FeatureTable, raw: dict[str, Any]) -> None:
-    """Replace the values; any change clears the table confirmation."""
+    """Replace the values; any change clears the table confirmation. The AI's point contour and
+    3D features are kept when the new data does not carry them (a page that edits only the rows
+    must never erase what the AI read from the drawing)."""
+    raw = dict(raw)
+    for key in ("contour", "solid"):
+        if key not in raw and key in (ft.data or {}):
+            raw[key] = ft.data[key]
     new = normalise(raw)
     if new != ft.data or ft.status != FeatureTableStatus.DRAFT.value:
         ft.data = new
