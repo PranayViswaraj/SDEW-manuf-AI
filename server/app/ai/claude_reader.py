@@ -34,6 +34,7 @@ from app.ai.prompts import (
     VERIFIER_SYSTEM,
     extractor_system,
 )
+from app.ai.solid import parse_solid, solid_gaps
 from app.services.feature_tables import FEATURE_TYPES, HEADER_FIELDS, Kind, TableData
 
 log = logging.getLogger(__name__)
@@ -208,6 +209,7 @@ class ClaudeDrawingReader(DrawingReader):
             EXTRACTION_SCHEMA,
         )
         answer["contour"] = parse_contour(answer.get("contour"))
+        _parse_shape(answer)
         return answer
 
     async def averify(
@@ -223,6 +225,7 @@ class ClaudeDrawingReader(DrawingReader):
         )
         answer["corrected"] = corrected_table(answer.get("corrected"))
         answer["corrected"]["contour"] = parse_contour(answer["corrected"].get("contour"))
+        _parse_shape(answer["corrected"])
         return answer
 
     # ------------------------------------------------------------------ pipeline
@@ -261,10 +264,12 @@ class ClaudeDrawingReader(DrawingReader):
             gaps = completeness(first, None, images.text_numbers)
             rounds = [await self.averify(drawing, first, gaps.message(first_round=True))]
             gaps = completeness(first, rounds[-1], images.text_numbers)
-            # A second look only when it can change the result: agent 2 corrected values, or a
-            # callout / balloon is still not accounted for (a text-layer number alone is not
-            # worth a whole extra read: it is listed for the engineer instead).
-            if any(c["verdict"] == "wrong" for c in rounds[-1]["checks"]) or gaps.serious():
+            # A second look only when something is still provably open: a callout or balloon
+            # not accounted for, or the point contour and the table describing different parts.
+            # Agent 2's corrections are its answer (re-checking them was the costliest call and
+            # rarely changed a value); a text-layer number or an incomplete non-turned feature
+            # alone is listed for the engineer instead.
+            if gaps.serious():
                 say("verify", 2)
                 rounds.append(
                     await self.averify(
@@ -327,6 +332,13 @@ class ClaudeDrawingReader(DrawingReader):
 
     def read(self, file: bytes, filename: str = "") -> TableData:
         return self.read_report(file, filename).table
+
+
+def _parse_shape(answer: dict[str, Any]) -> None:
+    """The non-turned features arrive as JSON text: parse them in place (see app.ai.solid)."""
+    shape = (answer.get("drawing") or {}).get("shape_3d")
+    if isinstance(shape, dict):
+        shape["solid"] = parse_solid(shape.get("solid"))
 
 
 def parse_contour(raw: Any) -> dict[str, Any]:
@@ -489,6 +501,7 @@ class Gaps:
     first_only: list[str] = field(default_factory=list)  # callouts the checker lost
     text_only: list[str] = field(default_factory=list)  # text-layer numbers nobody accounted for
     contour: list[str] = field(default_factory=list)  # contour and table disagree
+    solid: list[str] = field(default_factory=list)  # non-turned features incomplete
     no_contour: bool = False  # the reader gave no point contour
     highest_balloon: int | None = None
 
@@ -499,6 +512,7 @@ class Gaps:
             or self.first_only
             or self.text_only
             or self.contour
+            or self.solid
         )
 
     def serious(self) -> bool:
@@ -525,6 +539,11 @@ class Gaps:
                 "The point contour and the feature table disagree (mm from the front face): "
                 + "; ".join(self.contour)
             )
+        if self.solid:
+            lines.append(
+                "Non-turned features (drawing.shape_3d.solid) to complete from the dimensioned "
+                "views: " + "; ".join(self.solid)
+            )
         if self.text_only:
             lines.append(
                 ("Numbers in the PDF text layer" if first_round else "Text-layer numbers still")
@@ -542,6 +561,7 @@ class Gaps:
         out += [f"Seen by the first reader only: {x}" for x in self.first_only]
         out += [f"Number printed on the drawing, not accounted for: {x}" for x in self.text_only]
         out += [f"Contour check: {x}" for x in self.contour]
+        out += [f"3D model: {x}" for x in self.solid]
         if self.no_contour:
             out.append("No point contour (mm from the front face) was given: compare by eye.")
         return out[:40]
@@ -581,6 +601,7 @@ def completeness(
                 g.first_only.append(text)
     final = (latest.get("corrected") if check is not None else first) or {}
     g.contour = contour_gaps(final)
+    g.solid = solid_gaps(final)
     g.no_contour = (
         bool(final.get("features")) and len((final.get("contour") or {}).get("outer") or []) < 2
     )
@@ -692,6 +713,9 @@ def reconcile(
     data: dict[str, Any] = {"header": header, "features": features[:200]}
     if not notes["not_lathe"] and (contour := _contour(table.get("contour"))):
         data["contour"] = contour
+    shape = drawing.get("shape_3d") or {}
+    if not notes["not_lathe"] and (solid := parse_solid(shape.get("solid"))):
+        data["solid"] = solid
     return TableData.model_validate(data), notes
 
 

@@ -329,6 +329,39 @@ export interface FeatureTableData {
   features: { type: string; fields: Record<string, Cell> }[];
   /** The part point by point as the AI read it (a second description, cross-checked). */
   contour?: { outer: ContourPoint[]; inner: ContourPoint[] } | null;
+  /** Features a lathe alone cannot make, as geometry (drawn in the 3D model, not cut). */
+  solid?: SolidFeature[];
+}
+/** A non-turned feature: z in mm from the front face, angle around the axis (0 = top). */
+export interface SolidFeature {
+  kind:
+    | 'cross_hole'
+    | 'saddle'
+    | 'flat'
+    | 'hex'
+    | 'square'
+    | 'slot'
+    | 'keyway'
+    | 'face_hole'
+    | 'knurl'
+    | 'spline'
+    | 'other';
+  z: number | null;
+  z_from: number | null;
+  z_to: number | null;
+  diameter: number | null;
+  diameter_end: number | null;
+  width: number | null;
+  depth: number | null;
+  radius: number | null;
+  across_flats: number | null;
+  pcd: number | null;
+  angle: number | null;
+  tilt: number | null;
+  count: number;
+  through: boolean;
+  end: 'front' | 'back' | null;
+  evidence: string;
 }
 export interface FeatureTable {
   id: number;

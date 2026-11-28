@@ -121,11 +121,49 @@ class Contour(BaseModel):
     inner: list[ContourPoint] = Field(default_factory=list, max_length=400)
 
 
+class SolidFeature(BaseModel):
+    """A feature a lathe alone cannot make (cross hole, saddle cut, flat, hex, slot ...), as the AI
+    read it: z in mm from the front face, angle around the axis in degrees (0 = top). Drawn in the
+    3D model; the program generator does not cut it."""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal[
+        "cross_hole",
+        "saddle",
+        "flat",
+        "hex",
+        "square",
+        "slot",
+        "keyway",
+        "face_hole",
+        "knurl",
+        "spline",
+        "other",
+    ]
+    z: float | None = Field(default=None, ge=-10000, le=10000)
+    z_from: float | None = Field(default=None, ge=-10000, le=10000)
+    z_to: float | None = Field(default=None, ge=-10000, le=10000)
+    diameter: float | None = Field(default=None, gt=0, le=10000)
+    diameter_end: float | None = Field(default=None, gt=0, le=10000)
+    width: float | None = Field(default=None, gt=0, le=10000)
+    depth: float | None = Field(default=None, gt=0, le=10000)
+    radius: float | None = Field(default=None, gt=0, le=10000)
+    across_flats: float | None = Field(default=None, gt=0, le=10000)
+    pcd: float | None = Field(default=None, gt=0, le=10000)
+    angle: float | None = Field(default=None, ge=-10000, le=10000)
+    tilt: float | None = Field(default=None, ge=-10000, le=10000)
+    count: int = Field(default=1, ge=1, le=72)
+    through: bool = True
+    end: Literal["front", "back"] | None = None
+    evidence: str = Field(default="", max_length=200)
+
+
 class TableData(BaseModel):
     model_config = ConfigDict(extra="forbid")
     header: dict[str, Cell] = Field(default_factory=dict)
     features: list[Feature] = Field(default_factory=list, max_length=200)
     contour: Contour | None = None
+    solid: list[SolidFeature] = Field(default_factory=list, max_length=60)
 
 
 class FeatureTableError(ValueError):
@@ -200,6 +238,8 @@ def normalise(raw: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {"header": out_header, "features": out_features}
     if data.contour is not None and (data.contour.outer or data.contour.inner):
         out["contour"] = data.contour.model_dump()
+    if data.solid:
+        out["solid"] = [f.model_dump() for f in data.solid]
     return out
 
 

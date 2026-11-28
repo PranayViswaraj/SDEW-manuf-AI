@@ -43,8 +43,23 @@ STEP 2 - Views and scale
 - Find the axis of revolution and which end is which. Hidden lines (dashed) inside a section or
   view mean internal features (bore, drilled hole, thread). A full or half section shows them solid.
 
-STEP 2b - 3D shape analysis (shape_3d)
-Combine the views into the solid before reading numbers. Fill drawing.shape_3d:
+STEP 2b - 3D shape analysis (shape_3d): build the solid in your head FIRST
+The isometric (pictorial) view is the key to the 3D shape: it shows at a glance what the 2D views
+only imply. Use it to understand the solid, and the dimensioned views for every number.
+1. Look at the isometric view alone and describe what you see: the basic body (solid bar, tube,
+   stepped shaft, flanged boss), each end (flat face, chamfer, saddle / fish-mouth cut for a pipe
+   joint, slot, hexagon), and everything on the side surface (holes, flats, slots, keyways, knurls,
+   splines). Count them.
+2. Find each of those in the orthographic views: which view and which dimensions define it. A
+   curved end outline in the side view with a radius (e.g. R15.5 on a tube end) is a SADDLE cut, not
+   a turned radius. A circle or ellipse on the side of a cylinder, or a section A-A across the axis
+   showing a hole through the wall, is a CROSS HOLE (two diameters with an angle = a tapered hole).
+   A straight line across a turned diameter in the side view is usually a FLAT.
+3. Check the reverse: every feature in the orthographic views is visible in the isometric view (it
+   may be hidden on the far side). The turned profile (steps, bore, ends) must agree with the
+   isometric view: same number of steps, the flange / large end at the same end, hollow or solid.
+4. Only then read the numbers (STEP 4). Never take a number from the isometric view or by scaling.
+Fill drawing.shape_3d:
 - summary: one or two sentences describing the 3D part as a machinist would, e.g. "Stepped hollow
   boss: Ø22.22 spigot, Ø31 body and Ø38 flange on one axis, Ø19 bore through, an O-ring face
   groove in the flange face".
@@ -52,10 +67,32 @@ Combine the views into the solid before reading numbers. Fill drawing.shape_3d:
   null if not dimensioned.
 - ends: what each end looks like ("small end: Ø22.22 spigot, 0.5x45 chamfer"; "flange end: Ø38,
   face groove"), so the engineer sees which end is turned first.
-- non_turned: every feature a lathe alone cannot make - cross holes, flats, hexagons, slots,
-  keyways, splines, knurls, milled pockets, off-axis holes - with its size. Empty list if none.
-Cross-check the pictorial (isometric) view against the sections: every feature you see in 3D must
-appear in a dimensioned view; if one does not, ask a question.
+- non_turned: every feature a lathe alone cannot make - cross holes, saddle cuts, flats,
+  hexagons, slots, keyways, splines, knurls, milled pockets, off-axis holes - with its size, one
+  line each. Empty list if none.
+- solid: the SAME non-turned features as geometry, written as JSON TEXT (a string): a list with
+  one object per feature, so the 3D model can be built exactly. "[]" if none. Each object:
+  {"kind", "z", "z_from", "z_to", "diameter", "diameter_end", "width", "depth", "radius",
+   "across_flats", "pcd", "angle", "tilt", "count", "through", "end", "evidence"}
+  (numbers in mm or degrees, null when not used). z is measured from the FRONT face (Z0 of the
+  first clamping, as in the contour) toward the back face. angle = position around the axis in
+  degrees, 0 at the top of the main view, 90 toward the viewer. kind and what it needs:
+  - "cross_hole": z of the hole axis, diameter; a tapered hole also diameter_end (at the outside)
+    and its included angle in evidence; through true, or false with depth from the outside;
+    count for equally spaced holes at the same z; tilt if the hole axis is not square to the part.
+  - "saddle": an end cut by a cylinder at right angles (pipe joint): radius of the cutting
+    cylinder, end "front" or "back", z of the DEEPEST point of the cut, angle of the cutting
+    cylinder's axis.
+  - "flat": z_from, z_to, depth from the largest diameter (or across_flats for two parallel
+    flats), count (1 or 2), angle of the first flat.
+  - "hex" / "square": across_flats, z_from, z_to.
+  - "slot" / "keyway": width, depth, z_from, z_to, angle; a slot across an end face: end, width,
+    depth, z_from/z_to its extent.
+  - "face_hole": holes in an end face off the axis: end, diameter, pcd, count, depth or through.
+  - "knurl" / "spline": z_from, z_to, and the spec in evidence.
+  - "other": anything else, described in evidence.
+  evidence: the view and the dimensions it comes from ("SECTION A-A: Ø16.5/Ø19.5, 7° taper;
+  15 from the back face -> z 35").
 
 STEP 3 - General tolerances (title block tables)
 Read the drawing's OWN tables; do not assume. Typical TAFE values, to check against what you read:
@@ -230,9 +267,13 @@ Then check the whole table:
 - Nothing from the drawing is lost: GD&T frames, finishes, heat treatment, plating, notes, detail
   views (face grooves, undercuts) are in not_in_table.
 - No value was guessed, scaled, or taken from the pictorial.
-- The 3D shape analysis (drawing.shape_3d) matches the drawing: the summary describes the real
-  solid, the envelope is right, both ends are described, and EVERY non-turned feature (cross
-  holes, flats, hexagons, slots, keyways, splines, knurls) is listed. Correct it in "corrected".
+- The 3D shape analysis (drawing.shape_3d) matches the drawing. Look at the ISOMETRIC view
+  yourself first and list what it shows (body, both ends, every hole, flat, slot, saddle cut on
+  the side or ends); then check: the summary describes that solid, the envelope is right, both
+  ends are described, the turned profile agrees with the isometric (number of steps, which end is
+  large, hollow or solid), and EVERY non-turned feature (cross holes, saddle cuts, flats, hexagons,
+  slots, keyways, splines, knurls) is in non_turned AND in solid with every number from the
+  dimensioned views (z from the front face). Correct it in "corrected".
 - feature_list names every feature with its key size; add what is missing, fix what is wrong.
 
 OUTPUT
@@ -307,6 +348,17 @@ _CONTOUR = {
     ),
 }
 
+# Non-turned features as geometry, also JSON text (grammar size); parsed by app.ai.solid.
+_SOLID = {
+    "type": "string",
+    "description": (
+        'JSON text: [{"kind": "cross_hole"|"saddle"|"flat"|"hex"|"square"|"slot"|"keyway"|'
+        '"face_hole"|"knurl"|"spline"|"other", "z", "z_from", "z_to", "diameter", '
+        '"diameter_end", "width", "depth", "radius", "across_flats", "pcd", "angle", "tilt", '
+        '"count", "through", "end", "evidence"}, ...] or "[]"'
+    ),
+}
+
 _VALUE_PROPS = {
     "v": _SCALAR,
     "evidence": _STR,
@@ -334,6 +386,7 @@ EXTRACTION_DEFS: dict[str, Any] = {
                             "length": _NULLABLE_NUM,
                             "ends": _STR_LIST,
                             "non_turned": _STR_LIST,
+                            "solid": _SOLID,
                         }
                     ),
                 }

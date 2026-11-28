@@ -8,7 +8,7 @@
  * with depths from the face, a chamfer / radius / cone sits on the front corner of the OD or bore
  * after it, and a toleranced size is cut in the middle of its tolerance band.
  */
-import type { Cell, ContourPoint, FeatureTableData } from '../api/types';
+import type { Cell, ContourPoint, FeatureTableData, SolidFeature } from '../api/types';
 
 export type Op = 'OP10' | 'OP20';
 
@@ -69,6 +69,8 @@ export interface PartModel {
   contour: { outer: ContourPoint[]; inner: ContourPoint[] } | null;
   /** Where the point contour and the feature table disagree (empty: they agree). */
   contourCheck: string[];
+  /** Non-turned features (cross holes, saddle cuts, flats ...) as the AI read them. */
+  solid: SolidFeature[];
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -126,6 +128,7 @@ export function buildPartModel(data: FeatureTableData | null | undefined): PartM
     inner: [],
     contour: null,
     contourCheck: [],
+    solid: data?.solid ?? [],
   };
   const feats = data?.features ?? [];
   const flip = feats.findIndex((f) => f.type === 'flip');

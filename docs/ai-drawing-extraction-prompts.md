@@ -45,8 +45,15 @@ SDEW receives drawings as PDFs only (no STEP model), most of them scans. Three m
 3. **Program check of the inventories** (`completeness()` in `claude_reader.py`, no AI): callouts
    with no place in the table, balloon numbers missing from 1..N, callouts the first reader saw
    that the checker's list lost, and numbers printed in the PDF text layer (CAD sheets) that no
-   reader accounted for. Any gap forces the checker's second round, with the gaps listed; whatever
-   is still open after it is shown to the engineer as "check these on the drawing".
+   reader accounted for. A callout or balloon gap (or a contour that disagrees with the table)
+   forces the checker's second round, with the gaps listed; whatever is still open after it is
+   shown to the engineer as "check these on the drawing".
+
+**API use.** The checker's corrections are its answer: a second checking round runs only when
+something is still provably open (a callout or balloon not accounted for, or the contour and the
+table describing different parts), never just because the checker corrected values. A text-layer
+number or an incomplete non-turned feature alone is listed for the engineer instead of paying for
+another full read.
 
 Accuracy is measured, not assumed: `python -m app.ai.evaluate <drawings folder>` (section 6).
 
@@ -69,8 +76,27 @@ table on the page, and the 3D view and section are drawn from it (chamfers inclu
   diameters and the mismatch is a note for the engineer, not a stop.
 - The AI **fills the table in** (`value` = the AI's reading) but never ticks anything: the engineer
   checks and ticks each value; the table cannot be confirmed, nor a program made, before that.
-- Features a lathe cannot make (flats, cross holes) come from the 3D analysis and are listed as
-  OP30 (milling or grinding) in the process plan.
+- Features a lathe cannot make come from the 3D analysis and are listed as OP30 (milling or
+  grinding) in the process plan.
+
+### The isometric view and the 3D model (non-turned features as geometry)
+
+A revolved profile cannot show a saddle-cut tube end or a cross hole (3216C11701: tube Ø25/Ø19 x
+50, back end cut by an R15.5 cylinder, tapered cross hole Ø16.5/Ø19.5 at 7°). So:
+
+- STEP 2b makes agent 1 build the solid from the **isometric view first**: body, both ends, every
+  hole, flat, slot or saddle on the side, counted; then find each in the dimensioned views, and
+  check the turned profile agrees with the isometric (steps, large end, hollow or solid). Numbers
+  still come only from the dimensioned views.
+- `drawing.shape_3d.solid` gives every non-turned feature as geometry (JSON text, like the contour):
+  kind (cross_hole, saddle, flat, hex, square, slot, keyway, face_hole, knurl, spline, other), z in
+  mm from the front face, sizes, angle around the axis (0 = top), count, through/depth, end.
+- `app/ai/solid.py` parses and checks it (required sizes per kind, inside the part, every feature
+  named in non_turned also given as geometry); gaps go to agent 2 in round 1 and then to the
+  engineer. Agent 2 checks it against the isometric view itself.
+- The features are saved with the table (`TableData.solid`) and cut into the 3D model on the page
+  (`web/src/lib/solidCuts.ts`, CSG subtraction from the revolved body), so the model looks like the
+  drawing's isometric view. A feature missing a size is listed as "size missing: not in 3D".
 
 ## Why the drawing must be read as an image
 

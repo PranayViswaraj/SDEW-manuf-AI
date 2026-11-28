@@ -1,6 +1,7 @@
 import { Check, CircleAlert, FileSearch, Minus, Sparkles } from 'lucide-react';
 import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { type Characteristic, type PartModel, type PlanRow, xWords } from '../lib/partModel';
+import { cutters, describeSolid } from '../lib/solidCuts';
 
 const PartPreview3D = lazy(() => import('./PartPreview3D'));
 
@@ -425,6 +426,11 @@ export default function PartReport({
   const differ = model.chars.filter((c) => verdictOf(c).verdict === 'readings differ').length;
   const ticked = model.chars.filter((c) => c.confirmed).length;
   const has3d = model.outer.length >= 2;
+  // the off-lathe features: as geometry when the AI gave it (also drawn in 3D), else as text
+  const skipped = new Set(cutters(model.solid, model.outer, model.length ?? 0).skipped);
+  const offLathe = model.solid.length
+    ? model.solid.map((f, k) => ({ text: describeSolid(f), evidence: f.evidence, notDrawn: skipped.has(k) }))
+    : nonTurned.map((x) => ({ text: x, evidence: '', notDrawn: false }));
   const sel = model.chars.find((c) => c.no === selected) ?? null;
   const pickedPoint = pointPick !== null ? model.contour?.outer[pointPick] : undefined;
   const highlight =
@@ -473,7 +479,7 @@ export default function PartReport({
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-linear-to-b from-slate-50 to-slate-100">
               {has3d ? (
                 <Suspense fallback={<div className="h-[260px]" />}>
-                  <PartPreview3D outer={model.outer} inner={model.inner} height={260} />
+                  <PartPreview3D outer={model.outer} inner={model.inner} solid={model.solid} height={260} />
                 </Suspense>
               ) : (
                 <p className="flex h-[120px] items-center justify-center p-4 text-sm text-slate-500">
@@ -661,7 +667,7 @@ export default function PartReport({
               }}
             />
           )}
-          {nonTurned.length > 0 && (
+          {offLathe.length > 0 && (
             <div className="overflow-hidden rounded-xl border border-violet-200 bg-white shadow-sm">
               <div className="flex items-center gap-3 border-b border-violet-200 bg-violet-50/70 px-4 py-3">
                 <span className="rounded-lg bg-violet-700 px-2 py-1 text-xs font-bold text-white">OP30</span>
@@ -672,14 +678,22 @@ export default function PartReport({
                   </p>
                 </div>
                 <span className="rounded-full bg-white px-2.5 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">
-                  {nonTurned.length} feature{nonTurned.length === 1 ? '' : 's'}
+                  {offLathe.length} feature{offLathe.length === 1 ? '' : 's'}
                 </span>
               </div>
               <ol className="divide-y divide-slate-100 text-sm" aria-label="OP30 features">
-                {nonTurned.map((x, k) => (
-                  <li key={x} className="flex gap-4 px-4 py-2">
+                {offLathe.map((x, k) => (
+                  <li key={`${k}-${x.text}`} className="flex gap-4 px-4 py-2">
                     <span className="font-mono text-xs text-slate-500">N{k + 1}</span>
-                    <span className="text-slate-800">{x}</span>
+                    <span className="min-w-0 flex-1 text-slate-800">
+                      {x.text}
+                      {x.evidence && <span className="block text-xs text-slate-500">{x.evidence}</span>}
+                    </span>
+                    {x.notDrawn && (
+                      <span className="self-start rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800 ring-1 ring-amber-200">
+                        size missing: not in 3D
+                      </span>
+                    )}
                   </li>
                 ))}
               </ol>

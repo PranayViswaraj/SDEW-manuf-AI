@@ -118,7 +118,8 @@ def reader(client: FakeClient) -> ClaudeDrawingReader:
     return ClaudeDrawingReader(model="claude-opus-5-5", effort="high", client=client)
 
 
-def test_extract_verify_twice_when_the_verifier_corrects() -> None:
+def test_the_verifiers_corrections_are_kept_without_a_second_round() -> None:
+    """A correction alone costs no second round: agent 2's corrected table is the answer."""
     first = extraction(diameter=2222)  # misread: decimal point lost
     round1 = {
         "verdict": "corrected",
@@ -128,18 +129,12 @@ def test_extract_verify_twice_when_the_verifier_corrects() -> None:
             *ALL_OK[3:],
         ],
         "corrected": extraction(),
-        "questions_for_engineer": [],
-    }
-    round2 = {
-        "verdict": "needs_engineer",
-        "checks": ALL_OK,
-        "corrected": extraction(),
         "questions_for_engineer": ["Is the tolerance -0.1 or -0.2?"],
     }
-    fake = FakeClient([first, round1, round2])
+    fake = FakeClient([first, round1])
     result = reader(fake).read_report(PDF, "3227C07701.pdf", "3227C07701")
 
-    assert len(fake.calls) == 3  # extractor, verifier, verifier again (max two rounds)
+    assert len(fake.calls) == 2  # extractor, verifier: the correction needs no second round
     od = result.table.features[0].fields
     assert od["diameter"].ai == 22.22
     assert od["tol_minus"].ai is None  # "unclear" in the last round -> left empty
@@ -153,8 +148,8 @@ def test_extract_verify_twice_when_the_verifier_corrects() -> None:
     assert "Feature 1 (OD (outside diameter)) Length" in result.notes["low_confidence"]
     assert "Is the tolerance -0.1 or -0.2?" in result.notes["questions"]
     assert result.notes["not_in_table"] == ["Perpendicularity 0.05 of the flange face to datum A"]
-    assert result.notes["verify_rounds"] == 2
-    assert len(result.audit["verifier"]) == 2 and result.audit["extractor"] == first
+    assert result.notes["verify_rounds"] == 1
+    assert len(result.audit["verifier"]) == 1 and result.audit["extractor"] == first
 
     req = fake.calls[0]
     assert req["model"] == "claude-opus-5-5"

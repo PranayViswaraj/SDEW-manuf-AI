@@ -1,18 +1,26 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import type { SolidFeature } from '../api/types';
+import { cutters } from '../lib/solidCuts';
+import { cutSolid } from '../lib/solidMesh';
 
 /**
- * The turned part, revolved from its outline (outer and inner, part coordinates). Drag to turn.
+ * The part: revolved from its outline (outer and inner, part coordinates), with the non-turned
+ * features the drawing shows (cross holes, saddle cuts, flats, hexagons, slots) cut into it, so it
+ * looks like the drawing's isometric view. Drag to turn.
  * Renders only when something changes (no animation loop), so it costs nothing while idle.
  */
 export default function PartPreview3D({
   outer,
   inner,
+  solid = [],
   height = 300,
 }: {
   outer: [number, number][];
   inner: [number, number][];
+  /** Non-turned features (cross holes, saddle cuts, flats ...) cut into the turned body. */
+  solid?: SolidFeature[];
   height?: number;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -43,8 +51,10 @@ export default function PartPreview3D({
     pts.push(new THREE.Vector2(Math.max(inn[inn.length - 1][1], 0.001), L));
     for (let i = inn.length - 1; i >= 0; i--)
       pts.push(new THREE.Vector2(Math.max(inn[i][1], 0.001), inn[i][0]));
-    const geo = new THREE.LatheGeometry(pts, 96);
-    geo.computeVertexNormals();
+    const body = new THREE.LatheGeometry(pts, 96);
+    body.computeVertexNormals();
+    const geo = cutSolid(body, cutters(solid, outer, L).cuts);
+    if (geo !== body) body.dispose();
     const mat = new THREE.MeshStandardMaterial({
       color: 0x30353b,
       metalness: 0.85,
@@ -119,6 +129,6 @@ export default function PartPreview3D({
       renderer.dispose();
       c.remove();
     };
-  }, [outer, inner, height]);
+  }, [outer, inner, solid, height]);
   return <div ref={host} style={{ height }} aria-label="3D view of the part (drag to turn)" role="img" />;
 }
