@@ -44,6 +44,7 @@ import { MachineLiveBadge } from '../components/StatusBadge';
 import { useLiveStatus } from '../hooks/useLiveStatus';
 import ToolpathView from '../components/ToolpathView';
 import PartReport from '../components/PartReport';
+import { setBusy as markBusy } from '../lib/busy';
 import { buildPartModel } from '../lib/partModel';
 import type { SimCheck } from '../cnc-sim/job';
 import { ErrorBox, Notice } from '../components/ui';
@@ -1035,12 +1036,17 @@ export default function DrawingToProgram() {
       .catch((e: Error) => setError(e.message));
   }, [reloadTables, reloadMachines]);
 
-  // load the chosen part
+  // load the chosen part; reloading the same part (after the AI read) keeps the page as it is
+  // until the new values arrive, so nothing collapses and jumps
+  const shownTable = useRef<number | null>(null);
   useEffect(() => {
-    setFt(null);
-    setData(null);
-    setProgram(null);
-    setPreview(null);
+    if (shownTable.current !== tableId) {
+      setFt(null);
+      setData(null);
+      setProgram(null);
+      setPreview(null);
+    }
+    shownTable.current = tableId;
     if (!tableId) return;
     api
       .get<FeatureTable>(`/feature-tables/${tableId}`)
@@ -1279,6 +1285,20 @@ export default function DrawingToProgram() {
   } | null>(null);
   const [checking, setChecking] = useState(false);
   const isEdited = editText !== null && !!preview?.text && editText !== preview.text;
+  // an automatic update of the page waits for these (lib/busy, hooks/useAutoUpdate)
+  useEffect(() => {
+    markBusy('ai-read', !!aiJob);
+    markBusy('table-edit', dirty);
+    markBusy('program-edit', isEdited);
+  }, [aiJob, dirty, isEdited]);
+  useEffect(
+    () => () => {
+      markBusy('ai-read', false);
+      markBusy('table-edit', false);
+      markBusy('program-edit', false);
+    },
+    [],
+  );
   const debouncedEdit = useDebounced(editText, 600);
   useEffect(() => {
     if (!isEdited || debouncedEdit === null || !machineId) {
@@ -1755,25 +1775,36 @@ export default function DrawingToProgram() {
 
             {ft && data && schema && (
               <Step n={2} title="Features and dimensions (engineer verifies and confirms)" done={confirmed}>
-                {aiJob && (
-                  <AiReadPanel
-                    key={aiJob}
-                    jobId={aiJob}
-                    onDone={(info, ok) => {
-                      // the panel shows only while the two agents work; the result goes to the notice
-                      setAiJob(null);
-                      setKnownInfo(info);
-                      if (ok && info.filled) {
-                        setNotice(info.message);
-                        setTableReload((n) => n + 1);
-                      } else setError(info.message);
-                    }}
-                    onLost={() => {
-                      setAiJob(null);
-                      setTableReload((n) => n + 1);
-                    }}
-                  />
-                )}
+                <AnimatePresence initial={false}>
+                  {aiJob && (
+                    <motion.div
+                      key={aiJob}
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.35, ease: 'easeOut' }}
+                      style={{ overflow: 'hidden' }}
+                    >
+                      <AiReadPanel
+                        key={aiJob}
+                        jobId={aiJob}
+                        onDone={(info, ok) => {
+                          // the panel shows only while the two agents work; the result goes to the notice
+                          setAiJob(null);
+                          setKnownInfo(info);
+                          if (ok && info.filled) {
+                            setNotice(info.message);
+                            setTableReload((n) => n + 1);
+                          } else setError(info.message);
+                        }}
+                        onLost={() => {
+                          setAiJob(null);
+                          setTableReload((n) => n + 1);
+                        }}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
                 {!aiJob && browserServerMode && (
                   <BrowserAiKey onChange={() => setAiStatusReload((n) => n + 1)} />
                 )}

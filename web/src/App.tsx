@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import type { Role } from './api/types';
 import { useAuth } from './auth/AuthContext';
 import Layout from './components/Layout';
+import { useAutoUpdate } from './hooks/useAutoUpdate';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Machines from './pages/Machines';
@@ -46,6 +47,7 @@ function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] 
 }
 
 export default function App() {
+  useAutoUpdate();
   return (
     <Routes>
       <Route path="/login" element={<Login />} />

@@ -6,10 +6,28 @@ import { defineConfig, loadEnv } from 'vite';
 
 export default defineConfig(({ mode }) => {
   const env = { ...loadEnv(mode, '..', ''), ...process.env };
+  // the deployed commit (GitHub Actions), else the build time; written to version.json so open
+  // tabs notice a newer deploy (useAutoUpdate)
+  const buildId = env.GITHUB_SHA ?? String(Date.now());
   return {
     // '/' normally; '/SDEW-manuf-AI/' for GitHub Pages (set by .github/workflows/pages.yml).
     base: env.VITE_BASE_PATH ?? '/',
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      {
+        name: 'version-json',
+        apply: 'build',
+        generateBundle() {
+          this.emitFile({
+            type: 'asset',
+            fileName: 'version.json',
+            source: JSON.stringify({ build: buildId }),
+          });
+        },
+      },
+    ],
+    define: { __BUILD_ID__: JSON.stringify(buildId) },
     server: {
       host: true,
       port: Number(env.WEB_PORT ?? 5173),
