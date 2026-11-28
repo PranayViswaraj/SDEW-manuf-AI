@@ -11,7 +11,8 @@ const RETRY_MS = 30 * 1000; // while busy, try again every 30 s
 export function watchForUpdate({
   build = __BUILD_ID__,
   url = `${import.meta.env.BASE_URL}version.json`,
-  fetchImpl = (u: string) => fetch(u, { cache: 'no-store' }),
+  // a fresh copy every time, past the browser's and the Pages servers' caches (10 min)
+  fetchImpl = (u: string) => fetch(`${u}?t=${Date.now()}`, { cache: 'no-store' }),
   reload = () => window.location.reload(),
 }: {
   build?: string;
